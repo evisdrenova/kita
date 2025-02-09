@@ -5,6 +5,11 @@ import { Progress } from "../../components/ui/progress";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../src/lib/utils";
 import { Folder, Loader2 } from "lucide-react";
+import {
+  SearchResult,
+  SearchCategory,
+  FileMetadata,
+} from "../../src/types/index";
 
 export const searchCategories = [
   "Applications",
@@ -31,26 +36,11 @@ export const searchCategories = [
   "Websites",
 ] as const;
 
-export type SearchCategory = (typeof searchCategories)[number];
-
-interface SearchResult {
-  id: number;
-  title: string;
-  category: SearchCategory;
-  icon?: React.ReactNode;
-}
-
 interface IndexingProgress {
   total: number;
   processed: number;
   percentage: number;
 }
-
-const results: SearchResult[] = [
-  { id: 1, title: "Result 1", category: "Applications" },
-  { id: 2, title: "Result 2", category: "Documents" },
-  { id: 3, title: "Result 3", category: "Folders" },
-];
 
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -61,10 +51,12 @@ export default function Home() {
   const [isIndexing, setIsIndexing] = useState(false);
   const [indexingProgress, setIndexingProgress] =
     useState<IndexingProgress | null>(null);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 
   useEffect(() => {
     // Add listener for indexing progress
     const handleProgress = (_: any, progress: IndexingProgress) => {
+      console.log("progress", progress);
       setIndexingProgress(progress);
     };
 
@@ -74,6 +66,33 @@ export default function Home() {
       window.electron.removeIndexingProgress(handleProgress);
     };
   }, []);
+
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    try {
+      const results = await window.electron.searchFiles(query);
+
+      // Transform the database results into SearchResult format
+      const formattedResults = results.map((file: FileMetadata) => ({
+        id: file.id,
+        title: file.name,
+        path: file.path,
+        category: getCategoryFromExtension(file.extension),
+        size: file.size,
+        modified: file.modified,
+      }));
+
+      setSearchResults(formattedResults);
+    } catch (error) {
+      console.error("Error searching files:", error);
+    }
+  };
 
   const handleSelectFolder = async () => {
     try {
@@ -112,16 +131,16 @@ export default function Home() {
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelectedResultIndex((current) =>
-          current >= results.length - 1 ? 0 : current + 1
+          current >= searchResults.length - 1 ? 0 : current + 1
         );
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setSelectedResultIndex((current) =>
-          current <= 0 ? results.length - 1 : current - 1
+          current <= 0 ? searchResults.length - 1 : current - 1
         );
       } else if (e.key === "Enter") {
         e.preventDefault();
-        const selectedItem = results[selectedResultIndex]; // Changed name here
+        const selectedItem = searchResults[selectedResultIndex]; // Changed name here
         if (selectedItem) {
           // Handle result selection
         }
@@ -130,7 +149,28 @@ export default function Home() {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [results, selectedResultIndex]);
+  }, [searchResults, selectedResultIndex]);
+
+  const getCategoryFromExtension = (extension: string): SearchCategory => {
+    switch (extension.toLowerCase()) {
+      case ".app":
+        return "Applications";
+      case ".pdf":
+        return "PDF Documents";
+      case ".doc":
+      case ".docx":
+      case ".txt":
+        return "Documents";
+      case ".jpg":
+      case ".jpeg":
+      case ".png":
+      case ".gif":
+        return "Images";
+      // Add more cases as needed
+      default:
+        return "Other";
+    }
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -145,7 +185,7 @@ export default function Home() {
           <div className="flex items-center gap-2">
             <Input
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => handleSearch(e.target.value)}
               className="border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/60"
               placeholder="Search your computer"
             />
@@ -178,7 +218,7 @@ export default function Home() {
         </div>
 
         <SearchResults
-          results={results}
+          results={searchResults}
           selectedId={selectedResultIndex}
           onSelect={setSelectedResultIndex}
         />

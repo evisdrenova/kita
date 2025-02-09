@@ -12,7 +12,7 @@ import {
 import { ThemeToggle } from "../src/ThemeProvider";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
-import { SearchCategory } from "../src/pages/Home";
+import { SearchCategory } from "../src/types/index";
 
 interface TitleBarProps {
   searchCategories: readonly SearchCategory[];

@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import { SettingsValue } from "../../src/settings/Settings";
 import { CoreMessage } from "ai";
+import { searchCategories } from "../../src/pages/Home";
 
 // always returns a promise since the IPC communication is async even if the underlying implementation is synchronous
 export interface IElectronAPI {
@@ -23,12 +24,13 @@ export interface IElectronAPI {
   removeIndexingProgress: (
     callback: (event: any, progress: IndexingProgress) => void
   ) => void;
-
+  searchFiles: (query: string) => Promise<FileMetadata[]>;
   minimizeWindow: () => void;
   maximizeWindow: () => void;
   closeWindow: () => void;
 }
 export interface FileMetadata {
+  id: number;
   path: string;
   name: string;
   extension: string;
@@ -46,6 +48,19 @@ export interface DirectorySelectionResult {
   canceled: boolean;
   filePaths: string[];
 }
+
+export interface SearchResult {
+  id: number;
+  title: string; // this will be the file name
+  category: SearchCategory; // this will be based on file extension
+  path: string;
+  size: number;
+  modified: string;
+  icon?: React.ReactNode;
+}
+
+export type SearchCategory = (typeof searchCategories)[number];
+
 declare global {
   interface Window {
     electron: IElectronAPI;

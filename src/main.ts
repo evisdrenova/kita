@@ -145,6 +145,23 @@ ipcMain.handle("dialog:selectDirectory", async () => {
   return result;
 });
 
+ipcMain.handle("search-files", async (_, query: string) => {
+  try {
+    const stmt = db.prepare(`
+      SELECT * FROM files 
+      WHERE name LIKE ? 
+      OR path LIKE ? 
+      LIMIT 50
+    `);
+
+    const searchPattern = `%${query}%`;
+    return stmt.all(searchPattern, searchPattern);
+  } catch (error) {
+    console.error("Error searching files:", error);
+    throw error;
+  }
+});
+
 // ipcMain.handle("db-get-setting", async (_event, key: string) => {
 //   return settingManager.get(key);
 // });

@@ -27,6 +27,9 @@ contextBridge.exposeInMainWorld("electron", {
   selectDirectory: () => {
     return ipcRenderer.invoke("dialog:selectDirectory");
   },
+  searchFiles: (query: string) => {
+    return ipcRenderer.invoke("search-files", query);
+  },
 
   // window methods
   // send() is for one-way communication, invoke() returns a promise
