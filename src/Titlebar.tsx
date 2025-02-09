@@ -1,7 +1,6 @@
 import { RiExpandUpDownFill } from "react-icons/ri";
-import { IoSearchOutline } from "react-icons/io5";
 import { useState, useEffect } from "react";
-
+import { Settings } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -10,70 +9,21 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "../components/ui/sheet";
-
-import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { ThemeToggle } from "../src/ThemeProvider";
 import { Button } from "../components/ui/button";
-import { Settings, Settings2 } from "lucide-react";
 import { Checkbox } from "../components/ui/checkbox";
+import { SearchCategory } from "./pages/Home";
 
-// Define all searchable categories
-export const searchCategories = [
-  "Applications",
-  "Calculator",
-  "Contacts",
-  "Conversion",
-  "Definition",
-  "Developer",
-  "Documents",
-  "Events & Reminders",
-  "Folders",
-  "Fonts",
-  "Images",
-  "Mail & Messages",
-  "Movies",
-  "Music",
-  "Other",
-  "PDF Documents",
-  "Presentations",
-  "Siri Suggestions",
-  "Spreadsheets",
-  "System Settings",
-  "Tips",
-  "Websites",
-] as const;
-
-export type SearchCategory = (typeof searchCategories)[number];
-
-interface Props {
+interface TitleBarProps {
+  searchCategories: readonly SearchCategory[]; // Change this line
   selectedCategories: Set<SearchCategory>;
   toggleCategory: (category: SearchCategory) => void;
 }
-
-export default function TitleBar(props: Props) {
-  const { selectedCategories, toggleCategory } = props;
+export default function TitleBar(props: TitleBarProps) {
+  const { searchCategories, selectedCategories, toggleCategory } = props;
   const handleClose = () => window.electron.closeWindow();
   const handleMinimize = () => window.electron.minimizeWindow();
   const handleMaximize = () => window.electron.maximizeWindow();
-
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    const down = (e: KeyboardEvent) => {
-      if (e.key === "s" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        setOpen((open) => !open);
-      }
-    };
-
-    document.addEventListener("keydown", down);
-    return () => document.removeEventListener("keydown", down);
-  }, []);
-
-  const handleSearch = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setOpen((open) => !open);
-  };
 
   return (
     <div className="h-8 bg-background flex justify-between items-center select-none dragable px-3">
@@ -83,11 +33,12 @@ export default function TitleBar(props: Props) {
         handleMaximize={handleMaximize}
       />
       <div className="no-drag">Kita</div>
-      <div className="flex flex-row items-center rounded-lg no-drag ">
+      <div className="flex flex-row items-center rounded-lg no-drag">
         <ThemeToggle />
         <FolderSettings
           selectedCategories={selectedCategories}
           toggleCategory={toggleCategory}
+          searchCategories={searchCategories}
         />
       </div>
     </div>
@@ -103,9 +54,7 @@ interface WindowActionsProps {
 function WindowAction(props: WindowActionsProps) {
   const { handleClose, handleMinimize, handleMaximize } = props;
   return (
-    <div
-      className="flex items-center gap-2  no-drag group" // Added group class
-    >
+    <div className="flex items-center gap-2 no-drag group">
       <button
         onClick={handleClose}
         className="w-3 h-3 rounded-full bg-red-500 hover:bg-red-600 text-gray-900 flex items-center justify-center text-xs no-drag"
@@ -136,10 +85,11 @@ function WindowAction(props: WindowActionsProps) {
 interface FolderSettingsProps {
   toggleCategory: (category: SearchCategory) => void;
   selectedCategories: Set<SearchCategory>;
+  searchCategories: readonly SearchCategory[]; // Change this line
 }
 
 function FolderSettings(props: FolderSettingsProps) {
-  const { toggleCategory, selectedCategories } = props;
+  const { toggleCategory, selectedCategories, searchCategories } = props;
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -149,7 +99,7 @@ function FolderSettings(props: FolderSettingsProps) {
       </SheetTrigger>
       <SheetContent side="right" className="w-[400px] sm:w-[540px]">
         <SheetHeader>
-          <SheetTitle> Folders</SheetTitle>
+          <SheetTitle>Folders</SheetTitle>
           <SheetDescription>
             Only selected folders will appear in search results.
           </SheetDescription>
