@@ -12,109 +12,40 @@ export interface IElectronAPI {
   setMultipleSettings: (
     settings: Record<string, SettingsValue>
   ) => Promise<boolean>;
-  // User methods
-  setUser: (user: User) => Promise<void>;
-  getUser: () => Promise<User>;
-  // provider methods
-  getProviders: () => Promise<Provider[]>;
-  addProvider: (provider: Provider) => Promise<void>;
-  deleteProvider: (id: number) => Promise<void>;
-  updateProvider: (data: Provider) => Promise<void>;
-  selectProvider: (provider: Provider) => Promise<void>;
-  // mcp methods
-  getServers: () => Promise<ServerConfig[]>;
-  addServer: (server: ServerConfig) => Promise<number>;
-  deleteServer: (id: number) => Promise<void>;
-  updateServer: (data: ServerConfig) => Promise<void>;
-  installServer: (serverId: number) => Promise<void>;
-  startServer: (serverId: number) => Promise<void>;
-  stopServer: (serverId: number) => Promise<void>;
-  //conversation methods
-  getConversations: () => Promise<Conversation[]>;
-  createConversation: (convo: Partial<Conversation>) => Promise<number>;
-  deleteConversation: (id: number) => Promise<void>;
-  // message methods
-  saveMessage: (message: Message) => Promise<void>;
-  saveMessages: (message: Message[]) => Promise<void>;
-  deleteMessage: (messageId: number) => Promise<void>;
-  updateConversationTitle: (convoId: number, newTitle: string) => Promise<void>;
-  getConversationMessages: (convoId: number) => Promise<Message[]>;
-  chat: (data: Message[]) => Promise<string>;
-  summarizeContext: (data: Message[]) => Promise<string>;
+  indexDirectories: (directories: string[]) => Promise<{
+    success: boolean;
+    totalFiles: number;
+  }>;
+  selectDirectory: () => Promise<DirectorySelectionResult>;
+  onIndexingProgress: (
+    callback: (event: any, progress: IndexingProgress) => void
+  ) => void;
+  removeIndexingProgress: (
+    callback: (event: any, progress: IndexingProgress) => void
+  ) => void;
+
   minimizeWindow: () => void;
   maximizeWindow: () => void;
   closeWindow: () => void;
 }
-
-export interface ServerConfig {
-  id?: number;
+export interface FileMetadata {
+  path: string;
   name: string;
-  description?: string;
-  installType: string; //"npm" | "pip" | "binary" | "uv";
-  package: string;
-  startCommand?: string;
-  args: string[];
-  version?: string;
-  enabled?: boolean;
+  extension: string;
+  size: number;
+  modified: string;
 }
 
-export interface Provider {
-  id?: number;
-  name: string;
-  type: string;
-  baseUrl: string;
-  apiPath: string;
-  apiKey: string;
-  model: string;
-  config: string;
+export interface IndexingProgress {
+  total: number;
+  processed: number;
+  percentage: number;
 }
 
-export type ProviderClient =
-  | {
-      type: "openai";
-      client: OpenAI;
-    }
-  | {
-      type: "anthropic";
-      client: Anthropic;
-    };
-
-export interface User {
-  id?: number;
-  name: string;
+export interface DirectorySelectionResult {
+  canceled: boolean;
+  filePaths: string[];
 }
-
-export interface Message {
-  id?: number;
-  role: "user" | "assistant";
-  content: CoreMessage;
-  createdAt?: string;
-  conversationId?: number;
-}
-
-export interface FileAttachment {
-  id: string;
-  file: File;
-  type: string;
-  preview?: string;
-}
-
-export interface Conversation {
-  id?: number;
-  providerId: number;
-  title: string;
-  parent_conversation_id: number;
-  createdAt?: string;
-  messages?: Message[];
-  summary?: string;
-}
-
-export interface PromptTemplateArguments {
-  name: string;
-  description?: string;
-  required?: boolean;
-}
-
 declare global {
   interface Window {
     electron: IElectronAPI;

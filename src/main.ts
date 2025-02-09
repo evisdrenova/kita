@@ -5,11 +5,13 @@ import {
   Menu,
   MenuItem,
   globalShortcut,
+  dialog,
 } from "electron";
 import path from "path";
 import started from "electron-squirrel-startup";
 import Database from "better-sqlite3";
 import log from "electron-log/main";
+import FileProcessor from "./FileProcessor";
 // import SettingsManager, { SettingsValue } from "./settings/Settings";
 
 if (started) {
@@ -23,11 +25,9 @@ let mainWindow: BrowserWindow | null = null;
 const initializeDatabase = () => {
   try {
     const dbPath = path.join(app.getPath("userData"), "kita-database.sqlite");
-    console.log("Database path:", dbPath); // Log the database path
 
     db = new Database(dbPath);
 
-    console.log("Creating files table...");
     db.exec(`
       CREATE TABLE IF NOT EXISTS files (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,8 +40,6 @@ const initializeDatabase = () => {
       )
     `);
 
-    db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
-
     return db;
   } catch (error) {
     log.error("Failed to initialize database:", error);
@@ -52,12 +50,8 @@ const initializeDatabase = () => {
 const createWindow = async () => {
   try {
     db = initializeDatabase();
-    // mcp = new MCP(db);
-    // await mcp.init();
-    // providers = new Providers(mcp);
-    // await mcp.createClients();
     // settingManager = new SettingsManager(db);
-    // Create the browser window.
+
     mainWindow = new BrowserWindow({
       width: 1200,
       height: 900,
@@ -132,6 +126,23 @@ ipcMain.on("window-maximize", () => {
 
 ipcMain.on("window-close", () => {
   mainWindow.close();
+});
+
+ipcMain.handle("index-directories", async (_, directories: string[]) => {
+  try {
+    const processor = new FileProcessor(db, mainWindow);
+    return await processor.processDirectories(directories);
+  } catch (error) {
+    console.error("Error indexing directories:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("dialog:selectDirectory", async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ["openDirectory"],
+  });
+  return result;
 });
 
 // ipcMain.handle("db-get-setting", async (_event, key: string) => {

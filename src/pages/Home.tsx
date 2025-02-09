@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
 import TitleBar from "../../components/Titlebar";
 import { Input } from "../../components/ui/input";
+import { Progress } from "../../components/ui/progress";
+import { Button } from "../../components/ui/button";
 import { cn } from "../../src/lib/utils";
+import { Folder, Loader2 } from "lucide-react";
 
 export const searchCategories = [
   "Applications",
@@ -37,6 +40,12 @@ interface SearchResult {
   icon?: React.ReactNode;
 }
 
+interface IndexingProgress {
+  total: number;
+  processed: number;
+  percentage: number;
+}
+
 const results: SearchResult[] = [
   { id: 1, title: "Result 1", category: "Applications" },
   { id: 2, title: "Result 2", category: "Documents" },
@@ -49,6 +58,42 @@ export default function Home() {
     Set<SearchCategory>
   >(new Set(searchCategories));
   const [selectedResultIndex, setSelectedResultIndex] = useState<number>(0);
+  const [isIndexing, setIsIndexing] = useState(false);
+  const [indexingProgress, setIndexingProgress] =
+    useState<IndexingProgress | null>(null);
+
+  useEffect(() => {
+    // Add listener for indexing progress
+    const handleProgress = (_: any, progress: IndexingProgress) => {
+      setIndexingProgress(progress);
+    };
+
+    window.electron.onIndexingProgress(handleProgress);
+
+    return () => {
+      window.electron.removeIndexingProgress(handleProgress);
+    };
+  }, []);
+
+  const handleSelectFolder = async () => {
+    try {
+      const result = await window.electron.selectDirectory();
+      if (result.canceled || !result.filePaths.length) return;
+
+      setIsIndexing(true);
+      setIndexingProgress(null);
+
+      const directory = result.filePaths[0];
+      await window.electron.indexDirectories([directory]);
+
+      setIsIndexing(false);
+      setIndexingProgress(null);
+    } catch (error) {
+      console.error("Error indexing directory:", error);
+      setIsIndexing(false);
+      setIndexingProgress(null);
+    }
+  };
 
   const toggleCategory = (category: SearchCategory) => {
     setSelectedCategories((prev) => {
@@ -97,13 +142,41 @@ export default function Home() {
 
       <div className="flex flex-col max-w-2xl mx-auto mt-8 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 rounded-xl border shadow-xl">
         <div className="p-3 border-b">
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/60"
-            placeholder="Search your computer"
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/60"
+              placeholder="Search your computer"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSelectFolder}
+              disabled={isIndexing}
+              className="shrink-0"
+            >
+              {isIndexing ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Folder className="h-4 w-4 mr-2" />
+              )}
+              {isIndexing ? "Indexing..." : "Index Folder"}
+            </Button>
+          </div>
+
+          {/* Progress bar */}
+          {indexingProgress && (
+            <div className="mt-2 space-y-1">
+              <Progress value={indexingProgress.percentage} className="h-1" />
+              <p className="text-xs text-muted-foreground">
+                Processed {indexingProgress.processed} of{" "}
+                {indexingProgress.total} files ({indexingProgress.percentage}%)
+              </p>
+            </div>
+          )}
         </div>
+
         <SearchResults
           results={results}
           selectedId={selectedResultIndex}
