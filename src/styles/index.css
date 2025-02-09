@@ -1,0 +1,72 @@
+@import "@fontsource/inter/400.css"; /* Regular */
+@import "@fontsource/inter/500.css"; /* Medium */
+@import "@fontsource/inter/600.css"; /* Semi-bold */
+@import "@fontsource/inter/700.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 97%; /* Lightest background */
+    --foreground: 0 0% 12%; /* Dark foreground text (contrast with bg) */
+    --muted: 0 0% 93%; /* Light muted background */
+    --muted-foreground: 0 0% 30%; /* Muted text with contrast */
+    --popover: 0 0% 98%; /* Very light popover background */
+    --popover-foreground: 0 0% 12%; /* Dark popover text */
+    --border: 0 0% 80%; /* Subtle but visible border */
+    --input: 0 0% 90%; /* Light input background */
+    --card: 180 2% 96%; /* Slightly cool light background */
+    --card-foreground: 0 0% 12%; /* Dark text on cards */
+    --primary: 0 0% 85%; /* Vibrant blue for primary actions */
+    --primary-foreground: 0 0% 14%; /* White text on primary */
+    --secondary: 0 0% 92%; /* Light secondary background */
+    --secondary-foreground: 0 0% 15%; /* Darker text for contrast */
+    --accent: 220 80% 50%; /* Similar to primary, slightly lighter */
+    --accent-foreground: 0 0% 100%; /* White text */
+    --destructive: 0 72% 45%; /* More vibrant red than dark mode */
+    --destructive-foreground: 0 0% 100%; /* White text */
+    --ring: 220 60% 40%; /* Balanced focus ring */
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 0 0% 7%; /* Darkest background */
+    --foreground: 0 0% 75%; /* Light foreground text */
+    --muted: 0 0% 10%; /* Muted background */
+    --muted-foreground: 0 0% 7%; /* Muted text */
+    --popover: 0 0% 8%; /* Popover background */
+    --popover-foreground: 0 0% 7%; /* Popover text */
+    --border: 0 0% 19%; /* Border color */
+    --input: 0 0% 9%; /* Input background */
+    --card: 180 2% 8%; /* Slightly cool dark background */
+    --card-foreground: 0 0% 10%; /* Card text color */
+    --primary: 238 0% 16%; /* Adjusted for blue highlights */
+    --primary-foreground: 0 0% 100%; /* White text on primary */
+    --secondary: 0 0% 12%; /* Slightly lighter secondary */
+    --secondary-foreground: 0 0% 95%; /* Almost white */
+    --accent: 220 13% 50%; /* Similar to primary */
+    --accent-foreground: 0 0% 100%; /* White text */
+    --destructive: 0 63% 31%; /* Red for destructive actions */
+    --destructive-foreground: 0 0% 95%; /* Light text */
+    --ring: 220 13% 40%; /* Border for focus rings */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply font-sans antialiased bg-background text-foreground text-xs;
+  }
+}
+
+.dragable {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
