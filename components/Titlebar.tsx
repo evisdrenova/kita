@@ -8,14 +8,14 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from "../components/ui/sheet";
+} from "./ui/sheet";
 import { ThemeToggle } from "../src/ThemeProvider";
-import { Button } from "../components/ui/button";
-import { Checkbox } from "../components/ui/checkbox";
-import { SearchCategory } from "./pages/Home";
+import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
+import { SearchCategory } from "../src/pages/Home";
 
 interface TitleBarProps {
-  searchCategories: readonly SearchCategory[]; // Change this line
+  searchCategories: readonly SearchCategory[];
   selectedCategories: Set<SearchCategory>;
   toggleCategory: (category: SearchCategory) => void;
 }
@@ -85,7 +85,7 @@ function WindowAction(props: WindowActionsProps) {
 interface FolderSettingsProps {
   toggleCategory: (category: SearchCategory) => void;
   selectedCategories: Set<SearchCategory>;
-  searchCategories: readonly SearchCategory[]; // Change this line
+  searchCategories: readonly SearchCategory[];
 }
 
 function FolderSettings(props: FolderSettingsProps) {

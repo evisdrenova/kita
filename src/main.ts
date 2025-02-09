@@ -8,151 +8,114 @@ import {
 } from "electron";
 import path from "path";
 import started from "electron-squirrel-startup";
-// import Database from "better-sqlite3";
-// import { ServerConfig, Provider, Message, User, Conversation } from "./types";
+import Database from "better-sqlite3";
 import log from "electron-log/main";
 // import SettingsManager, { SettingsValue } from "./settings/Settings";
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
 }
 
-// let db = new Database();
+let db: Database.Database;
 log.initialize();
 let mainWindow: BrowserWindow | null = null;
 
-// const initializeDatabase = () => {
-//   const dbPath = path.join(app.getPath("userData"), "database.sqlite");
-//   db = new Database(dbPath);
+const initializeDatabase = () => {
+  try {
+    const dbPath = path.join(app.getPath("userData"), "kita-database.sqlite");
+    console.log("Database path:", dbPath); // Log the database path
 
-//   // Create tables if they don't exist
-//   db.exec(`
-//     CREATE TABLE IF NOT EXISTS settings (
-//       id INTEGER PRIMARY KEY AUTOINCREMENT,
-//       key TEXT UNIQUE,
-//       value TEXT
-//     );
-//   `);
-//   db.exec(`
-//    CREATE TABLE IF NOT EXISTS providers (
-//       id INTEGER PRIMARY KEY AUTOINCREMENT,
-//       name TEXT NOT NULL,
-//       type TEXT NOT NULL,    -- "openai" | "anthropic" | "ollama" | "custom"
-//       baseUrl TEXT NOT NULL,         -- e.g. "https://api.openai.com/v1"
-//       apiPath TEXT NOT NULL,         -- e.g. "/chat/completions", or a custom path for local
-//       apiKey TEXT NOT NULL,
-//       model TEXT,                -- e.g. "gpt-4", "claude-instant-v1", "llama2-7b"
-//       config TEXT,                   -- optional JSON for special fields
-//       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-// );
-//     `);
-//   db.exec(`
-//       CREATE TABLE IF NOT EXISTS servers (
-//         id INTEGER PRIMARY KEY AUTOINCREMENT,
-//         name TEXT NOT NULL,
-//         description TEXT,
-//         installType TEXT NOT NULL,
-//         package TEXT NOT NULL,
-//         startCommand TEXT,
-//         args TEXT NOT NULL,
-//         version TEXT,
-//         enabled BOOLEAN DEFAULT 1,
-//         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-//       );
-//     `);
-//   db.exec(`
-//     CREATE TABLE IF NOT EXISTS conversations (
-//       id INTEGER PRIMARY KEY AUTOINCREMENT,
-//       providerId INTEGER,
-//       title TEXT,
-//       parent_conversation_id INTEGER,
-//       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-//       FOREIGN KEY (providerId) REFERENCES providers(id) ON DELETE CASCADE
-//       FOREIGN KEY (parent_conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-// );`);
+    db = new Database(dbPath);
 
-//   db.exec(`
-//   CREATE TABLE IF NOT EXISTS messages (
-//     id INTEGER PRIMARY KEY AUTOINCREMENT,
-//     conversationId INTEGER,
-//     role TEXT,       -- "user" | "assistant" | "system"
-//     content TEXT,
-//     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-//     FOREIGN KEY (conversationId) REFERENCES conversations(id) ON DELETE CASCADE
-// );`);
+    console.log("Creating files table...");
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT UNIQUE,
+        name TEXT,
+        extension TEXT,
+        size INTEGER,
+        modified TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
-//   db.exec(`
-//     CREATE TABLE IF NOT EXISTS user (
-//     id INTEGER PRIMARY KEY AUTOINCREMENT,
-//     name TEXT
-//    )
-//   `);
+    db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
 
-//   return db;
-// };
+    return db;
+  } catch (error) {
+    log.error("Failed to initialize database:", error);
+    throw error;
+  }
+};
 
 const createWindow = async () => {
-  // initializeDatabase();
-  // mcp = new MCP(db);
-  // await mcp.init();
-  // providers = new Providers(mcp);
-  // await mcp.createClients();
-  // settingManager = new SettingsManager(db);
-  // Create the browser window.
-  mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 900,
-    frame: false,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, "preload.js"),
-    },
-  });
+  try {
+    db = initializeDatabase();
+    // mcp = new MCP(db);
+    // await mcp.init();
+    // providers = new Providers(mcp);
+    // await mcp.createClients();
+    // settingManager = new SettingsManager(db);
+    // Create the browser window.
+    mainWindow = new BrowserWindow({
+      width: 1200,
+      height: 900,
+      frame: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, "preload.js"),
+      },
+    });
 
-  const hotkey = "Command+Shift+Space";
-  const registered = globalShortcut.register(hotkey, () => {
-    if (!mainWindow) return;
+    const hotkey = "Command+Shift+Space";
 
-    // Toggle the visibility of the window
-    if (mainWindow.isVisible()) {
-      mainWindow.hide();
+    const registered = globalShortcut.register(hotkey, () => {
+      if (!mainWindow) return;
+
+      // Toggle the visibility of the window
+      if (mainWindow.isVisible()) {
+        mainWindow.hide();
+      } else {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    });
+
+    if (!registered) {
+      console.error(`Failed to register global hotkey: ${hotkey}`);
     } else {
-      mainWindow.show();
-      mainWindow.focus();
+      console.log(`Global hotkey (${hotkey}) registered successfully.`);
     }
-  });
 
-  if (!registered) {
-    console.error(`Failed to register global hotkey: ${hotkey}`);
-  } else {
-    console.log(`Global hotkey (${hotkey}) registered successfully.`);
+    // and load the index.html of the app.
+    if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+      mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    } else {
+      mainWindow.loadFile(
+        path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`)
+      );
+    }
+
+    // Open the DevTools.
+    mainWindow.webContents.openDevTools();
+    mainWindow.webContents.on("context-menu", (event, params) => {
+      const menu = new Menu();
+      menu.append(
+        new MenuItem({
+          label: "Inspect Element",
+          click: () => {
+            mainWindow.webContents.inspectElement(params.x, params.y);
+          },
+        })
+      );
+      menu.popup();
+    });
+  } catch (error) {
+    log.error("Failed to create window:", error);
+    app.quit();
   }
-
-  // and load the index.html of the app.
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-  } else {
-    mainWindow.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`)
-    );
-  }
-
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
-  mainWindow.webContents.on("context-menu", (event, params) => {
-    const menu = new Menu();
-    menu.append(
-      new MenuItem({
-        label: "Inspect Element",
-        click: () => {
-          mainWindow.webContents.inspectElement(params.x, params.y);
-        },
-      })
-    );
-    menu.popup();
-  });
 };
 
 ipcMain.on("window-minimize", () => {
@@ -655,19 +618,15 @@ app.on("ready", createWindow);
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    // mcp.closeClients();
-    // app.quit();
-  }
+  // if (process.platform !== "darwin") {
+  // }
 });
 
 app.on("will-quit", () => {
-  // if (db) {
-  //   // mcp.closeClients();
-  //   // mcp.serverManager.cleanup();
-  //   // db.close();
-  //   globalShortcut.unregisterAll();
-  // }
+  if (db) {
+    db.close();
+    globalShortcut.unregisterAll();
+  }
   globalShortcut.unregisterAll();
 });
 

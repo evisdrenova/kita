@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
-import TitleBar from "../Titlebar";
+import TitleBar from "../../components/Titlebar";
 import { Input } from "../../components/ui/input";
 import { cn } from "../../src/lib/utils";
 
-// Define all searchable categories
 export const searchCategories = [
   "Applications",
   "Calculator",
@@ -38,7 +37,6 @@ interface SearchResult {
   icon?: React.ReactNode;
 }
 
-// Sample results - replace with your actual results logic
 const results: SearchResult[] = [
   { id: 1, title: "Result 1", category: "Applications" },
   { id: 2, title: "Result 2", category: "Documents" },
@@ -50,7 +48,7 @@ export default function Home() {
   const [selectedCategories, setSelectedCategories] = useState<
     Set<SearchCategory>
   >(new Set(searchCategories));
-  const [selectedResultIndex, setSelectedResultIndex] = useState<number>(0); // Changed name here
+  const [selectedResultIndex, setSelectedResultIndex] = useState<number>(0);
 
   const toggleCategory = (category: SearchCategory) => {
     setSelectedCategories((prev) => {
