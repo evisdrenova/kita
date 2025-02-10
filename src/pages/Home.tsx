@@ -173,23 +173,13 @@ export default function Home() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [searchResults, selectedResultIndex]);
 
-  const getCategoryFromExtension = (extension: string): SearchCategory => {
-    switch (extension.toLowerCase()) {
-      case ".app":
-        return "Applications";
-      case ".pdf":
-        return "PDF Documents";
-      case ".doc":
-      case ".docx":
-      case ".txt":
-        return "Documents";
-      case ".jpg":
-      case ".jpeg":
-      case ".png":
-      case ".gif":
-        return "Images";
-      default:
-        return "Other";
+  const handleResultSelect = async (result: SearchResult) => {
+    setSelectedResultIndex(result.id);
+    try {
+      await window.electron.openFile(result.path);
+    } catch (error) {
+      console.error("Error opening file:", error);
+      // Optionally show an error toast/notification
     }
   };
 
@@ -227,7 +217,10 @@ export default function Home() {
                       key={result.id}
                       value={result.title}
                       className="flex items-center justify-between"
-                      onSelect={() => setSelectedResultIndex(result.id)}
+                      onSelect={() => {
+                        setSelectedResultIndex(result.id);
+                        handleResultSelect(result);
+                      }}
                     >
                       <div className="flex items-center gap-2 flex-1">
                         <div className="flex flex-col flex-1">
@@ -355,4 +348,24 @@ function getFileIcon(filePath: string) {
   }
 
   return icon;
+}
+
+function getCategoryFromExtension(extension: string): SearchCategory {
+  switch (extension.toLowerCase()) {
+    case ".app":
+      return "Applications";
+    case ".pdf":
+      return "PDF Documents";
+    case ".doc":
+    case ".docx":
+    case ".txt":
+      return "Documents";
+    case ".jpg":
+    case ".jpeg":
+    case ".png":
+    case ".gif":
+      return "Images";
+    default:
+      return "Other";
+  }
 }

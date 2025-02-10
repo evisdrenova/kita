@@ -6,6 +6,7 @@ import {
   MenuItem,
   globalShortcut,
   dialog,
+  shell,
 } from "electron";
 import path from "path";
 import started from "electron-squirrel-startup";
@@ -143,6 +144,16 @@ ipcMain.handle("search-files", async (_, query: string) => {
   } catch (error) {
     console.error("Error searching files:", error);
     throw error;
+  }
+});
+
+ipcMain.handle("open-file", async (_, filePath: string) => {
+  try {
+    await shell.openPath(filePath);
+    return true;
+  } catch (error) {
+    console.error("Error opening file:", error);
+    return false;
   }
 });
 

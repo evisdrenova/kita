@@ -30,4 +30,7 @@ contextBridge.exposeInMainWorld("electron", {
   searchFiles: (query: string) => {
     return ipcRenderer.invoke("search-files", query);
   },
+  openFile: (filePath: string) => {
+    return ipcRenderer.invoke("open-file", filePath);
+  },
 });

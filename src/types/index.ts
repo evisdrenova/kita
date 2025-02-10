@@ -25,6 +25,7 @@ export interface IElectronAPI {
     callback: (event: any, progress: IndexingProgress) => void
   ) => void;
   searchFiles: (query: string) => Promise<FileMetadata[]>;
+  openFile: (filePath: string) => Promise<boolean>;
 }
 export interface FileMetadata {
   id: number;
