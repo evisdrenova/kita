@@ -11,7 +11,6 @@ import {
   Database,
   Package,
   FileArchive,
-  Table,
   FileSpreadsheet,
 } from "lucide-react";
 import {
@@ -32,6 +31,7 @@ import { FaRegFilePdf } from "react-icons/fa";
 import { Button } from "../../components/ui/button";
 import WindowAction from "../../components/WindowActions";
 import { toast } from "sonner";
+import { Input } from "../../components/ui/input";
 
 export const searchCategories = [
   "Applications",
@@ -185,47 +185,43 @@ export default function Home() {
   };
 
   return (
-    <div>
+    <>
       <Titlebar setIsSettingsOpen={setIsSettingsOpen} />
-      <Command
-        className="rounded-lg border border-border shadow-md"
-        shouldFilter={false}
-      >
-        <CommandInput
+      <div className="rounded-lgshadow-md">
+        <Input
           placeholder="Type a command or search..."
           value={searchQuery}
-          onValueChange={(e) => handleSearch(e)}
-          className="border border-border"
+          onChange={(e) => handleSearch(e.target.value)}
+          className="text-xs placeholder:pl-2"
         />
-        <div className="flex flex-col h-full min-h-[300px] max-h-[400px]">
+        <div className="flex flex-col h-full min-h-[300px] max-h-[400px] px-2">
           {searchResults.length === 0 ? (
             <>
-              <CommandGroup heading="Suggestions">
-                <CommandEmpty className="text-xs flex justify-center">
+              <div>
+                <div>Suggestions</div>
+                <div className="text-xs flex justify-center">
                   No results found.
-                </CommandEmpty>
-              </CommandGroup>
+                </div>
+              </div>
             </>
           ) : (
             <div className="flex flex-col flex-1 overflow-hidden">
               <div className="sticky top-0 bg-background border-b border-border z-10">
-                <CommandGroup
-                  heading={`Found ${searchResults.length} results`}
-                />
+                <div> {`Found ${searchResults.length} results`}</div>
               </div>
-              <CommandList className="flex-1 overflow-auto">
-                <CommandGroup>
+              <div className="flex-1 overflow-auto">
+                <div>
                   <SearchResults
                     searchResults={searchResults}
                     setSelectedResultIndex={setSelectedResultIndex}
                     handleResultSelect={handleResultSelect}
                   />
-                </CommandGroup>
-              </CommandList>
+                </div>
+              </div>
             </div>
           )}
         </div>
-      </Command>
+      </div>
       <FolderSettings
         selectedCategories={selectedCategories}
         toggleCategory={toggleCategory}
@@ -236,7 +232,7 @@ export default function Home() {
         isSettingsOpen={isSettingsOpen}
         setIsSettingsOpen={setIsSettingsOpen}
       />
-    </div>
+    </>
   );
 }
 
@@ -277,9 +273,8 @@ function SearchResults(props: SearchResultsProps) {
   return (
     <div>
       {searchResults.map((result) => (
-        <CommandItem
+        <div
           key={result.id}
-          value={result.title}
           className="flex items-center justify-between cursor-pointer"
           onSelect={() => {
             setSelectedResultIndex(result.id);
@@ -300,7 +295,7 @@ function SearchResults(props: SearchResultsProps) {
               {result.category}
             </span>
           </div>
-        </CommandItem>
+        </div>
       ))}
     </div>
   );
