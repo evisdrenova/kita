@@ -31,6 +31,7 @@ import {
 import { FaRegFilePdf } from "react-icons/fa";
 import { Button } from "../../components/ui/button";
 import WindowAction from "../../components/WindowActions";
+import { toast } from "sonner";
 
 export const searchCategories = [
   "Applications",
@@ -179,30 +180,13 @@ export default function Home() {
       await window.electron.openFile(result.path);
     } catch (error) {
       console.error("Error opening file:", error);
-      // Optionally show an error toast/notification
+      toast.error("Error opening file:", error);
     }
   };
 
   return (
     <div>
-      <div className="h-8 bg-background flex justify-between items-center select-none dragable px-3">
-        <WindowAction />
-        <div className="no-drag">
-          <div>Kita</div>
-        </div>
-        <div className="flex flex-row items-center rounded-lg no-drag ">
-          <Button
-            variant="titleBar"
-            onClick={() => setIsSettingsOpen(true)}
-            size="sm"
-            className="group flex flex-row items-center gap-1 z-10"
-          >
-            <Folder className="h-4 w-4" />
-            <span>Folders</span>
-          </Button>
-          <ThemeToggle />
-        </div>
-      </div>
+      <Titlebar setIsSettingsOpen={setIsSettingsOpen} />
       <Command
         className="rounded-lg border border-border shadow-md"
         shouldFilter={false}
@@ -217,7 +201,9 @@ export default function Home() {
           {searchResults.length === 0 ? (
             <>
               <CommandGroup heading="Suggestions">
-                <CommandEmpty>No results found.</CommandEmpty>
+                <CommandEmpty className="text-xs flex justify-center">
+                  No results found.
+                </CommandEmpty>
               </CommandGroup>
             </>
           ) : (
@@ -229,32 +215,11 @@ export default function Home() {
               </div>
               <CommandList className="flex-1 overflow-auto">
                 <CommandGroup>
-                  {searchResults.map((result) => (
-                    <CommandItem
-                      key={result.id}
-                      value={result.title}
-                      className="flex items-center justify-between cursor-pointer"
-                      onSelect={() => {
-                        setSelectedResultIndex(result.id);
-                        handleResultSelect(result);
-                      }}
-                    >
-                      <div className="flex items-center gap-2 flex-1">
-                        <div className="flex flex-col flex-1">
-                          <div className="flex flex-row items-start gap-1">
-                            {getFileIcon(result.path)}
-                            <span>{result.title}</span>
-                          </div>
-                          <span className="text-xs text-muted-foreground truncate pl-5">
-                            {result.path}
-                          </span>
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          {result.category}
-                        </span>
-                      </div>
-                    </CommandItem>
-                  ))}
+                  <SearchResults
+                    searchResults={searchResults}
+                    setSelectedResultIndex={setSelectedResultIndex}
+                    handleResultSelect={handleResultSelect}
+                  />
                 </CommandGroup>
               </CommandList>
             </div>
@@ -271,6 +236,72 @@ export default function Home() {
         isSettingsOpen={isSettingsOpen}
         setIsSettingsOpen={setIsSettingsOpen}
       />
+    </div>
+  );
+}
+
+interface TitlebarProps {
+  setIsSettingsOpen: (val: boolean) => void;
+}
+
+function Titlebar(props: TitlebarProps) {
+  const { setIsSettingsOpen } = props;
+  return (
+    <div className="h-8 bg-background flex justify-between items-center select-none dragable px-3">
+      <WindowAction />
+      <div className="no-drag">
+        <div>Kita</div>
+      </div>
+      <div className="flex flex-row items-center rounded-lg no-drag ">
+        <Button
+          variant="titleBar"
+          onClick={() => setIsSettingsOpen(true)}
+          size="sm"
+          className="group flex flex-row items-center gap-1 z-10"
+        >
+          <Folder className="h-4 w-4" />
+        </Button>
+        <ThemeToggle />
+      </div>
+    </div>
+  );
+}
+interface SearchResultsProps {
+  searchResults: SearchResult[];
+  setSelectedResultIndex: (val: number) => void;
+  handleResultSelect: (result: SearchResult) => Promise<void>;
+}
+
+function SearchResults(props: SearchResultsProps) {
+  const { searchResults, setSelectedResultIndex, handleResultSelect } = props;
+  return (
+    <div>
+      {searchResults.map((result) => (
+        <CommandItem
+          key={result.id}
+          value={result.title}
+          className="flex items-center justify-between cursor-pointer"
+          onSelect={() => {
+            setSelectedResultIndex(result.id);
+            handleResultSelect(result);
+          }}
+        >
+          <div className="flex items-center gap-2 flex-1">
+            <div className="flex flex-col flex-1">
+              <div className="flex flex-row items-start gap-1">
+                {getFileIcon(result.path)}
+                <span>{result.title}</span>
+              </div>
+              <span className="text-xs text-muted-foreground truncate pl-5">
+                {result.path}
+              </span>
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {result.category}
+            </span>
+          </div>
+        </CommandItem>
+      ))}
     </div>
   );
 }

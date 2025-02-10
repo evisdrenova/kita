@@ -75,7 +75,7 @@ export function ThemeToggle() {
       aria-label="Toggle theme"
       className="flex flex-row items-center gap-1"
     >
-      {theme === "light" ? <Moon size={16} /> : <Sun size={16} />} Toggle Theme
+      {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
     </button>
   );
 }

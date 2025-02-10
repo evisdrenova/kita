@@ -5,9 +5,7 @@ export default function WindowAction() {
   const handleMinimize = () => window.electron.minimizeWindow();
   const handleMaximize = () => window.electron.maximizeWindow();
   return (
-    <div
-      className="flex items-center gap-2  no-drag group" // Added group class
-    >
+    <div className="flex items-center gap-2  no-drag group">
       <button
         onClick={handleClose}
         className="w-4 h-4 rounded-full bg-background text-primary-foreground/70 border-border border flex items-center justify-center text-xs no-drag"
