@@ -1,15 +1,22 @@
 import { useState, useEffect } from "react";
-import TitleBar from "../../components/Titlebar";
-import { Input } from "../../components/ui/input";
-import { Progress } from "../../components/ui/progress";
-import { Button } from "../../components/ui/button";
-import { cn } from "../../src/lib/utils";
-import { Folder, Loader2 } from "lucide-react";
+import FolderSettings from "../../components/FolderSettings";
+import { Folder } from "lucide-react";
 import {
   SearchResult,
   SearchCategory,
   FileMetadata,
 } from "../../src/types/index";
+import { ThemeToggle } from "../../src/ThemeProvider";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+  CommandShortcut,
+} from "../../components/ui/command";
 
 export const searchCategories = [
   "Applications",
@@ -36,7 +43,7 @@ export const searchCategories = [
   "Websites",
 ] as const;
 
-interface IndexingProgress {
+export interface IndexingProgress {
   total: number;
   processed: number;
   percentage: number;
@@ -52,6 +59,7 @@ export default function Home() {
   const [indexingProgress, setIndexingProgress] =
     useState<IndexingProgress | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
   useEffect(() => {
     // Add listener for indexing progress
@@ -166,98 +174,76 @@ export default function Home() {
       case ".png":
       case ".gif":
         return "Images";
-      // Add more cases as needed
       default:
         return "Other";
     }
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <TitleBar
+    <div>
+      <div className="h-8 flex justify-between items-center select-none dragable px-3" />
+      <Command className="rounded-lg border shadow-md md:min-w-[450px]">
+        <CommandInput
+          placeholder="Type a command or search..."
+          value={searchQuery}
+          onValueChange={(e) => handleSearch(e)}
+          className="border border-border"
+        />
+        <CommandList>
+          {searchResults.length === 0 ? (
+            <>
+              <CommandGroup heading="Suggestions">
+                <CommandEmpty>No results found.</CommandEmpty>
+              </CommandGroup>
+            </>
+          ) : (
+            <CommandGroup heading={`Found ${searchResults.length} results`}>
+              {searchResults.map((result) => (
+                <CommandItem
+                  key={result.id}
+                  value={result.title}
+                  className="flex items-center justify-between"
+                  onSelect={() => setSelectedResultIndex(result.id)}
+                >
+                  <div className="flex items-center gap-2 flex-1">
+                    <div className="flex flex-col flex-1">
+                      <span>{result.title}</span>
+                      <span className="text-xs text-muted-foreground truncate">
+                        {result.path}
+                      </span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {result.category}
+                    </span>
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+          <CommandSeparator />
+          <CommandGroup heading="Settings">
+            <CommandItem>
+              <ThemeToggle />
+              <CommandShortcut>⌘B</CommandShortcut>
+            </CommandItem>
+            <CommandItem onSelect={() => setIsSettingsOpen(true)}>
+              <Folder className="h-4 w-4 mr-2" />
+              <span>Folders</span>
+              <CommandShortcut>⌘S</CommandShortcut>
+            </CommandItem>
+          </CommandGroup>
+        </CommandList>
+      </Command>
+      <FolderSettings
         selectedCategories={selectedCategories}
         toggleCategory={toggleCategory}
         searchCategories={searchCategories}
+        isIndexing={isIndexing}
+        indexingProgress={indexingProgress}
+        handleSelectFolder={handleSelectFolder}
+        isSettingsOpen={isSettingsOpen}
+        setIsSettingsOpen={setIsSettingsOpen}
       />
-
-      <div className="flex flex-col max-w-2xl mx-auto mt-8 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 rounded-xl border shadow-xl">
-        <div className="p-3 border-b">
-          <div className="flex items-center gap-2">
-            <Input
-              value={searchQuery}
-              onChange={(e) => handleSearch(e.target.value)}
-              className="border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/60"
-              placeholder="Search your computer"
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSelectFolder}
-              disabled={isIndexing}
-              className="shrink-0"
-            >
-              {isIndexing ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Folder className="h-4 w-4 mr-2" />
-              )}
-              {isIndexing ? "Indexing..." : "Index Folder"}
-            </Button>
-          </div>
-
-          {/* Progress bar */}
-          {indexingProgress && (
-            <div className="mt-2 space-y-1">
-              <Progress value={indexingProgress.percentage} className="h-1" />
-              <p className="text-xs text-muted-foreground">
-                Processed {indexingProgress.processed} of{" "}
-                {indexingProgress.total} files ({indexingProgress.percentage}%)
-              </p>
-            </div>
-          )}
-        </div>
-
-        <SearchResults
-          results={searchResults}
-          selectedId={selectedResultIndex}
-          onSelect={setSelectedResultIndex}
-        />
-      </div>
-    </div>
-  );
-}
-
-interface SearchResultsProps {
-  results: SearchResult[];
-  selectedId: number;
-  onSelect: (id: number) => void;
-}
-
-function SearchResults(props: SearchResultsProps) {
-  const { results, selectedId, onSelect } = props;
-
-  return (
-    <div className="p-2 max-h-[60vh] overflow-auto">
-      {results.map((result) => (
-        <div
-          key={result.id}
-          onClick={() => onSelect(result.id)}
-          className={cn(
-            "flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer",
-            selectedId === result.id
-              ? "bg-primary text-primary-foreground"
-              : "hover:bg-muted"
-          )}
-        >
-          {result.icon}
-          <div className="flex flex-col">
-            <span className="text-sm font-medium">{result.title}</span>
-            <span className="text-xs text-muted-foreground">
-              {result.category}
-            </span>
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
