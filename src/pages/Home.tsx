@@ -27,10 +27,10 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
-  CommandShortcut,
 } from "../../components/ui/command";
 import { FaRegFilePdf } from "react-icons/fa";
+import { Button } from "../../components/ui/button";
+import WindowAction from "../../components/WindowActions";
 
 export const searchCategories = [
   "Applications",
@@ -185,7 +185,24 @@ export default function Home() {
 
   return (
     <div>
-      <div className="h-8 flex justify-between items-center select-none dragable px-3" />
+      <div className="h-8 bg-background flex justify-between items-center select-none dragable px-3">
+        <WindowAction />
+        <div className="no-drag">
+          <div>Kita</div>
+        </div>
+        <div className="flex flex-row items-center rounded-lg no-drag ">
+          <Button
+            variant="titleBar"
+            onClick={() => setIsSettingsOpen(true)}
+            size="sm"
+            className="group flex flex-row items-center gap-1 z-10"
+          >
+            <Folder className="h-4 w-4" />
+            <span>Folders</span>
+          </Button>
+          <ThemeToggle />
+        </div>
+      </div>
       <Command
         className="rounded-lg border border-border shadow-md"
         shouldFilter={false}
@@ -196,7 +213,7 @@ export default function Home() {
           onValueChange={(e) => handleSearch(e)}
           className="border border-border"
         />
-        <CommandList className="h-[300px] overflow-hidden">
+        <div className="flex flex-col h-full min-h-[300px] max-h-[400px]">
           {searchResults.length === 0 ? (
             <>
               <CommandGroup heading="Suggestions">
@@ -204,19 +221,19 @@ export default function Home() {
               </CommandGroup>
             </>
           ) : (
-            <>
+            <div className="flex flex-col flex-1 overflow-hidden">
               <div className="sticky top-0 bg-background border-b border-border z-10">
                 <CommandGroup
                   heading={`Found ${searchResults.length} results`}
                 />
               </div>
-              <div className="overflow-auto max-h-[200px]">
+              <CommandList className="flex-1 overflow-auto">
                 <CommandGroup>
                   {searchResults.map((result) => (
                     <CommandItem
                       key={result.id}
                       value={result.title}
-                      className="flex items-center justify-between"
+                      className="flex items-center justify-between cursor-pointer"
                       onSelect={() => {
                         setSelectedResultIndex(result.id);
                         handleResultSelect(result);
@@ -239,23 +256,9 @@ export default function Home() {
                     </CommandItem>
                   ))}
                 </CommandGroup>
-              </div>
-            </>
+              </CommandList>
+            </div>
           )}
-        </CommandList>
-        <div className="sticky bottom-0 bg-background border-t border-border">
-          <CommandSeparator />
-          <CommandGroup heading="Settings">
-            <CommandItem>
-              <ThemeToggle />
-              <CommandShortcut>⌘B</CommandShortcut>
-            </CommandItem>
-            <CommandItem onSelect={() => setIsSettingsOpen(true)}>
-              <Folder className="h-4 w-4 mr-2" />
-              <span>Folders</span>
-              <CommandShortcut>⌘S</CommandShortcut>
-            </CommandItem>
-          </CommandGroup>
         </div>
       </Command>
       <FolderSettings
@@ -283,16 +286,16 @@ function getFileIcon(filePath: string) {
     case ".app":
     case ".exe":
     case ".dmg":
-      icon = <Package className="h-4 w-4" />;
+      icon = <Package className="h-3 w-3" />;
       break;
     case ".pdf":
-      icon = <FaRegFilePdf className="h-4 w-4" />;
+      icon = <FaRegFilePdf className="h-3 w-3" />;
       break;
     case ".doc":
     case ".docx":
     case ".txt":
     case ".rtf":
-      icon = <FileText className="h-4 w-4" />;
+      icon = <FileText className="h-3 w-3" />;
       break;
     case ".jpg":
     case ".jpeg":
@@ -300,7 +303,7 @@ function getFileIcon(filePath: string) {
     case ".gif":
     case ".svg":
     case ".webp":
-      icon = <Image className="h-4 w-4" />;
+      icon = <Image className="h-3 w-3" />;
       break;
     case ".js":
     case ".ts":
@@ -311,40 +314,40 @@ function getFileIcon(filePath: string) {
     case ".cpp":
     case ".html":
     case ".css":
-      icon = <FileCode className="h-4 w-4" />;
+      icon = <FileCode className="h-3 w-3" />;
       break;
     case ".mp4":
     case ".mov":
     case ".avi":
     case ".mkv":
-      icon = <Film className="h-4 w-4" />;
+      icon = <Film className="h-3 w-3" />;
       break;
     case ".mp3":
     case ".wav":
     case ".flac":
     case ".m4a":
-      icon = <Music className="h-4 w-4" />;
+      icon = <Music className="h-3 w-3" />;
       break;
     case ".json":
     case ".xml":
     case ".yaml":
     case ".yml":
-      icon = <Database className="h-4 w-4" />;
+      icon = <Database className="h-3 w-3" />;
       break;
     case ".xlsx":
     case ".xls":
     case ".csv":
-      icon = <FileSpreadsheet className="h-4 w-4" />;
+      icon = <FileSpreadsheet className="h-3 w-3" />;
       break;
     case ".zip":
     case ".rar":
     case ".7z":
     case ".tar":
     case ".gz":
-      icon = <FileArchive className="h-4 w-4" />;
+      icon = <FileArchive className="h-3 w-3" />;
       break;
     default:
-      icon = <File className="h-4 w-4" />;
+      icon = <File className="h-3 w-3" />;
   }
 
   return icon;

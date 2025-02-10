@@ -26,6 +26,9 @@ export interface IElectronAPI {
   ) => void;
   searchFiles: (query: string) => Promise<FileMetadata[]>;
   openFile: (filePath: string) => Promise<boolean>;
+  minimizeWindow: () => void;
+  maximizeWindow: () => void;
+  closeWindow: () => void;
 }
 export interface FileMetadata {
   id: number;

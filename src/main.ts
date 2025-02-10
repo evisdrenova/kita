@@ -54,8 +54,11 @@ const createWindow = async () => {
     // settingManager = new SettingsManager(db);
 
     mainWindow = new BrowserWindow({
-      width: 1200,
-      height: 900,
+      width: 600,
+      height: 400,
+      minHeight: 400,
+      maxHeight: 800,
+
       frame: false,
       webPreferences: {
         nodeIntegration: false,
@@ -112,6 +115,22 @@ const createWindow = async () => {
     app.quit();
   }
 };
+
+ipcMain.on("window-minimize", () => {
+  mainWindow.minimize();
+});
+
+ipcMain.on("window-maximize", () => {
+  if (mainWindow.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow.maximize();
+  }
+});
+
+ipcMain.on("window-close", () => {
+  mainWindow.close();
+});
 
 ipcMain.handle("index-directories", async (_, directories: string[]) => {
   try {

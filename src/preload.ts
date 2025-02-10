@@ -33,4 +33,7 @@ contextBridge.exposeInMainWorld("electron", {
   openFile: (filePath: string) => {
     return ipcRenderer.invoke("open-file", filePath);
   },
+  minimizeWindow: () => ipcRenderer.send("window-minimize"),
+  maximizeWindow: () => ipcRenderer.send("window-maximize"),
+  closeWindow: () => ipcRenderer.send("window-close"),
 });
