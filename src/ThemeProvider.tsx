@@ -70,13 +70,12 @@ export function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <Button
+    <button
       onClick={toggleTheme}
-      variant="titleBar"
       aria-label="Toggle theme"
-      size="sm"
+      className="flex flex-row items-center gap-1"
     >
-      {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
-    </Button>
+      {theme === "light" ? <Moon size={16} /> : <Sun size={16} />} Toggle Theme
+    </button>
   );
 }

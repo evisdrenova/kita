@@ -112,22 +112,6 @@ const createWindow = async () => {
   }
 };
 
-ipcMain.on("window-minimize", () => {
-  mainWindow.minimize();
-});
-
-ipcMain.on("window-maximize", () => {
-  if (mainWindow.isMaximized()) {
-    mainWindow.unmaximize();
-  } else {
-    mainWindow.maximize();
-  }
-});
-
-ipcMain.on("window-close", () => {
-  mainWindow.close();
-});
-
 ipcMain.handle("index-directories", async (_, directories: string[]) => {
   try {
     const processor = new FileProcessor(db, mainWindow);

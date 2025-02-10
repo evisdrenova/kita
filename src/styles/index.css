@@ -35,7 +35,7 @@
     --background: 0 0% 7%; /* Darkest background */
     --foreground: 0 0% 75%; /* Light foreground text */
     --muted: 0 0% 10%; /* Muted background */
-    --muted-foreground: 0 0% 7%; /* Muted text */
+    --muted-foreground: 0 0% 40%; /* Muted text */
     --popover: 0 0% 8%; /* Popover background */
     --popover-foreground: 0 0% 7%; /* Popover text */
     --border: 0 0% 19%; /* Border color */
