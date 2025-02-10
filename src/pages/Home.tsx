@@ -191,7 +191,7 @@ export default function Home() {
             <div>{`Found ${searchResults.length} results`}</div>
           </div>
           <main className="flex-1 px-2 pt-4 overflow-auto">
-            <div className="pt-4 flex-1 ">
+            <div className="pt-4 flex-1">
               <SearchResults
                 searchResults={searchResults}
                 setSelectedResultIndex={setSelectedResultIndex}
@@ -250,32 +250,59 @@ interface SearchResultsProps {
   handleResultSelect: (result: SearchResult) => Promise<void>;
 }
 
+function truncatePath(path: string, maxLength: number = 50) {
+  const parts = path.split("/");
+  const fileName = parts.pop() || "";
+  const directory = parts.join("/");
+
+  if (path.length <= maxLength) return path;
+
+  // Calculate how many characters we can show from start and end of the directory
+  const dotsLength = 3;
+  const maxDirLength = maxLength - fileName.length - dotsLength;
+  const startLength = Math.floor(maxDirLength / 2);
+  const endLength = Math.floor(maxDirLength / 2);
+
+  const startPath = directory.slice(0, startLength);
+  const endPath = directory.slice(-endLength);
+
+  return `${startPath}...${endPath}/${fileName}`;
+}
+
 function SearchResults(props: SearchResultsProps) {
   const { searchResults, setSelectedResultIndex, handleResultSelect } = props;
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col space-y-2">
       {searchResults.map((result) => (
         <div
           key={result.id}
-          className="flex items-center justify-between cursor-pointer"
+          className="flex items-center justify-between cursor-pointer hover:bg-muted p-2 rounded-md"
           onSelect={() => {
             setSelectedResultIndex(result.id);
             handleResultSelect(result);
           }}
         >
-          <div className="flex items-center gap-2 flex-1">
-            <div className="flex flex-col flex-1">
-              <div className="flex flex-row items-start gap-1">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            {" "}
+            {/* Add min-w-0 to allow truncation */}
+            <div className="flex flex-col min-w-0 flex-1">
+              {" "}
+              {/* Add min-w-0 here too */}
+              <div className="flex flex-row items-center gap-1">
                 {getFileIcon(result.path)}
-                <span>{result.title}</span>
+                <span className="text-sm">{result.title}</span>
               </div>
-              <span className="text-xs text-muted-foreground truncate pl-5">
-                {result.path}
-              </span>
+              <div className="flex items-center gap-2 min-w-0">
+                {" "}
+                {/* Container for path and category */}
+                <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-5 flex-1">
+                  {truncatePath(result.path)}
+                </span>
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  {result.category}
+                </span>
+              </div>
             </div>
-            <span className="text-xs text-muted-foreground">
-              {result.category}
-            </span>
           </div>
         </div>
       ))}
