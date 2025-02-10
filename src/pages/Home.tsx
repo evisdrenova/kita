@@ -196,14 +196,17 @@ export default function Home() {
   return (
     <div>
       <div className="h-8 flex justify-between items-center select-none dragable px-3" />
-      <Command className="rounded-lg border border-border shadow-md">
+      <Command
+        className="rounded-lg border border-border shadow-md"
+        shouldFilter={false}
+      >
         <CommandInput
           placeholder="Type a command or search..."
           value={searchQuery}
           onValueChange={(e) => handleSearch(e)}
           className="border border-border"
         />
-        <CommandList>
+        <CommandList className="h-[300px] overflow-hidden">
           {searchResults.length === 0 ? (
             <>
               <CommandGroup heading="Suggestions">
@@ -211,34 +214,43 @@ export default function Home() {
               </CommandGroup>
             </>
           ) : (
-            <CommandGroup heading={`Found ${searchResults.length} results`}>
-              <div className="flex flex-col ">
-                {searchResults.map((result) => (
-                  <CommandItem
-                    key={result.id}
-                    value={result.title}
-                    className="flex items-center justify-between"
-                    onSelect={() => setSelectedResultIndex(result.id)}
-                  >
-                    <div className="flex items-center gap-2 flex-1">
-                      <div className="flex flex-col flex-1">
-                        <div className="flex flex-row items-start gap-1">
-                          {getFileIcon(result.path)}
-                          <span>{result.title}</span>
+            <>
+              <div className="sticky top-0 bg-background border-b border-border z-10">
+                <CommandGroup
+                  heading={`Found ${searchResults.length} results`}
+                />
+              </div>
+              <div className="overflow-auto max-h-[200px]">
+                <CommandGroup>
+                  {searchResults.map((result) => (
+                    <CommandItem
+                      key={result.id}
+                      value={result.title}
+                      className="flex items-center justify-between"
+                      onSelect={() => setSelectedResultIndex(result.id)}
+                    >
+                      <div className="flex items-center gap-2 flex-1">
+                        <div className="flex flex-col flex-1">
+                          <div className="flex flex-row items-start gap-1">
+                            {getFileIcon(result.path)}
+                            <span>{result.title}</span>
+                          </div>
+                          <span className="text-xs text-muted-foreground truncate pl-5">
+                            {result.path}
+                          </span>
                         </div>
-                        <span className="text-xs text-muted-foreground truncate pl-5">
-                          {result.path}
+                        <span className="text-xs text-muted-foreground">
+                          {result.category}
                         </span>
                       </div>
-                      <span className="text-xs text-muted-foreground">
-                        {result.category}
-                      </span>
-                    </div>
-                  </CommandItem>
-                ))}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
               </div>
-            </CommandGroup>
+            </>
           )}
+        </CommandList>
+        <div className="sticky bottom-0 bg-background border-t border-border">
           <CommandSeparator />
           <CommandGroup heading="Settings">
             <CommandItem>
@@ -251,7 +263,7 @@ export default function Home() {
               <CommandShortcut>⌘S</CommandShortcut>
             </CommandItem>
           </CommandGroup>
-        </CommandList>
+        </div>
       </Command>
       <FolderSettings
         selectedCategories={selectedCategories}
