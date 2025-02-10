@@ -5,7 +5,6 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "./ui/sheet";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
