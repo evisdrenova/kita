@@ -179,37 +179,32 @@ export default function Home() {
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       <Header handleSearch={handleSearch} searchQuery={searchQuery} />
-      <div className="flex flex-col h-full min-h-[300px] max-h-[400px] px-2 mt-12">
-        {searchResults.length === 0 ? (
-          <>
-            <div>
-              <div>Suggestions</div>
-              <div className="text-xs flex justify-center">
-                No results found.
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="flex flex-col flex-1 overflow-hidden">
-            <div className="sticky top-0 bg-background border-b border-border z-10">
-              <div> {`Found ${searchResults.length} results`}</div>
-            </div>
-            <div className="flex-1 overflow-auto">
-              <div>
-                <SearchResults
-                  searchResults={searchResults}
-                  setSelectedResultIndex={setSelectedResultIndex}
-                  handleResultSelect={handleResultSelect}
-                />
-              </div>
-            </div>
+      {searchResults.length === 0 ? (
+        <div className="flex h-full items-center justify-center">
+          <span className="text-xs">No results found.</span>
+        </div>
+      ) : (
+        <>
+          <div className="sticky top-0 bg-background z-10 p-2">
+            <div>{`Found ${searchResults.length} results`}</div>
           </div>
-        )}
-      </div>
+          <main className="flex-1 px-2 pt-4 overflow-auto">
+            <div className="pt-4 flex-1 ">
+              <SearchResults
+                searchResults={searchResults}
+                setSelectedResultIndex={setSelectedResultIndex}
+                handleResultSelect={handleResultSelect}
+              />
+            </div>
+          </main>
+        </>
+      )}
 
-      <Footer setIsSettingsOpen={setIsSettingsOpen} />
+      <div className="sticky bottom-0">
+        <Footer setIsSettingsOpen={setIsSettingsOpen} />
+      </div>
       <FolderSettings
         selectedCategories={selectedCategories}
         toggleCategory={toggleCategory}
@@ -236,11 +231,9 @@ function Header(props: HeaderProps) {
     <div className="sticky top-0 bg-background flex flex-col gap-2 border-b border-b-border">
       <div className=" flex flex-row justify-between w-1/2 items-center select-none dragable px-3 mt-2">
         <WindowAction />
-        <div className="no-drag">
-          <div>Kita</div>
-        </div>
+        <div>Kita</div>
       </div>
-      <div className="rounded-lgshadow-md py-2">
+      <div className="py-2">
         <Input
           placeholder="Type a command or search..."
           value={searchQuery}
@@ -260,7 +253,7 @@ interface SearchResultsProps {
 function SearchResults(props: SearchResultsProps) {
   const { searchResults, setSelectedResultIndex, handleResultSelect } = props;
   return (
-    <div>
+    <div className="flex flex-col">
       {searchResults.map((result) => (
         <div
           key={result.id}
@@ -395,7 +388,7 @@ interface FooterProps {
 function Footer(props: FooterProps) {
   const { setIsSettingsOpen } = props;
   return (
-    <div className="h-8 bg-background flex justify-between items-center px-3 border-t border-t-border sticky bottom-0">
+    <div className="h-8 bg-background flex justify-between items-center px-3 border-t border-t-border">
       <div className="flex flex-row items-center gap-4 text-primary-foreground/60">
         <div className="flex flex-row items-center gap-1 text-xs">
           <ArrowUpDown className="w-3 h-3 " /> <div>Select</div>
