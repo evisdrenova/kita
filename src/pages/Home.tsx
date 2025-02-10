@@ -14,6 +14,8 @@ import {
   FileSpreadsheet,
   ArrowUpDown,
   CornerDownLeft,
+  CheckCircle,
+  Copy,
 } from "lucide-react";
 import {
   SearchResult,
@@ -271,30 +273,54 @@ function truncatePath(path: string, maxLength: number = 50) {
 
 function SearchResults(props: SearchResultsProps) {
   const { searchResults, setSelectedResultIndex, handleResultSelect } = props;
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+
+  const handleCopy = async (path: string, id: number) => {
+    try {
+      await navigator.clipboard.writeText(path);
+      setCopiedId(id);
+      toast.success("Copied to clipboard");
+      setTimeout(() => setCopiedId(null), 2000); // Reset after 2 seconds
+    } catch (err) {
+      toast.error("Failed to copy path");
+    }
+  };
+
   return (
     <div className="flex flex-col space-y-2">
       {searchResults.map((result) => (
         <div
           key={result.id}
-          className="flex items-center justify-between cursor-pointer hover:bg-muted p-2 rounded-md"
+          className="flex items-center justify-between cursor-pointer hover:bg-muted p-2 rounded-md group"
           onSelect={() => {
             setSelectedResultIndex(result.id);
             handleResultSelect(result);
           }}
         >
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            {" "}
-            {/* Add min-w-0 to allow truncation */}
             <div className="flex flex-col min-w-0 flex-1">
-              {" "}
-              {/* Add min-w-0 here too */}
               <div className="flex flex-row items-center gap-1">
                 {getFileIcon(result.path)}
                 <span className="text-sm">{result.title}</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCopy(result.path, result.id);
+                  }}
+                  className={`opacity-0 group-hover:opacity-100 ml-2 p-1 hover:bg-background rounded transition-opacity duration-200 ${
+                    copiedId === result.id
+                      ? "text-green-500"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  {copiedId === result.id ? (
+                    <CheckCircle className="h-3 w-3" />
+                  ) : (
+                    <Copy className="h-3 w-3" />
+                  )}
+                </button>
               </div>
               <div className="flex items-center gap-2 min-w-0">
-                {" "}
-                {/* Container for path and category */}
                 <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-5 flex-1">
                   {truncatePath(result.path)}
                 </span>
