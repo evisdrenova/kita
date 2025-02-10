@@ -12,6 +12,8 @@ import {
   Package,
   FileArchive,
   FileSpreadsheet,
+  ArrowUpDown,
+  CornerDownLeft,
 } from "lucide-react";
 import {
   SearchResult,
@@ -19,14 +21,6 @@ import {
   FileMetadata,
 } from "../../src/types/index";
 import { ThemeToggle } from "../../src/ThemeProvider";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "../../components/ui/command";
 import { FaRegFilePdf } from "react-icons/fa";
 import { Button } from "../../components/ui/button";
 import WindowAction from "../../components/WindowActions";
@@ -185,43 +179,37 @@ export default function Home() {
   };
 
   return (
-    <>
-      <Titlebar setIsSettingsOpen={setIsSettingsOpen} />
-      <div className="rounded-lgshadow-md">
-        <Input
-          placeholder="Type a command or search..."
-          value={searchQuery}
-          onChange={(e) => handleSearch(e.target.value)}
-          className="text-xs placeholder:pl-2"
-        />
-        <div className="flex flex-col h-full min-h-[300px] max-h-[400px] px-2">
-          {searchResults.length === 0 ? (
-            <>
-              <div>
-                <div>Suggestions</div>
-                <div className="text-xs flex justify-center">
-                  No results found.
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="flex flex-col flex-1 overflow-hidden">
-              <div className="sticky top-0 bg-background border-b border-border z-10">
-                <div> {`Found ${searchResults.length} results`}</div>
-              </div>
-              <div className="flex-1 overflow-auto">
-                <div>
-                  <SearchResults
-                    searchResults={searchResults}
-                    setSelectedResultIndex={setSelectedResultIndex}
-                    handleResultSelect={handleResultSelect}
-                  />
-                </div>
+    <div className="h-full flex flex-col">
+      <Header handleSearch={handleSearch} searchQuery={searchQuery} />
+      <div className="flex flex-col h-full min-h-[300px] max-h-[400px] px-2 mt-12">
+        {searchResults.length === 0 ? (
+          <>
+            <div>
+              <div>Suggestions</div>
+              <div className="text-xs flex justify-center">
+                No results found.
               </div>
             </div>
-          )}
-        </div>
+          </>
+        ) : (
+          <div className="flex flex-col flex-1 overflow-hidden">
+            <div className="sticky top-0 bg-background border-b border-border z-10">
+              <div> {`Found ${searchResults.length} results`}</div>
+            </div>
+            <div className="flex-1 overflow-auto">
+              <div>
+                <SearchResults
+                  searchResults={searchResults}
+                  setSelectedResultIndex={setSelectedResultIndex}
+                  handleResultSelect={handleResultSelect}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      <Footer setIsSettingsOpen={setIsSettingsOpen} />
       <FolderSettings
         selectedCategories={selectedCategories}
         toggleCategory={toggleCategory}
@@ -232,32 +220,33 @@ export default function Home() {
         isSettingsOpen={isSettingsOpen}
         setIsSettingsOpen={setIsSettingsOpen}
       />
-    </>
+    </div>
   );
 }
 
-interface TitlebarProps {
-  setIsSettingsOpen: (val: boolean) => void;
+interface HeaderProps {
+  searchQuery: string;
+  handleSearch: (query: string) => Promise<void>;
 }
 
-function Titlebar(props: TitlebarProps) {
-  const { setIsSettingsOpen } = props;
+function Header(props: HeaderProps) {
+  const { searchQuery, handleSearch } = props;
+
   return (
-    <div className="h-8 bg-background flex justify-between items-center select-none dragable px-3">
-      <WindowAction />
-      <div className="no-drag">
-        <div>Kita</div>
+    <div className="sticky top-0 bg-background flex flex-col gap-2 border-b border-b-border">
+      <div className=" flex flex-row justify-between w-1/2 items-center select-none dragable px-3 mt-2">
+        <WindowAction />
+        <div className="no-drag">
+          <div>Kita</div>
+        </div>
       </div>
-      <div className="flex flex-row items-center rounded-lg no-drag ">
-        <Button
-          variant="titleBar"
-          onClick={() => setIsSettingsOpen(true)}
-          size="sm"
-          className="group flex flex-row items-center gap-1 z-10"
-        >
-          <Folder className="h-4 w-4" />
-        </Button>
-        <ThemeToggle />
+      <div className="rounded-lgshadow-md py-2">
+        <Input
+          placeholder="Type a command or search..."
+          value={searchQuery}
+          onChange={(e) => handleSearch(e.target.value)}
+          className="text-xs placeholder:pl-2 border-0 focus-visible:outline-none focus-visible:ring-0 "
+        />
       </div>
     </div>
   );
@@ -397,4 +386,35 @@ function getCategoryFromExtension(extension: string): SearchCategory {
     default:
       return "Other";
   }
+}
+
+interface FooterProps {
+  setIsSettingsOpen: (val: boolean) => void;
+}
+
+function Footer(props: FooterProps) {
+  const { setIsSettingsOpen } = props;
+  return (
+    <div className="h-8 bg-background flex justify-between items-center px-3 border-t border-t-border sticky bottom-0">
+      <div className="flex flex-row items-center gap-4 text-primary-foreground/60">
+        <div className="flex flex-row items-center gap-1 text-xs">
+          <ArrowUpDown className="w-3 h-3 " /> <div>Select</div>
+        </div>
+        <div className="flex flex-row items-center gap-1 text-xs">
+          <CornerDownLeft className="w-3 h-3 " /> <div>Open</div>
+        </div>
+      </div>
+      <div className="flex flex-row items-center gap-2">
+        <Button
+          variant="titleBar"
+          onClick={() => setIsSettingsOpen(true)}
+          size="sm"
+          className="group flex flex-row items-center gap-1 z-10"
+        >
+          <Folder className="h-4 w-4" />
+        </Button>
+        <ThemeToggle />
+      </div>
+    </div>
+  );
 }
