@@ -19,6 +19,7 @@ import {
   Circle,
   Files,
   Table,
+  Check,
 } from "lucide-react";
 import {
   SearchResult,
@@ -250,9 +251,11 @@ function Header(props: HeaderProps) {
 
   return (
     <div className="sticky top-0 bg-background flex flex-col gap-2 border-b border-b-border">
-      <div className=" flex flex-row justify-between w-1/2 items-center select-none dragable px-3 mt-2">
-        <WindowAction />
-        <div>Kita</div>
+      <div className="flex flex-row w-full items-center select-none dragable px-3 mt-2">
+        <div className="flex-none">
+          <WindowAction />
+        </div>
+        <div className="flex-1 flex justify-center pr-14">Kita</div>
       </div>
       <div className="py-2">
         <Input
@@ -265,6 +268,7 @@ function Header(props: HeaderProps) {
     </div>
   );
 }
+
 interface SearchResultsProps {
   items: (FileMetadata | AppInfo)[];
   type: "apps" | "files";
@@ -360,7 +364,7 @@ function SearchResults(props: SearchResultsProps) {
                       }`}
                     >
                       {copiedId === id ? (
-                        <CheckCircle className="h-3 w-3" />
+                        <Check className="h-3 w-3" />
                       ) : (
                         <Copy className="h-3 w-3" />
                       )}

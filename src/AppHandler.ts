@@ -104,6 +104,7 @@ export default class AppHandler {
 
       // Read the icon file and convert to data URL
       const icon = nativeImage.createFromPath(iconPath);
+      console.log("icon native image", icon);
       // Resize to a reasonable size for the UI
       const resized = icon.resize({ width: 32, height: 32 });
       return resized.toDataURL();
@@ -111,6 +112,7 @@ export default class AppHandler {
       return undefined;
     }
   }
+
   private async mergeAppInfo(
     appPaths: string[],
     runningAppNames: string[]
