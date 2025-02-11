@@ -2,6 +2,7 @@ import { exec } from "child_process";
 import * as path from "path";
 import * as fs from "fs/promises";
 import { AppInfo } from "./types";
+import { nativeImage } from "electron";
 
 export default class AppHandler {
   private cachedApps: AppInfo[] = [];
@@ -100,12 +101,16 @@ export default class AppHandler {
         "AppIcon.icns"
       );
       await fs.access(iconPath);
-      return iconPath;
+
+      // Read the icon file and convert to data URL
+      const icon = nativeImage.createFromPath(iconPath);
+      // Resize to a reasonable size for the UI
+      const resized = icon.resize({ width: 32, height: 32 });
+      return resized.toDataURL();
     } catch {
       return undefined;
     }
   }
-
   private async mergeAppInfo(
     appPaths: string[],
     runningAppNames: string[]

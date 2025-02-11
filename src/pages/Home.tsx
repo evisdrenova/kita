@@ -204,7 +204,7 @@ export default function Home() {
               key={section.type}
               className={`${sectionIndex > 0 ? "mt-6" : ""}`}
             >
-              <h2 className="text-sm font-semibold text-muted-foreground mb-2">
+              <h2 className="text-xs font-semibold text-muted-foreground mb-2">
                 {section.title}
               </h2>
               <SearchResults
@@ -226,7 +226,6 @@ export default function Home() {
       <div className="sticky bottom-0">
         <Footer setIsSettingsOpen={setIsSettingsOpen} />
       </div>
-
       <FolderSettings
         selectedCategories={selectedCategories}
         toggleCategory={toggleCategory}
@@ -300,7 +299,6 @@ function SearchResults(props: SearchResultsProps) {
     try {
       await navigator.clipboard.writeText(path);
       setCopiedId(id);
-      toast.success("Copied to clipboard");
       setTimeout(() => setCopiedId(null), 2000);
     } catch (err) {
       toast.error("Failed to copy path");
@@ -310,6 +308,8 @@ function SearchResults(props: SearchResultsProps) {
   const isAppInfo = (item: FileMetadata | AppInfo): item is AppInfo => {
     return "isRunning" in item;
   };
+
+  console.log("items", items);
 
   return (
     <div className="flex flex-col">
@@ -331,9 +331,9 @@ function SearchResults(props: SearchResultsProps) {
               <div className="flex flex-col min-w-0 flex-1">
                 <div className="flex flex-row items-center gap-1">
                   {isApp ? (
-                    item.iconPath ? (
+                    (item as AppInfo).iconDataUrl ? (
                       <img
-                        src={`file://${item.iconPath}`}
+                        src={(item as AppInfo).iconDataUrl}
                         className="w-4 h-4 object-contain"
                         alt={item.name}
                       />
@@ -347,28 +347,33 @@ function SearchResults(props: SearchResultsProps) {
                   {isApp && item.isRunning && (
                     <Circle className=" bg-green-500 border-0 rounded-full w-2 h-2" />
                   )}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCopy(path, id);
-                    }}
-                    className={`opacity-0 group-hover:opacity-100 ml-2 p-1 hover:bg-background rounded transition-opacity duration-200 ${
-                      copiedId === id
-                        ? "text-green-500"
-                        : "text-muted-foreground"
-                    }`}
-                  >
-                    {copiedId === id ? (
-                      <CheckCircle className="h-3 w-3" />
-                    ) : (
-                      <Copy className="h-3 w-3" />
-                    )}
-                  </button>
+                  {!isApp && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCopy(path, id);
+                      }}
+                      className={`opacity-0 group-hover:opacity-100 ml-2 p-1 hover:bg-background rounded transition-opacity duration-200 ${
+                        copiedId === id
+                          ? "text-green-500"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {copiedId === id ? (
+                        <CheckCircle className="h-3 w-3" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                    </button>
+                  )}
                 </div>
+
                 <div className="flex items-center gap-2 min-w-0 h-0 group-hover:h-auto overflow-hidden transition-all duration-200">
-                  <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-5 flex-1">
-                    {truncatePath(path)}
-                  </span>
+                  {!isApp && (
+                    <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-5 flex-1">
+                      {truncatePath(path)}
+                    </span>
+                  )}
                   {!isApp && (
                     <span className="text-xs text-muted-foreground whitespace-nowrap">
                       {getCategoryFromExtension(

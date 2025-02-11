@@ -41,7 +41,7 @@ export interface AppInfo {
   name: string;
   path: string;
   isRunning: boolean;
-  iconPath?: string;
+  iconDataUrl?: string;
 }
 
 export interface SearchSection {
