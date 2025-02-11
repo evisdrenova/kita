@@ -16,11 +16,16 @@ import {
   CornerDownLeft,
   CheckCircle,
   Copy,
+  Circle,
+  Files,
+  Table,
 } from "lucide-react";
 import {
   SearchResult,
   SearchCategory,
   FileMetadata,
+  SearchSection,
+  AppInfo,
 } from "../../src/types/index";
 import { ThemeToggle } from "../../src/ThemeProvider";
 import { FaRegFilePdf } from "react-icons/fa";
@@ -65,17 +70,16 @@ export default function Home() {
   const [selectedCategories, setSelectedCategories] = useState<
     Set<SearchCategory>
   >(new Set(searchCategories));
-  const [selectedResultIndex, setSelectedResultIndex] = useState<number>(0);
   const [isIndexing, setIsIndexing] = useState(false);
   const [indexingProgress, setIndexingProgress] =
     useState<IndexingProgress | null>(null);
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [searchSections, setSearchSections] = useState<SearchSection[]>([]);
+  const [selectedSection, setSelectedSection] = useState<number>(0);
+  const [selectedItem, setSelectedItem] = useState<number>(0);
 
   useEffect(() => {
-    // Add listener for indexing progress
     const handleProgress = (_: any, progress: IndexingProgress) => {
-      console.log("progress", progress);
       setIndexingProgress(progress);
     };
 
@@ -90,26 +94,17 @@ export default function Home() {
     setSearchQuery(query);
 
     if (!query.trim()) {
-      setSearchResults([]);
+      setSearchSections([]);
       return;
     }
 
     try {
-      const results = await window.electron.searchFiles(query);
-
-      // Transform the database results into SearchResult format
-      const formattedResults = results.map((file: FileMetadata) => ({
-        id: file.id,
-        title: file.name,
-        path: file.path,
-        category: getCategoryFromExtension(file.extension),
-        size: file.size,
-        modified: file.modified,
-      }));
-
-      setSearchResults(formattedResults);
+      const sections = await window.electron.searchFiles(query);
+      setSearchSections(sections);
+      setSelectedSection(0);
+      setSelectedItem(0);
     } catch (error) {
-      console.error("Error searching files:", error);
+      toast.error("Error searching:", error);
     }
   };
 
@@ -147,64 +142,91 @@ export default function Home() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (searchSections.length === 0) return;
+
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setSelectedResultIndex((current) =>
-          current >= searchResults.length - 1 ? 0 : current + 1
-        );
+        const currentSection = searchSections[selectedSection];
+        if (selectedItem < currentSection.items.length - 1) {
+          setSelectedItem(selectedItem + 1);
+        } else if (selectedSection < searchSections.length - 1) {
+          setSelectedSection(selectedSection + 1);
+          setSelectedItem(0);
+        }
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        setSelectedResultIndex((current) =>
-          current <= 0 ? searchResults.length - 1 : current - 1
-        );
+        if (selectedItem > 0) {
+          setSelectedItem(selectedItem - 1);
+        } else if (selectedSection > 0) {
+          setSelectedSection(selectedSection - 1);
+          setSelectedItem(searchSections[selectedSection - 1].items.length - 1);
+        }
       } else if (e.key === "Enter") {
         e.preventDefault();
-        const selectedItem = searchResults[selectedResultIndex]; // Changed name here
-        if (selectedItem) {
-          // Handle result selection
+        const section = searchSections[selectedSection];
+        const item = section?.items[selectedItem];
+        if (item) {
+          handleResultSelect(item, section.type);
         }
       }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [searchResults, selectedResultIndex]);
+  }, [searchSections, selectedSection, selectedItem]);
 
-  const handleResultSelect = async (result: SearchResult) => {
-    setSelectedResultIndex(result.id);
+  const handleResultSelect = async (
+    item: FileMetadata | AppInfo,
+    type: "apps" | "files"
+  ) => {
     try {
-      await window.electron.openFile(result.path);
+      if (type === "apps") {
+        await window.electron.launchOrSwitch(item as AppInfo);
+      } else {
+        await window.electron.openFile((item as FileMetadata).path);
+      }
     } catch (error) {
-      console.error("Error opening file:", error);
-      toast.error("Error opening file:", error);
+      toast.error("Error opening item");
     }
   };
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <Header handleSearch={handleSearch} searchQuery={searchQuery} />
-      {searchResults.length === 0 ? (
+      {searchSections.length === 0 ? (
         <div className="flex h-full items-center justify-center">
-          <span className="text-xs">No results found.</span>
+          <EmptyState />
         </div>
       ) : (
-        <>
-          <div className="sticky top-0 bg-background z-10 p-2">
-            <div className="font-semibold text-xs text-primary-foreground/60">{`Found ${searchResults.length} results`}</div>
-          </div>
-          <main className="flex-1 px-2 pt-4 overflow-auto scrollbar">
-            <SearchResults
-              searchResults={searchResults}
-              setSelectedResultIndex={setSelectedResultIndex}
-              handleResultSelect={handleResultSelect}
-            />
-          </main>
-        </>
+        <main className="flex-1 px-2 pt-4 overflow-auto scrollbar">
+          {searchSections.map((section, sectionIndex) => (
+            <div
+              key={section.type}
+              className={`${sectionIndex > 0 ? "mt-6" : ""}`}
+            >
+              <h2 className="text-sm font-semibold text-muted-foreground mb-2">
+                {section.title}
+              </h2>
+              <SearchResults
+                items={section.items}
+                type={section.type}
+                selectedItem={
+                  sectionIndex === selectedSection ? selectedItem : -1
+                }
+                onSelect={(item, index) => {
+                  setSelectedSection(sectionIndex);
+                  setSelectedItem(index);
+                  handleResultSelect(item, section.type);
+                }}
+              />
+            </div>
+          ))}
+        </main>
       )}
-
       <div className="sticky bottom-0">
         <Footer setIsSettingsOpen={setIsSettingsOpen} />
       </div>
+
       <FolderSettings
         selectedCategories={selectedCategories}
         toggleCategory={toggleCategory}
@@ -245,9 +267,10 @@ function Header(props: HeaderProps) {
   );
 }
 interface SearchResultsProps {
-  searchResults: SearchResult[];
-  setSelectedResultIndex: (val: number) => void;
-  handleResultSelect: (result: SearchResult) => Promise<void>;
+  items: (FileMetadata | AppInfo)[];
+  type: "apps" | "files";
+  selectedItem: number;
+  onSelect: (item: FileMetadata | AppInfo, index: number) => void;
 }
 
 function truncatePath(path: string, maxLength: number = 50) {
@@ -268,8 +291,9 @@ function truncatePath(path: string, maxLength: number = 50) {
 
   return `${startPath}...${endPath}/${fileName}`;
 }
+
 function SearchResults(props: SearchResultsProps) {
-  const { searchResults, setSelectedResultIndex, handleResultSelect } = props;
+  const { items, type, selectedItem, onSelect } = props;
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
   const handleCopy = async (path: string, id: number) => {
@@ -283,52 +307,81 @@ function SearchResults(props: SearchResultsProps) {
     }
   };
 
+  const isAppInfo = (item: FileMetadata | AppInfo): item is AppInfo => {
+    return "isRunning" in item;
+  };
+
   return (
     <div className="flex flex-col">
-      {searchResults.map((result) => (
-        <div
-          key={result.id}
-          className="flex items-center justify-between cursor-pointer hover:bg-muted p-2 rounded-md group"
-          onSelect={() => {
-            setSelectedResultIndex(result.id);
-            handleResultSelect(result);
-          }}
-        >
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <div className="flex flex-col min-w-0 flex-1">
-              <div className="flex flex-row items-center gap-1">
-                {getFileIcon(result.path)}
-                <span className="text-sm">{result.title}</span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleCopy(result.path, result.id);
-                  }}
-                  className={`opacity-0 group-hover:opacity-100 ml-2 p-1 hover:bg-background rounded transition-opacity duration-200 ${
-                    copiedId === result.id
-                      ? "text-green-500"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  {copiedId === result.id ? (
-                    <CheckCircle className="h-3 w-3" />
+      {items.map((item, index) => {
+        const isApp = isAppInfo(item);
+        const id = isApp ? index : (item as FileMetadata).id;
+        const title = isApp ? item.name : (item as FileMetadata).name;
+        const path = item.path;
+
+        return (
+          <div
+            key={id}
+            className={`flex items-center justify-between cursor-pointer hover:bg-muted p-2 rounded-md group ${
+              selectedItem === index ? "bg-muted" : ""
+            }`}
+            onClick={() => onSelect(item, index)}
+          >
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <div className="flex flex-col min-w-0 flex-1">
+                <div className="flex flex-row items-center gap-1">
+                  {isApp ? (
+                    item.iconPath ? (
+                      <img
+                        src={`file://${item.iconPath}`}
+                        className="w-4 h-4 object-contain"
+                        alt={item.name}
+                      />
+                    ) : (
+                      <Package className="h-4 w-4" />
+                    )
                   ) : (
-                    <Copy className="h-3 w-3" />
+                    getFileIcon(path)
                   )}
-                </button>
-              </div>
-              <div className="flex items-center gap-2 min-w-0 h-0 group-hover:h-auto overflow-hidden transition-all duration-200">
-                <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-5 flex-1">
-                  {truncatePath(result.path)}
-                </span>
-                <span className="text-xs text-muted-foreground whitespace-nowrap">
-                  {result.category}
-                </span>
+                  <span className="text-sm">{title}</span>
+                  {isApp && item.isRunning && (
+                    <Circle className=" bg-green-500 border-0 rounded-full w-2 h-2" />
+                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCopy(path, id);
+                    }}
+                    className={`opacity-0 group-hover:opacity-100 ml-2 p-1 hover:bg-background rounded transition-opacity duration-200 ${
+                      copiedId === id
+                        ? "text-green-500"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    {copiedId === id ? (
+                      <CheckCircle className="h-3 w-3" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                  </button>
+                </div>
+                <div className="flex items-center gap-2 min-w-0 h-0 group-hover:h-auto overflow-hidden transition-all duration-200">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-5 flex-1">
+                    {truncatePath(path)}
+                  </span>
+                  {!isApp && (
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {getCategoryFromExtension(
+                        (item as FileMetadata).extension
+                      )}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -458,6 +511,15 @@ function Footer(props: FooterProps) {
         </Button>
         <ThemeToggle />
       </div>
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center p-8 space-y-2 border border-border border-dashed text-primary-foreground/40 rounded-xl">
+      <Files />
+      <h2 className="mb-2 text-xs">No files found</h2>
     </div>
   );
 }

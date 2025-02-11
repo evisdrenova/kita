@@ -21,7 +21,8 @@ export interface IElectronAPI {
   removeIndexingProgress: (
     callback: (event: any, progress: IndexingProgress) => void
   ) => void;
-  searchFiles: (query: string) => Promise<FileMetadata[]>;
+  searchFiles: (query: string) => Promise<SearchSection[]>;
+  launchOrSwitch: (appInfo: AppInfo) => Promise<boolean>;
   openFile: (filePath: string) => Promise<boolean>;
   minimizeWindow: () => void;
   maximizeWindow: () => void;
@@ -34,6 +35,19 @@ export interface FileMetadata {
   extension: string;
   size: number;
   modified: string;
+}
+
+export interface AppInfo {
+  name: string;
+  path: string;
+  isRunning: boolean;
+  iconPath?: string;
+}
+
+export interface SearchSection {
+  type: "apps" | "files";
+  title: string;
+  items: (FileMetadata | AppInfo)[];
 }
 
 export interface IndexingProgress {
@@ -55,6 +69,15 @@ export interface SearchResult {
   size: number;
   modified: string;
   icon?: React.ReactNode;
+}
+
+export interface DBResult {
+  id: number;
+  name: string;
+  path: string;
+  extension: string;
+  size: number;
+  modified: string;
 }
 
 export type SearchCategory = (typeof searchCategories)[number];

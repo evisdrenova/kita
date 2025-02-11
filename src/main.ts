@@ -7,13 +7,16 @@ import {
   globalShortcut,
   dialog,
   shell,
+  nativeImage,
 } from "electron";
 import path from "path";
 import started from "electron-squirrel-startup";
 import Database from "better-sqlite3";
 import log from "electron-log/main";
 import FileProcessor from "./FileProcessor";
-// import SettingsManager, { SettingsValue } from "./settings/Settings";
+import { exec } from "child_process";
+import { AppInfo, DBResult, FileMetadata, SearchSection } from "./types";
+import AppHandler from "./AppHandler";
 
 if (started) {
   app.quit();
@@ -22,6 +25,7 @@ if (started) {
 let db: Database.Database;
 log.initialize();
 let mainWindow: BrowserWindow | null = null;
+const appHandler = new AppHandler();
 
 const initializeDatabase = () => {
   try {
@@ -146,22 +150,69 @@ ipcMain.handle("dialog:selectDirectory", async () => {
   return result;
 });
 
-ipcMain.handle("search-files", async (_, query: string) => {
-  try {
-    const stmt = db.prepare(`
-      SELECT * FROM files 
+ipcMain.handle(
+  "search-files",
+  async (_, query: string): Promise<SearchSection[]> => {
+    try {
+      // Get matching apps using the handler
+      const apps = await appHandler.getAllApps(query);
+
+      // Get matching files from database with proper typing
+      const stmt = db.prepare(`
+      SELECT 
+        id,
+        name,
+        path,
+        extension,
+        size,
+        modified
+      FROM files 
       WHERE name LIKE ? 
       OR path LIKE ? 
       LIMIT 50
     `);
 
-    const searchPattern = `%${query}%`;
-    return stmt.all(searchPattern, searchPattern);
-  } catch (error) {
-    console.error("Error searching files:", error);
-    throw error;
+      const searchPattern = `%${query}%`;
+      const dbResults = stmt.all(searchPattern, searchPattern) as DBResult[];
+
+      // Explicitly type the database results
+      const files = dbResults.map(
+        (row: any): FileMetadata => ({
+          id: row.id,
+          name: row.name,
+          path: row.path,
+          extension: row.extension,
+          size: row.size,
+          modified: row.modified,
+        })
+      );
+
+      // Return organized sections with proper typing
+      const sections: SearchSection[] = [];
+
+      if (apps.length > 0) {
+        sections.push({
+          type: "apps",
+          title: "Applications",
+          items: apps,
+        });
+      }
+
+      if (files.length > 0) {
+        sections.push({
+          type: "files",
+          title: "Files",
+          items: files,
+        });
+      }
+
+      return sections;
+    } catch (error) {
+      console.error("Error searching:", error);
+      throw error;
+    }
   }
-});
+);
 
 ipcMain.handle("open-file", async (_, filePath: string) => {
   try {
@@ -172,6 +223,126 @@ ipcMain.handle("open-file", async (_, filePath: string) => {
     return false;
   }
 });
+
+// uses applescript to get the list of apps on the system
+function getAllApps(): Promise<AppInfo[]> {
+  return new Promise((resolve, reject) => {
+    // First get all installed apps using mdfind
+    exec(
+      "mdfind \"kMDItemContentType == 'com.apple.application-bundle'\"",
+      async (error, stdout, stderr) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        try {
+          // Get list of running processes
+          const runningAppsScript = `
+          tell application "System Events"
+            set runningApps to (name of every process where background only is false)
+            return runningApps
+          end tell
+        `;
+
+          const runningAppsResult = await new Promise<string>(
+            (resolve, reject) => {
+              exec(
+                `osascript -e '${runningAppsScript}'`,
+                (error, stdout, stderr) => {
+                  if (error) reject(error);
+                  else resolve(stdout);
+                }
+              );
+            }
+          );
+
+          const runningAppNames = runningAppsResult
+            .trim()
+            .split(", ")
+            .map((app) => app.replace(/"/g, "").replace(".app", ""));
+
+          // Process all installed apps and mark which ones are running
+          const appPaths = stdout.trim().split("\n");
+          const apps = appPaths.map((appPath) => {
+            const name = path.basename(appPath, ".app");
+            return {
+              name,
+              path: appPath,
+              isRunning: runningAppNames.includes(name),
+            };
+          });
+
+          // Sort apps: running apps first, then alphabetically
+          apps.sort((a, b) => {
+            if (a.isRunning !== b.isRunning) {
+              return a.isRunning ? -1 : 1;
+            }
+            return a.name.localeCompare(b.name);
+          });
+
+          resolve(apps);
+        } catch (error) {
+          reject(error);
+        }
+      }
+    );
+  });
+}
+
+async function launchOrSwitchToApp(appInfo: AppInfo): Promise<void> {
+  if (appInfo.isRunning) {
+    // Switch to running app
+    const script = `
+      tell application "System Events"
+        set frontmost of process "${appInfo.name}" to true
+      end tell
+    `;
+
+    return new Promise((resolve, reject) => {
+      exec(`osascript -e '${script}'`, (error, stdout, stderr) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  } else {
+    // Launch new app
+    return new Promise((resolve, reject) => {
+      exec(`open "${appInfo.path}"`, (error, stdout, stderr) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+}
+
+ipcMain.handle("get-all-apps", async (): Promise<AppInfo[]> => {
+  try {
+    return await getAllApps();
+  } catch (error) {
+    console.error("Error getting apps:", error);
+    return [];
+  }
+});
+
+ipcMain.handle(
+  "launch-or-switch",
+  async (_, appInfo: AppInfo): Promise<boolean> => {
+    try {
+      await launchOrSwitchToApp(appInfo);
+      return true;
+    } catch (error) {
+      console.error("Error launching/switching app:", error);
+      return false;
+    }
+  }
+);
 
 // ipcMain.handle("db-get-setting", async (_event, key: string) => {
 //   return settingManager.get(key);

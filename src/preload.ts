@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { SettingsValue } from "./settings/Settings";
+import { AppInfo } from "./types";
 
 contextBridge.exposeInMainWorld("electron", {
   // settings methods
@@ -30,6 +31,10 @@ contextBridge.exposeInMainWorld("electron", {
   searchFiles: (query: string) => {
     return ipcRenderer.invoke("search-files", query);
   },
+  launchOrSwitch: (appInfo: AppInfo) => {
+    return ipcRenderer.invoke("launch-or-switch", appInfo);
+  },
+
   openFile: (filePath: string) => {
     return ipcRenderer.invoke("open-file", filePath);
   },
