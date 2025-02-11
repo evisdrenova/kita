@@ -190,16 +190,14 @@ export default function Home() {
       ) : (
         <>
           <div className="sticky top-0 bg-background z-10 p-2">
-            <div>{`Found ${searchResults.length} results`}</div>
+            <div className="font-semibold text-xs text-primary-foreground/60">{`Found ${searchResults.length} results`}</div>
           </div>
-          <main className="flex-1 px-2 pt-4 overflow-auto">
-            <div className="pt-4 flex-1">
-              <SearchResults
-                searchResults={searchResults}
-                setSelectedResultIndex={setSelectedResultIndex}
-                handleResultSelect={handleResultSelect}
-              />
-            </div>
+          <main className="flex-1 px-2 pt-4 overflow-auto scrollbar">
+            <SearchResults
+              searchResults={searchResults}
+              setSelectedResultIndex={setSelectedResultIndex}
+              handleResultSelect={handleResultSelect}
+            />
           </main>
         </>
       )}
@@ -270,7 +268,6 @@ function truncatePath(path: string, maxLength: number = 50) {
 
   return `${startPath}...${endPath}/${fileName}`;
 }
-
 function SearchResults(props: SearchResultsProps) {
   const { searchResults, setSelectedResultIndex, handleResultSelect } = props;
   const [copiedId, setCopiedId] = useState<number | null>(null);
@@ -280,14 +277,14 @@ function SearchResults(props: SearchResultsProps) {
       await navigator.clipboard.writeText(path);
       setCopiedId(id);
       toast.success("Copied to clipboard");
-      setTimeout(() => setCopiedId(null), 2000); // Reset after 2 seconds
+      setTimeout(() => setCopiedId(null), 2000);
     } catch (err) {
       toast.error("Failed to copy path");
     }
   };
 
   return (
-    <div className="flex flex-col space-y-2">
+    <div className="flex flex-col">
       {searchResults.map((result) => (
         <div
           key={result.id}
@@ -320,7 +317,7 @@ function SearchResults(props: SearchResultsProps) {
                   )}
                 </button>
               </div>
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-2 min-w-0 h-0 group-hover:h-auto overflow-hidden transition-all duration-200">
                 <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-5 flex-1">
                   {truncatePath(result.path)}
                 </span>

@@ -70,3 +70,27 @@
 .no-drag {
   -webkit-app-region: no-drag;
 }
+
+::-webkit-scrollbar {
+  width: 12px; /* Made thicker */
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+  border-radius: 6px; /* Adjusted to match thicker width */
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 6px; /* Adjusted to match thicker width */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--border));
+}
+
+/* For Firefox */
+* {
+  scrollbar-width: auto; /* Changed from thin to auto for thicker scrollbar */
+  scrollbar-color: hsl(var(--border)) hsl(var(--background));
+}
