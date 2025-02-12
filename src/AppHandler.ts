@@ -118,7 +118,7 @@ export default class AppHandler {
     this.appDirectories.forEach((directory) => {
       const watcher = chokidar.watch(directory, {
         persistent: true,
-        depth: 0,
+        depth: 0, // only the top level directory
         ignoreInitial: true,
         usePolling: false,
       });
