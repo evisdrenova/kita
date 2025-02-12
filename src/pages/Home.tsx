@@ -313,8 +313,6 @@ function SearchResults(props: SearchResultsProps) {
     return "isRunning" in item;
   };
 
-  console.log("items", items);
-
   return (
     <div className="flex flex-col">
       {items.map((item, index) => {
@@ -335,9 +333,9 @@ function SearchResults(props: SearchResultsProps) {
               <div className="flex flex-col min-w-0 flex-1">
                 <div className="flex flex-row items-center gap-1">
                   {isApp ? (
-                    (item as AppInfo).iconDataUrl ? (
+                    item.iconDataUrl ? (
                       <img
-                        src={(item as AppInfo).iconDataUrl}
+                        src={item.iconDataUrl}
                         className="w-4 h-4 object-contain"
                         alt={item.name}
                       />

@@ -1,6 +1,5 @@
 import { exec } from "child_process";
 import * as path from "path";
-import * as fs from "fs/promises";
 import { AppInfo } from "./types";
 import { nativeImage } from "electron";
 
@@ -42,6 +41,7 @@ export default class AppHandler {
       return;
     }
 
+    // gets the list of apps
     try {
       const [installedApps, runningAppNames] = await Promise.all([
         this.getInstalledApps(),
@@ -93,22 +93,15 @@ export default class AppHandler {
   }
 
   private async getAppIcon(appPath: string): Promise<string | undefined> {
+    console.log("Retrieving app icon for:", appPath);
     try {
-      const iconPath = path.join(
-        appPath,
-        "Contents",
-        "Resources",
-        "AppIcon.icns"
-      );
-      await fs.access(iconPath);
-
-      // Read the icon file and convert to data URL
-      const icon = nativeImage.createFromPath(iconPath);
-      console.log("icon native image", icon);
-      // Resize to a reasonable size for the UI
-      const resized = icon.resize({ width: 32, height: 32 });
-      return resized.toDataURL();
-    } catch {
+      const icon = await nativeImage.createThumbnailFromPath(appPath, {
+        height: 32,
+        width: 32,
+      });
+      return icon.toDataURL();
+    } catch (error) {
+      console.error("Error getting icon for app:", appPath, error);
       return undefined;
     }
   }
@@ -120,12 +113,12 @@ export default class AppHandler {
     return Promise.all(
       appPaths.map(async (appPath) => {
         const name = path.basename(appPath, ".app");
-        const iconPath = await this.getAppIcon(appPath);
+        const iconDataUrl = await this.getAppIcon(appPath);
         return {
           name,
           path: appPath,
           isRunning: runningAppNames.includes(name),
-          iconPath,
+          iconDataUrl,
         };
       })
     );
