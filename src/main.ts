@@ -156,8 +156,6 @@ ipcMain.handle(
     try {
       const apps = await appHandler.getAllApps(query);
 
-      console.log("apps", apps);
-
       // Get matching files from database with proper typing
       const stmt = db.prepare(`
       SELECT 

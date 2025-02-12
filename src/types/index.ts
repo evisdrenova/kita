@@ -42,6 +42,8 @@ export interface AppInfo {
   path: string;
   isRunning: boolean;
   iconDataUrl?: string;
+  memoryUsage?: number; // in MiB
+  cpuUsage?: number; // in %
 }
 
 export interface SearchSection {

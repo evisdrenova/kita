@@ -14,12 +14,13 @@ import {
   FileSpreadsheet,
   ArrowUpDown,
   CornerDownLeft,
-  CheckCircle,
   Copy,
   Circle,
   Files,
   Table,
   Check,
+  MemoryStick,
+  Cpu,
 } from "lucide-react";
 import {
   SearchResult,
@@ -294,7 +295,6 @@ function truncatePath(path: string, maxLength: number = 50) {
 
   return `${startPath}...${endPath}/${fileName}`;
 }
-
 function SearchResults(props: SearchResultsProps) {
   const { items, type, selectedItem, onSelect } = props;
   const [copiedId, setCopiedId] = useState<number | null>(null);
@@ -313,13 +313,15 @@ function SearchResults(props: SearchResultsProps) {
     return "isRunning" in item;
   };
 
+  console.log("items", items);
+
   return (
     <div className="flex flex-col">
       {items.map((item, index) => {
         const isApp = isAppInfo(item);
         const id = isApp ? index : (item as FileMetadata).id;
         const title = isApp ? item.name : (item as FileMetadata).name;
-        const path = item.path;
+        const appPath = item.path;
 
         return (
           <div
@@ -343,17 +345,38 @@ function SearchResults(props: SearchResultsProps) {
                       <Package className="h-4 w-4" />
                     )
                   ) : (
-                    getFileIcon(path)
+                    getFileIcon(appPath)
                   )}
                   <span className="text-sm">{title}</span>
                   {isApp && item.isRunning && (
-                    <Circle className=" bg-green-500 border-0 rounded-full w-2 h-2" />
+                    <Circle className="bg-green-500 border-0 rounded-full w-2 h-2" />
+                  )}
+                  {/* Render memory usage for running apps */}
+                  {isApp && item.isRunning && (
+                    <span className="text-xs text-gray-500 ml-2">
+                      {item.memoryUsage !== undefined ? (
+                        <div className="flex flex-row items-center gap-1">
+                          <MemoryStick className="w-3 h-3" />
+                          {item.memoryUsage.toFixed(1)} MB
+                        </div>
+                      ) : (
+                        "—"
+                      )}
+                    </span>
+                  )}
+                  {isApp && item.isRunning && item.cpuUsage !== undefined && (
+                    <span className="text-xs text-gray-500 ml-2">
+                      <div className="flex flex-row items-center gap-1">
+                        <Cpu className="w-3 h-3" />
+                        {item.cpuUsage.toFixed(1)}% CPU
+                      </div>
+                    </span>
                   )}
                   {!isApp && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleCopy(path, id);
+                        handleCopy(appPath, id);
                       }}
                       className={`opacity-0 group-hover:opacity-100 ml-2 p-1 hover:bg-background rounded transition-opacity duration-200 ${
                         copiedId === id
@@ -369,11 +392,10 @@ function SearchResults(props: SearchResultsProps) {
                     </button>
                   )}
                 </div>
-
                 <div className="flex items-center gap-2 min-w-0 h-0 group-hover:h-auto overflow-hidden transition-all duration-200">
                   {!isApp && (
                     <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-5 flex-1">
-                      {truncatePath(path)}
+                      {truncatePath(appPath)}
                     </span>
                   )}
                   {!isApp && (
