@@ -319,7 +319,7 @@ export default class AppHandler {
     });
   }
   /**
-   * Updates memory usage information for running applications.
+   * Updates resource (memory, cpu) usage information for running applications.
    * Uses ps command with extended formatting to get accurate process information.
    *
    * @private
