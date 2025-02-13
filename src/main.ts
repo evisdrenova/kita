@@ -25,7 +25,7 @@ if (started) {
 let db: Database.Database;
 log.initialize();
 let mainWindow: BrowserWindow | null = null;
-const appHandler = new AppHandler();
+let appHandler: AppHandler;
 
 const initializeDatabase = () => {
   try {
@@ -55,7 +55,6 @@ const initializeDatabase = () => {
 const createWindow = async () => {
   try {
     db = initializeDatabase();
-    // settingManager = new SettingsManager(db);
 
     mainWindow = new BrowserWindow({
       width: 600,
@@ -111,6 +110,7 @@ const createWindow = async () => {
       );
       menu.popup();
     });
+    appHandler = new AppHandler(mainWindow);
   } catch (error) {
     log.error("Failed to create window:", error);
     app.quit();
@@ -209,6 +209,18 @@ ipcMain.handle(
     } catch (error) {
       console.error("Error searching:", error);
       throw error;
+    }
+  }
+);
+
+ipcMain.handle(
+  "launch-or-switch",
+  async (_, appInfo: AppInfo): Promise<boolean> => {
+    try {
+      return await appHandler.launchOrSwitchToApp(appInfo);
+    } catch (error) {
+      console.error("Error launching/switching app:", error);
+      return false;
     }
   }
 );

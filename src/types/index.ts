@@ -1,5 +1,6 @@
 import { SettingsValue } from "../../src/settings/Settings";
 import { searchCategories } from "../../src/pages/Home";
+import { IpcRendererEvent } from "electron";
 
 // always returns a promise since the IPC communication is async even if the underlying implementation is synchronous
 export interface IElectronAPI {
@@ -27,6 +28,12 @@ export interface IElectronAPI {
   minimizeWindow: () => void;
   maximizeWindow: () => void;
   closeWindow: () => void;
+  onResourceUsageUpdated: (
+    callback: (event: IpcRendererEvent, updatedApps: AppInfo[]) => void
+  ) => void;
+  removeResourceUsageUpdated: (
+    callback: (event: IpcRendererEvent, updatedApps: AppInfo[]) => void
+  ) => void;
 }
 export interface FileMetadata {
   id: number;

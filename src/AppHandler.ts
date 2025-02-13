@@ -2,7 +2,7 @@ import { exec } from "child_process";
 import * as path from "path";
 import * as os from "os";
 import { AppInfo } from "./types";
-import { nativeImage } from "electron";
+import { BrowserWindow, nativeImage } from "electron";
 import chokidar from "chokidar";
 import { debounce } from "./lib/utils";
 import * as fs from "fs/promises";
@@ -20,8 +20,10 @@ export default class AppHandler {
   private cachedApps: AppInfo[] = [];
   private readonly appDirectories: string[];
   private readonly debounceDelay = 2000;
+  private mainWindow: BrowserWindow; // used to udpate the resource stats in real time
 
-  constructor() {
+  constructor(mainWindow: BrowserWindow) {
+    this.mainWindow = mainWindow;
     this.appDirectories = [
       "/Applications",
       path.join(os.homedir(), "Applications"),
@@ -325,7 +327,6 @@ export default class AppHandler {
    * @private
    */
   private updateResourceUsage(): void {
-    // Get PID, RSS (memory in KB), CPU usage (%), and full command.
     const cmd = "ps -axo pid,rss,pcpu,command";
     exec(cmd, (error, stdout) => {
       if (error) {
@@ -333,48 +334,34 @@ export default class AppHandler {
         return;
       }
       const lines = stdout.split("\n");
-      // Build a resource map keyed by the app name (lowercase).
-      // Each value is an object with memory (in MB) and cpu (percentage).
       const resourceMap: Record<string, { memory: number; cpu: number }> = {};
 
-      // Process each line (skip the header line).
       lines.slice(1).forEach((line) => {
-        // Split the line by whitespace; note that the command may contain spaces.
         const parts = line.trim().split(/\s+/);
         if (parts.length >= 4) {
-          // parts[0]: pid, parts[1]: rss (in KB), parts[2]: pcpu, parts[3...]: command
-          const pid = parts[0];
           const rssKb = parseInt(parts[1], 10);
           const cpuUsagePercent = parseFloat(parts[2]);
           const command = parts.slice(3).join(" ");
           if (!isNaN(rssKb) && !isNaN(cpuUsagePercent)) {
-            try {
-              let appName = "";
-              // Method 1: Look for .app in the command to extract the app bundle name.
-              const appMatch = command.match(/\/([^/]+)\.app/);
-              if (appMatch) {
-                appName = appMatch[1].toLowerCase();
+            let appName = "";
+            const appMatch = command.match(/\/([^/]+)\.app/);
+            if (appMatch) {
+              appName = appMatch[1].toLowerCase();
+            }
+            if (!appName) {
+              appName = command.split(/\s+/)[0].toLowerCase();
+            }
+            appName = appName
+              .replace(/^[./]+/, "")
+              .replace(/\s+helper.*$/, "")
+              .replace(/\s+renderer.*$/, "")
+              .replace(/\s+worker.*$/, "");
+            if (appName) {
+              if (!resourceMap[appName]) {
+                resourceMap[appName] = { memory: 0, cpu: 0 };
               }
-              // Method 2: Fallback: take the first token of the command.
-              if (!appName) {
-                appName = command.split(/\s+/)[0].toLowerCase();
-              }
-              // Clean up the app name by removing leading dots/slashes and helper suffixes.
-              appName = appName
-                .replace(/^[./]+/, "")
-                .replace(/\s+helper.*$/, "")
-                .replace(/\s+renderer.*$/, "")
-                .replace(/\s+worker.*$/, "");
-              if (appName) {
-                if (!resourceMap[appName]) {
-                  resourceMap[appName] = { memory: 0, cpu: 0 };
-                }
-                // Sum memory (converted from KB to MB) and CPU usage.
-                resourceMap[appName].memory += rssKb / 1024;
-                resourceMap[appName].cpu += cpuUsagePercent;
-              }
-            } catch (e) {
-              console.debug("Error processing command:", command, e);
+              resourceMap[appName].memory += rssKb / 1024;
+              resourceMap[appName].cpu += cpuUsagePercent;
             }
           }
         }
@@ -382,26 +369,22 @@ export default class AppHandler {
 
       console.debug("Resource map:", resourceMap);
 
-      // Define a mapping for common mismatches (if needed).
       const appNameMapping: Record<string, string> = {
         "google chrome": "chrome",
         "microsoft edge": "edge",
         "visual studio code": "code",
-        // Add more mappings as needed.
       };
 
-      // Update cached apps with both memory and CPU usage.
+      // Update cached apps.
       this.cachedApps = this.cachedApps.map((app) => {
         if (app.isRunning) {
           let searchName = app.name.toLowerCase();
-          // Check for mapped names.
           searchName = appNameMapping[searchName] || searchName;
-          // Try several variations to improve matching.
           const variations = [
             searchName,
-            searchName.replace(/\s+/g, ""), // remove spaces
-            searchName.split(" ")[0], // first word only
-            searchName.replace(/[^a-z0-9]/g, ""), // alphanumeric only
+            searchName.replace(/\s+/g, ""),
+            searchName.split(" ")[0],
+            searchName.replace(/[^a-z0-9]/g, ""),
           ];
           let memoryUsage = 0;
           let cpuUsage = 0;
@@ -425,6 +408,14 @@ export default class AppHandler {
             ((app.memoryUsage || 0) > 0 || (app.cpuUsage || 0) > 0)
         )
       );
+
+      // Notify the renderer that resource usage was updated.
+      if (this.mainWindow && this.mainWindow.webContents) {
+        this.mainWindow.webContents.send(
+          "resource-usage-updated",
+          this.cachedApps
+        );
+      }
     });
   }
 }

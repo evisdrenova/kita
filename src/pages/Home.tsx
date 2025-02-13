@@ -79,6 +79,7 @@ export default function Home() {
   const [searchSections, setSearchSections] = useState<SearchSection[]>([]);
   const [selectedSection, setSelectedSection] = useState<number>(0);
   const [selectedItem, setSelectedItem] = useState<number>(0);
+  const [updatedApps, setUpdatedApps] = useState<AppInfo[]>([]);
 
   useEffect(() => {
     const handleProgress = (_: any, progress: IndexingProgress) => {
@@ -86,9 +87,19 @@ export default function Home() {
     };
 
     window.electron.onIndexingProgress(handleProgress);
-
     return () => {
       window.electron.removeIndexingProgress(handleProgress);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handler = (event: any, apps: AppInfo[]) => {
+      setUpdatedApps(apps);
+    };
+
+    window.electron.onResourceUsageUpdated(handler);
+    return () => {
+      window.electron.removeResourceUsageUpdated(handler);
     };
   }, []);
 
@@ -219,6 +230,7 @@ export default function Home() {
                   setSelectedItem(index);
                   handleResultSelect(item, section.type);
                 }}
+                updatedApps={updatedApps}
               />
             </div>
           ))}
@@ -273,6 +285,7 @@ interface SearchResultsProps {
   items: (FileMetadata | AppInfo)[];
   selectedItem: number;
   onSelect: (item: FileMetadata | AppInfo, index: number) => void;
+  updatedApps: AppInfo[];
 }
 
 function truncatePath(path: string, maxLength: number = 50) {
@@ -295,7 +308,7 @@ function truncatePath(path: string, maxLength: number = 50) {
 }
 
 function SearchResults(props: SearchResultsProps) {
-  const { items, selectedItem, onSelect } = props;
+  const { items, selectedItem, onSelect, updatedApps } = props;
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
   const handleCopy = async (path: string, id: number) => {
@@ -314,11 +327,21 @@ function SearchResults(props: SearchResultsProps) {
 
   console.log("items", items);
 
+  const getUpdatedApp = (app: AppInfo): AppInfo => {
+    const updated = updatedApps.find(
+      (u) => u.name.toLowerCase() === app.name.toLowerCase()
+    );
+    return updated
+      ? { ...app, memoryUsage: updated.memoryUsage, cpuUsage: updated.cpuUsage }
+      : app;
+  };
+
   return (
     <div className="flex flex-col">
       {items.map((item, index) => {
         const isApp = isAppInfo(item);
         const id = isApp ? index : (item as FileMetadata).id;
+        const itemToRender = isApp ? getUpdatedApp(item as AppInfo) : item;
 
         return (
           <div
@@ -330,8 +353,8 @@ function SearchResults(props: SearchResultsProps) {
           >
             <AppRow
               isApp={isAppInfo(item)}
-              item={item}
-              appPath={item.path}
+              item={itemToRender}
+              appPath={itemToRender.path}
               handleCopy={handleCopy}
               copiedId={copiedId}
               id={id}

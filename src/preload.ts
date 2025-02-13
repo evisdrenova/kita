@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, IpcRendererEvent } from "electron";
 import { SettingsValue } from "./settings/Settings";
 import { AppInfo } from "./types";
 
@@ -41,4 +41,10 @@ contextBridge.exposeInMainWorld("electron", {
   minimizeWindow: () => ipcRenderer.send("window-minimize"),
   maximizeWindow: () => ipcRenderer.send("window-maximize"),
   closeWindow: () => ipcRenderer.send("window-close"),
+  onResourceUsageUpdated: (
+    callback: (event: IpcRendererEvent, updatedApps: AppInfo[]) => void
+  ) => ipcRenderer.on("resource-usage-updated", callback),
+  removeResourceUsageUpdated: (
+    callback: (event: IpcRendererEvent, updatedApps: AppInfo[]) => void
+  ) => ipcRenderer.removeListener("resource-usage-updated", callback),
 });
