@@ -211,7 +211,6 @@ export default function Home() {
               </h2>
               <SearchResults
                 items={section.items}
-                type={section.type}
                 selectedItem={
                   sectionIndex === selectedSection ? selectedItem : -1
                 }
@@ -272,7 +271,6 @@ function Header(props: HeaderProps) {
 
 interface SearchResultsProps {
   items: (FileMetadata | AppInfo)[];
-  type: "apps" | "files";
   selectedItem: number;
   onSelect: (item: FileMetadata | AppInfo, index: number) => void;
 }
@@ -295,8 +293,9 @@ function truncatePath(path: string, maxLength: number = 50) {
 
   return `${startPath}...${endPath}/${fileName}`;
 }
+
 function SearchResults(props: SearchResultsProps) {
-  const { items, type, selectedItem, onSelect } = props;
+  const { items, selectedItem, onSelect } = props;
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
   const handleCopy = async (path: string, id: number) => {
@@ -320,8 +319,6 @@ function SearchResults(props: SearchResultsProps) {
       {items.map((item, index) => {
         const isApp = isAppInfo(item);
         const id = isApp ? index : (item as FileMetadata).id;
-        const title = isApp ? item.name : (item as FileMetadata).name;
-        const appPath = item.path;
 
         return (
           <div
@@ -331,86 +328,119 @@ function SearchResults(props: SearchResultsProps) {
             }`}
             onClick={() => onSelect(item, index)}
           >
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <div className="flex flex-col min-w-0 flex-1">
-                <div className="flex flex-row items-center gap-1">
-                  {isApp ? (
-                    item.iconDataUrl ? (
-                      <img
-                        src={item.iconDataUrl}
-                        className="w-4 h-4 object-contain"
-                        alt={item.name}
-                      />
-                    ) : (
-                      <Package className="h-4 w-4" />
-                    )
-                  ) : (
-                    getFileIcon(appPath)
-                  )}
-                  <span className="text-sm">{title}</span>
-                  {isApp && item.isRunning && (
-                    <Circle className="bg-green-500 border-0 rounded-full w-2 h-2" />
-                  )}
-                  {/* Render memory usage for running apps */}
-                  {isApp && item.isRunning && (
-                    <span className="text-xs text-gray-500 ml-2">
-                      {item.memoryUsage !== undefined ? (
-                        <div className="flex flex-row items-center gap-1">
-                          <MemoryStick className="w-3 h-3" />
-                          {item.memoryUsage.toFixed(1)} MB
-                        </div>
-                      ) : (
-                        "—"
-                      )}
-                    </span>
-                  )}
-                  {isApp && item.isRunning && item.cpuUsage !== undefined && (
-                    <span className="text-xs text-gray-500 ml-2">
-                      <div className="flex flex-row items-center gap-1">
-                        <Cpu className="w-3 h-3" />
-                        {item.cpuUsage.toFixed(1)}% CPU
-                      </div>
-                    </span>
-                  )}
-                  {!isApp && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCopy(appPath, id);
-                      }}
-                      className={`opacity-0 group-hover:opacity-100 ml-2 p-1 hover:bg-background rounded transition-opacity duration-200 ${
-                        copiedId === id
-                          ? "text-green-500"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      {copiedId === id ? (
-                        <Check className="h-3 w-3" />
-                      ) : (
-                        <Copy className="h-3 w-3" />
-                      )}
-                    </button>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 min-w-0 h-0 group-hover:h-auto overflow-hidden transition-all duration-200">
-                  {!isApp && (
-                    <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-5 flex-1">
-                      {truncatePath(appPath)}
-                    </span>
-                  )}
-                  {!isApp && (
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">
-                      {getCategoryFromExtension(
-                        (item as FileMetadata).extension
-                      )}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
+            <AppRow
+              isApp={isAppInfo(item)}
+              item={item}
+              appPath={item.path}
+              handleCopy={handleCopy}
+              copiedId={copiedId}
+              id={id}
+            />
           </div>
         );
       })}
+    </div>
+  );
+}
+
+interface AppRowProps {
+  item: AppInfo | FileMetadata;
+  isApp: boolean;
+  appPath: string;
+  handleCopy: (path: string, id: number) => Promise<void>;
+  copiedId: number;
+  id: number;
+}
+
+function AppRow(props: AppRowProps) {
+  const { item, isApp, appPath, handleCopy, copiedId, id } = props;
+
+  // narrow the types since item is a union type
+  const getAppInfo = (item: FileMetadata | AppInfo): AppInfo | null => {
+    return isApp ? (item as AppInfo) : null;
+  };
+
+  const getFileInfo = (item: FileMetadata | AppInfo): FileMetadata | null => {
+    return !isApp ? (item as FileMetadata) : null;
+  };
+
+  const appInfo = getAppInfo(item);
+  const fileInfo = getFileInfo(item);
+
+  return (
+    <div className="flex items-center gap-2 min-w-0 flex-1">
+      <div className="flex flex-col min-w-0 flex-1">
+        <div className="flex flex-row items-center gap-1">
+          {isApp ? (
+            appInfo?.iconDataUrl ? (
+              <img
+                src={appInfo.iconDataUrl}
+                className="w-4 h-4 object-contain"
+                alt={appInfo.name}
+              />
+            ) : (
+              <Package className="h-4 w-4" />
+            )
+          ) : (
+            getFileIcon(appPath)
+          )}
+          <span className="text-sm">
+            {isApp ? appInfo?.name : fileInfo?.name}
+          </span>
+          {isApp && appInfo?.isRunning && (
+            <Circle className="bg-green-500 border-0 rounded-full w-2 h-2" />
+          )}
+          {isApp && appInfo?.isRunning && (
+            <span className="text-xs text-gray-500 ml-2">
+              {appInfo.memoryUsage !== undefined ? (
+                <div className="flex flex-row items-center gap-1">
+                  <MemoryStick className="w-3 h-3" />
+                  {appInfo.memoryUsage.toFixed(1)} MB
+                </div>
+              ) : (
+                "—"
+              )}
+            </span>
+          )}
+          {isApp && appInfo?.isRunning && appInfo?.cpuUsage !== undefined && (
+            <span className="text-xs text-gray-500 ml-2">
+              <div className="flex flex-row items-center gap-1">
+                <Cpu className="w-3 h-3" />
+                {appInfo.cpuUsage.toFixed(1)}% CPU
+              </div>
+            </span>
+          )}
+          {!isApp && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCopy(appPath, id);
+              }}
+              className={`opacity-0 group-hover:opacity-100 ml-2 p-1 hover:bg-background rounded transition-opacity duration-200 ${
+                copiedId === id ? "text-green-500" : "text-muted-foreground"
+              }`}
+            >
+              {copiedId === id ? (
+                <Check className="h-3 w-3" />
+              ) : (
+                <Copy className="h-3 w-3" />
+              )}
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-2 min-w-0 h-0 group-hover:h-auto overflow-hidden transition-all duration-200">
+          {!isApp && (
+            <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-5 flex-1">
+              {truncatePath(appPath)}
+            </span>
+          )}
+          {!isApp && (
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              {getCategoryFromExtension((item as FileMetadata).extension)}
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
