@@ -47,4 +47,7 @@ contextBridge.exposeInMainWorld("electron", {
   removeResourceUsageUpdated: (
     callback: (event: IpcRendererEvent, updatedApps: AppInfo[]) => void
   ) => ipcRenderer.removeListener("resource-usage-updated", callback),
+  getRecents: () => {
+    return ipcRenderer.invoke("get-recents");
+  },
 });

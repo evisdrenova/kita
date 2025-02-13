@@ -80,6 +80,7 @@ export default function Home() {
   const [selectedSection, setSelectedSection] = useState<number>(0);
   const [selectedItem, setSelectedItem] = useState<number>(0);
   const [updatedApps, setUpdatedApps] = useState<AppInfo[]>([]);
+  const [recents, setRecents] = useState<FileMetadata[]>([]);
 
   useEffect(() => {
     const handleProgress = (_: any, progress: IndexingProgress) => {
@@ -101,6 +102,22 @@ export default function Home() {
     return () => {
       window.electron.removeResourceUsageUpdated(handler);
     };
+  }, []);
+
+  // retrieves the recents
+  useEffect(() => {
+    const fetchRecents = async () => {
+      try {
+        const recentFiles = await window.electron.getRecents();
+        setRecents(recentFiles);
+      } catch (error) {
+        console.error("Error fetching recents:", error);
+      }
+    };
+    fetchRecents();
+
+    const interval = setInterval(fetchRecents, 60000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleSearch = async (query: string) => {
@@ -206,7 +223,19 @@ export default function Home() {
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <Header handleSearch={handleSearch} searchQuery={searchQuery} />
-      {searchSections.length === 0 ? (
+      {searchQuery.trim() === "" ? (
+        <div className="px-2 pt-4 overflow-auto scrollbar">
+          <h2 className="text-sm font-semibold mb-2">Recents</h2>
+          <ul>
+            {recents.map((file, index) => (
+              <li key={index} className="p-2 border-b">
+                {file.name}{" "}
+                <span className="text-xs text-gray-500">({file.path})</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : searchSections.length === 0 ? (
         <div className="flex h-full items-center justify-center">
           <EmptyState />
         </div>

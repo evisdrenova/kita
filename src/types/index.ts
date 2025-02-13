@@ -34,6 +34,7 @@ export interface IElectronAPI {
   removeResourceUsageUpdated: (
     callback: (event: IpcRendererEvent, updatedApps: AppInfo[]) => void
   ) => void;
+  getRecents: () => Promise<FileMetadata[]>;
 }
 export interface FileMetadata {
   id: number;

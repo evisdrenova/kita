@@ -45,6 +45,14 @@ const initializeDatabase = () => {
       )
     `);
 
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS recents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT UNIQUE,
+        lastClicked DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+      `);
+
     return db;
   } catch (error) {
     log.error("Failed to initialize database:", error);
@@ -228,10 +236,70 @@ ipcMain.handle(
 ipcMain.handle("open-file", async (_, filePath: string) => {
   try {
     await shell.openPath(filePath);
+    // Insert or update the recents table to track recents
+    const stmt = db.prepare(`
+      INSERT INTO recents (path, lastClicked)
+      VALUES (?, CURRENT_TIMESTAMP)
+      ON CONFLICT(path) DO UPDATE SET lastClicked = CURRENT_TIMESTAMP;
+    `);
+    stmt.run(filePath);
     return true;
   } catch (error) {
     console.error("Error opening file:", error);
     return false;
+  }
+});
+
+ipcMain.handle("get-recents", async () => {
+  try {
+    // First, try to get recents from the database.
+    const stmt = db.prepare(`
+      SELECT path, lastClicked
+      FROM recents
+      ORDER BY lastClicked DESC
+      LIMIT 50
+    `);
+    const results = stmt.all();
+    if (results && results.length > 0) {
+      // Map results to your FileMetadata type (or similar).
+      return results.map((row: any) => ({
+        path: row.path,
+        // You can optionally retrieve additional metadata here (e.g. file name, extension)
+        // For example, using path.basename(row.path)
+        name: path.basename(row.path),
+        // Other fields as needed...
+      }));
+    }
+
+    // If no recents are stored, fall back to using mdfind for recently used files.
+    // Query files used in the last 7 days (for example).
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const isoDate = sevenDaysAgo.toISOString();
+
+    // This query finds files whose last used date is later than ISO date.
+    // Adjust the query as needed.
+    const query = `mdfind 'kMDItemLastUsedDate >= "${isoDate}"' | head -n 50`;
+    const recents: string[] = await new Promise((resolve, reject) => {
+      exec(query, (error, stdout) => {
+        if (error) {
+          reject(error);
+        } else {
+          const paths = stdout.trim().split("\n");
+          resolve(paths);
+        }
+      });
+    });
+
+    // Map recents paths to FileMetadata objects.
+    return recents.map((filePath) => ({
+      path: filePath,
+      name: path.basename(filePath),
+      // Optionally add more metadata if desired.
+    }));
+  } catch (error) {
+    console.error("Error getting recents:", error);
+    throw error;
   }
 });
 
