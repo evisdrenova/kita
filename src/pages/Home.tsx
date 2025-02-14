@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import FolderSettings from "../../components/FolderSettings";
 import {
   Folder,
@@ -319,6 +319,12 @@ interface HeaderProps {
 
 function Header(props: HeaderProps) {
   const { searchQuery, handleSearch } = props;
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Focus the input when component mounts
+    inputRef.current?.focus();
+  }, []);
 
   return (
     <div className="sticky top-0 bg-background flex flex-col gap-2 border-b border-b-border">
@@ -332,6 +338,7 @@ function Header(props: HeaderProps) {
         <Input
           placeholder="Type a command or search..."
           value={searchQuery}
+          ref={inputRef}
           onChange={(e) => handleSearch(e.target.value)}
           className="text-xs placeholder:pl-2 border-0 focus-visible:outline-none focus-visible:ring-0 "
         />
