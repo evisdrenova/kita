@@ -68,6 +68,7 @@ const createWindow = async () => {
       width: 600,
       height: 500,
       frame: false,
+      icon: path.join(__dirname, "../assets/kita_logo.icns"),
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
