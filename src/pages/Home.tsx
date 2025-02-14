@@ -223,25 +223,55 @@ export default function Home() {
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <Header handleSearch={handleSearch} searchQuery={searchQuery} />
-      {searchQuery.trim() === "" ? (
-        <div className="px-2 pt-4 overflow-auto scrollbar">
-          <h2 className="text-sm font-semibold mb-2">Recents</h2>
-          <ul>
-            {recents.map((file, index) => (
-              <li key={index} className="p-2 border-b">
-                {file.name}{" "}
-                <span className="text-xs text-gray-500">({file.path})</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : searchSections.length === 0 ? (
-        <div className="flex h-full items-center justify-center">
-          <EmptyState />
-        </div>
-      ) : (
-        <main className="flex-1 px-2 pt-4 overflow-auto scrollbar">
-          {searchSections.map((section, sectionIndex) => (
+      <main className="flex-1 px-2 pt-4 overflow-auto scrollbar">
+        {searchQuery.trim() === "" ? (
+          // Show recents when no search query
+          recents.length > 0 ? (
+            <div>
+              <h2 className="text-xs font-semibold text-muted-foreground mb-2">
+                Recent Files
+              </h2>
+              <div className="flex flex-col">
+                {recents.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center cursor-pointer hover:bg-muted p-2 rounded-md group"
+                    onClick={() => handleResultSelect(file, "files")}
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <div className="flex flex-row items-center gap-1">
+                          {getFileIcon(file.path)}
+                          <span className="text-sm">{file.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2 min-w-0 h-0 group-hover:h-auto overflow-hidden transition-all duration-200">
+                          <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-5 flex-1">
+                            {truncatePath(file.path)}
+                          </span>
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">
+                            {getCategoryFromExtension(file.extension)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            // Show empty state if no recents
+            <div className="flex h-full items-center justify-center">
+              <EmptyState />
+            </div>
+          )
+        ) : searchSections.length === 0 ? (
+          // Show empty state if searching but no results
+          <div className="flex h-full items-center justify-center">
+            <EmptyState />
+          </div>
+        ) : (
+          // Show search results
+          searchSections.map((section, sectionIndex) => (
             <div
               key={section.type}
               className={`${sectionIndex > 0 ? "mt-6" : ""}`}
@@ -262,9 +292,9 @@ export default function Home() {
                 updatedApps={updatedApps}
               />
             </div>
-          ))}
-        </main>
-      )}
+          ))
+        )}
+      </main>
       <div className="sticky bottom-0">
         <Footer setIsSettingsOpen={setIsSettingsOpen} />
       </div>

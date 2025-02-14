@@ -367,15 +367,13 @@ export default class AppHandler {
         }
       });
 
-      console.debug("Resource map:", resourceMap);
-
       const appNameMapping: Record<string, string> = {
         "google chrome": "chrome",
         "microsoft edge": "edge",
         "visual studio code": "code",
       };
 
-      // Update cached apps.
+      // Update cached apps
       this.cachedApps = this.cachedApps.map((app) => {
         if (app.isRunning) {
           let searchName = app.name.toLowerCase();
@@ -399,15 +397,6 @@ export default class AppHandler {
         }
         return app;
       });
-
-      console.debug(
-        "Updated apps with resource usage:",
-        this.cachedApps.filter(
-          (app) =>
-            app.isRunning &&
-            ((app.memoryUsage || 0) > 0 || (app.cpuUsage || 0) > 0)
-        )
-      );
 
       // Notify the renderer that resource usage was updated.
       if (this.mainWindow && this.mainWindow.webContents) {

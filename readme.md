@@ -8,5 +8,4 @@ The best local search app for your mac
 - real time mode to handle new files
 - customizable hot key
 - everything has to be very very fast
-
-// finish working on the recents feature
+- get autofocus in the input when its active

@@ -259,26 +259,23 @@ ipcMain.handle("get-recents", async () => {
       ORDER BY lastClicked DESC
       LIMIT 50
     `);
+
     const results = stmt.all();
+
     if (results && results.length > 0) {
-      // Map results to your FileMetadata type (or similar).
       return results.map((row: any) => ({
         path: row.path,
-        // You can optionally retrieve additional metadata here (e.g. file name, extension)
-        // For example, using path.basename(row.path)
         name: path.basename(row.path),
-        // Other fields as needed...
+        extension: path.extname(row.path),
       }));
     }
 
-    // If no recents are stored, fall back to using mdfind for recently used files.
-    // Query files used in the last 7 days (for example).
+    // If no recents are stored, query files used in the last 7 days (for example).
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const isoDate = sevenDaysAgo.toISOString();
 
     // This query finds files whose last used date is later than ISO date.
-    // Adjust the query as needed.
     const query = `mdfind 'kMDItemLastUsedDate >= "${isoDate}"' | head -n 50`;
     const recents: string[] = await new Promise((resolve, reject) => {
       exec(query, (error, stdout) => {
@@ -291,11 +288,10 @@ ipcMain.handle("get-recents", async () => {
       });
     });
 
-    // Map recents paths to FileMetadata objects.
     return recents.map((filePath) => ({
       path: filePath,
       name: path.basename(filePath),
-      // Optionally add more metadata if desired.
+      extension: path.extname(filePath),
     }));
   } catch (error) {
     console.error("Error getting recents:", error);
