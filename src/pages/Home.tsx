@@ -322,7 +322,6 @@ function Header(props: HeaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // Focus the input when component mounts
     inputRef.current?.focus();
   }, []);
 
@@ -390,8 +389,6 @@ function SearchResults(props: SearchResultsProps) {
   const isAppInfo = (item: FileMetadata | AppInfo): item is AppInfo => {
     return "isRunning" in item;
   };
-
-  console.log("items", items);
 
   const getUpdatedApp = (app: AppInfo): AppInfo => {
     const updated = updatedApps.find(
