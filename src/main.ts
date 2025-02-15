@@ -41,6 +41,7 @@ const initializeDatabase = () => {
         extension TEXT,
         size INTEGER,
         modified TEXT,
+        embedding TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);

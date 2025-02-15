@@ -1,5 +1,3 @@
-# main file that runs and the embedding model
-
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer

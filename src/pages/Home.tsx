@@ -35,6 +35,7 @@ import { Button } from "../../components/ui/button";
 import WindowAction from "../../components/WindowActions";
 import { toast } from "sonner";
 import { Input } from "../../components/ui/input";
+import { getCategoryFromExtension } from "../../src/lib/utils";
 
 export const searchCategories = [
   "Applications",
@@ -607,26 +608,6 @@ function getFileIcon(filePath: string) {
   }
 
   return icon;
-}
-
-function getCategoryFromExtension(extension: string): SearchCategory {
-  switch (extension.toLowerCase()) {
-    case ".app":
-      return "Applications";
-    case ".pdf":
-      return "PDF Documents";
-    case ".doc":
-    case ".docx":
-    case ".txt":
-      return "Documents";
-    case ".jpg":
-    case ".jpeg":
-    case ".png":
-    case ".gif":
-      return "Images";
-    default:
-      return "Other";
-  }
 }
 
 interface FooterProps {

@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import path from "path";
+import { SearchCategory } from "src/types";
 
 /**
  * Combines multiple class names or class value objects and merges them with Tailwind CSS classes.
@@ -93,4 +94,24 @@ export function debounce<T extends (...args: any[]) => any>(
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => fn(...args), delay);
   };
+}
+
+export function getCategoryFromExtension(extension: string): SearchCategory {
+  switch (extension.toLowerCase()) {
+    case ".app":
+      return "Applications";
+    case ".pdf":
+      return "PDF Documents";
+    case ".doc":
+    case ".docx":
+    case ".txt":
+      return "Documents";
+    case ".jpg":
+    case ".jpeg":
+    case ".png":
+    case ".gif":
+      return "Images";
+    default:
+      return "Other";
+  }
 }
