@@ -146,7 +146,7 @@ ipcMain.on("window-close", () => {
 ipcMain.handle("index-directories", async (_, directories: string[]) => {
   try {
     const processor = new FileProcessor(db, mainWindow);
-    return await processor.processDirectories(directories);
+    return await processor.processPaths(directories);
   } catch (error) {
     console.error("Error indexing directories:", error);
     throw error;
