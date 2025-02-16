@@ -37,7 +37,7 @@ export interface IElectronAPI {
   getRecents: () => Promise<FileMetadata[]>;
 }
 export interface FileMetadata {
-  id: number;
+  id?: number;
   path: string;
   name: string;
   extension: string;

@@ -224,6 +224,49 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+  "query-embeddings",
+  async (_, query: string): Promise<SearchSection[]> => {
+    try {
+      // Get search results from the Python microservice.
+      const response = await fetch("http://127.0.0.1:8000/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, k: 5 }),
+      });
+      if (!response.ok) throw new Error("Search failed");
+      const searchResponse = await response.json();
+
+      // Now, for each result, query SQLite to get metadata.
+      const stmt = db.prepare(`
+      SELECT id, path, name, category, embedding
+      FROM files
+      WHERE id = ?
+    `);
+
+      const matchedFiles = searchResponse.results.map((result: any) => {
+        // Assume the file ID from the microservice corresponds to our SQLite row id.
+        const fileRow = stmt.get(result.file_id) as FileMetadata;
+        return {
+          ...fileRow,
+          distance: result.distance,
+        };
+      });
+
+      return [
+        {
+          type: "files",
+          title: "Files",
+          items: matchedFiles,
+        },
+      ];
+    } catch (error) {
+      console.error("Error searching:", error);
+      throw error;
+    }
+  }
+);
+
+ipcMain.handle(
   "launch-or-switch",
   async (_, appInfo: AppInfo): Promise<boolean> => {
     try {

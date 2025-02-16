@@ -39,27 +39,14 @@ import { getCategoryFromExtension } from "../../src/lib/utils";
 
 export const searchCategories = [
   "Applications",
-  "Calculator",
-  "Contacts",
-  "Conversion",
-  "Definition",
-  "Developer",
   "Documents",
-  "Events & Reminders",
   "Folders",
-  "Fonts",
   "Images",
-  "Mail & Messages",
-  "Movies",
-  "Music",
+  "Mail",
+  "Messages",
   "Other",
   "PDF Documents",
-  "Presentations",
-  "Siri Suggestions",
   "Spreadsheets",
-  "System Settings",
-  "Tips",
-  "Websites",
 ] as const;
 
 export interface IndexingProgress {
@@ -340,7 +327,7 @@ function Header(props: HeaderProps) {
           value={searchQuery}
           ref={inputRef}
           onChange={(e) => handleSearch(e.target.value)}
-          className="text-xs placeholder:pl-2 border-0 focus-visible:outline-none focus-visible:ring-0 "
+          className="text-xs placeholder:pl-2 border-0 focus-visible:outline-none focus-visible:ring-0 shadow-none"
         />
       </div>
     </div>

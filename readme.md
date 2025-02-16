@@ -14,5 +14,4 @@ The best local search app for your mac
 1. Kita tries to create embeddings from all of the files that you have given it access to.
 2. it reads the files, creates an embedding to each file and then stores that embedding in sqllite
 3. then when you query, it searches HNSW for the ANN and returns the id
-4. we then resolve that id to a file that we return the link to
-5.
+4. we then resolve that id to a file that we return the link to the file
