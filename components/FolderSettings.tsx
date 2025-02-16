@@ -18,7 +18,7 @@ interface FolderSettingsProps {
   searchCategories: readonly SearchCategory[];
   isIndexing: boolean;
   indexingProgress: IndexingProgress | null;
-  handleSelectFolder: () => void;
+  handleSelectPaths: () => void;
   isSettingsOpen: boolean;
   setIsSettingsOpen: (val: boolean) => void;
 }
@@ -30,7 +30,7 @@ export default function FolderSettings(props: FolderSettingsProps) {
     searchCategories,
     isIndexing,
     indexingProgress,
-    handleSelectFolder,
+    handleSelectPaths,
     isSettingsOpen,
     setIsSettingsOpen,
   } = props;
@@ -38,16 +38,16 @@ export default function FolderSettings(props: FolderSettingsProps) {
     <Sheet open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
       <SheetContent side="right" className="w-[400px] sm:w-[540px]">
         <SheetHeader>
-          <SheetTitle>Folders</SheetTitle>
+          <SheetTitle>Files & Folders</SheetTitle>
           <SheetDescription>
-            Only selected folders will appear in search results.
+            Select files and folders to include in search results.
           </SheetDescription>
         </SheetHeader>
         <div className="mt-6 space-y-4">
           <Button
             variant="outline"
             size="sm"
-            onClick={handleSelectFolder}
+            onClick={handleSelectPaths}
             disabled={isIndexing}
             className="shrink-0"
           >

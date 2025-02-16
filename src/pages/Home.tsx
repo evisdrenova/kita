@@ -126,23 +126,27 @@ export default function Home() {
     }
   };
 
-  const handleSelectFolder = async () => {
+  const handleSelectPaths = async () => {
     try {
-      const result = await window.electron.selectDirectory();
+      const result = await window.electron.selectPaths({
+        properties: ["openFile", "openDirectory", "multiSelections"],
+      });
+
       if (result.canceled || !result.filePaths.length) return;
 
       setIsIndexing(true);
       setIndexingProgress(null);
 
-      const directory = result.filePaths[0];
-      await window.electron.indexDirectories([directory]);
+      // Index all selected paths
+      await window.electron.indexDirectories(result.filePaths);
 
       setIsIndexing(false);
       setIndexingProgress(null);
     } catch (error) {
-      console.error("Error indexing directory:", error);
+      console.error("Error indexing paths:", error);
       setIsIndexing(false);
       setIndexingProgress(null);
+      toast.error("Error indexing selected paths");
     }
   };
 
@@ -264,7 +268,7 @@ export default function Home() {
         searchCategories={searchCategories}
         isIndexing={isIndexing}
         indexingProgress={indexingProgress}
-        handleSelectFolder={handleSelectFolder}
+        handleSelectPaths={handleSelectPaths}
         isSettingsOpen={isSettingsOpen}
         setIsSettingsOpen={setIsSettingsOpen}
       />

@@ -153,12 +153,19 @@ ipcMain.handle("index-directories", async (_, directories: string[]) => {
   }
 });
 
-ipcMain.handle("dialog:selectDirectory", async () => {
-  const result = await dialog.showOpenDialog({
-    properties: ["openDirectory"],
-  });
-  return result;
-});
+ipcMain.handle(
+  "dialog:selectPaths",
+  async (_, options: Electron.OpenDialogOptions) => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openFile", "openDirectory", "multiSelections"],
+      title: "Select Files and Folders",
+      buttonLabel: "Select",
+      filters: options.filters || [],
+      ...options,
+    });
+    return result;
+  }
+);
 
 ipcMain.handle(
   "search-files",

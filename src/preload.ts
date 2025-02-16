@@ -25,8 +25,8 @@ contextBridge.exposeInMainWorld("electron", {
   removeIndexingProgress: (callback: (progress: any) => void) => {
     return ipcRenderer.removeListener("indexing-progress", callback);
   },
-  selectDirectory: () => {
-    return ipcRenderer.invoke("dialog:selectDirectory");
+  selectPaths: (options: Electron.OpenDialogOptions) => {
+    return ipcRenderer.invoke("dialog:selectPaths", options);
   },
   searchFiles: (query: string) => {
     return ipcRenderer.invoke("search-files", query);

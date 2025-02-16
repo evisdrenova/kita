@@ -15,7 +15,7 @@ export interface IElectronAPI {
     success: boolean;
     totalFiles: number;
   }>;
-  selectDirectory: () => Promise<DirectorySelectionResult>;
+  selectPaths: (options: SelectPathsOptions) => Promise<SelectPathsResult>;
   onIndexingProgress: (
     callback: (event: any, progress: IndexingProgress) => void
   ) => void;
@@ -66,7 +66,17 @@ export interface IndexingProgress {
   percentage: number;
 }
 
-export interface DirectorySelectionResult {
+export interface SelectPathsOptions {
+  properties: Array<"openFile" | "openDirectory" | "multiSelections">;
+  title?: string;
+  buttonLabel?: string;
+  filters?: Array<{
+    name: string;
+    extensions: string[];
+  }>;
+}
+
+interface SelectPathsResult {
   canceled: boolean;
   filePaths: string[];
 }
