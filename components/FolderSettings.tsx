@@ -38,8 +38,10 @@ export default function FolderSettings(props: FolderSettingsProps) {
     <Sheet open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
       <SheetContent side="right" className="w-[400px] sm:w-[540px]">
         <SheetHeader>
-          <SheetTitle>Files & Folders</SheetTitle>
-          <SheetDescription>
+          <SheetTitle className="justify-start flex">
+            Files & Folders
+          </SheetTitle>
+          <SheetDescription className="justify-start flex">
             Select files and folders to include in search results.
           </SheetDescription>
         </SheetHeader>
@@ -56,7 +58,7 @@ export default function FolderSettings(props: FolderSettingsProps) {
             ) : (
               <Folder className="h-4 w-4 mr-2" />
             )}
-            {isIndexing ? "Indexing..." : "Index Folder"}
+            {isIndexing ? "Processing..." : "Select Folders/Files"}
           </Button>
           {indexingProgress && (
             <div className="mt-2 space-y-1">

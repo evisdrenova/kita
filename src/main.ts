@@ -42,7 +42,9 @@ const initializeDatabase = () => {
         size INTEGER,
         modified TEXT,
         embedding TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        category TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
