@@ -3,11 +3,9 @@ import {
   BrowserWindow,
   ipcMain,
   Menu,
-  MenuItem,
   globalShortcut,
   dialog,
   shell,
-  nativeImage,
 } from "electron";
 import path from "path";
 import started from "electron-squirrel-startup";
@@ -15,7 +13,13 @@ import Database from "better-sqlite3";
 import log from "electron-log/main";
 import FileProcessor from "./FileProcessor";
 import { exec } from "child_process";
-import { AppInfo, DBResult, FileMetadata, SearchSection } from "./types";
+import {
+  AppInfo,
+  DBResult,
+  EmbeddingSearchResults,
+  FileMetadata,
+  SearchSection,
+} from "./types";
 import AppHandler from "./AppHandler";
 
 if (started) {
@@ -76,6 +80,7 @@ const createWindow = async () => {
         nodeIntegration: false,
         contextIsolation: true,
         preload: path.join(__dirname, "preload.js"),
+        devTools: true,
       },
     });
 
@@ -108,18 +113,27 @@ const createWindow = async () => {
       );
     }
 
-    // Open the DevTools.
-    mainWindow.webContents.openDevTools();
+    // Move DevTools opening after window load
+    mainWindow.webContents.once("did-finish-load", () => {
+      mainWindow.webContents.openDevTools({ mode: "detach" });
+    });
+
+    // Context menu for inspect element
     mainWindow.webContents.on("context-menu", (event, params) => {
-      const menu = new Menu();
-      menu.append(
-        new MenuItem({
+      const menu = Menu.buildFromTemplate([
+        {
           label: "Inspect Element",
           click: () => {
             mainWindow.webContents.inspectElement(params.x, params.y);
           },
-        })
-      );
+        },
+        {
+          label: "Toggle DevTools",
+          click: () => {
+            mainWindow.webContents.toggleDevTools();
+          },
+        },
+      ]);
       menu.popup();
     });
     appHandler = new AppHandler(mainWindow);
@@ -145,7 +159,7 @@ ipcMain.on("window-close", () => {
   mainWindow.close();
 });
 
-ipcMain.handle("index-directories", async (_, directories: string[]) => {
+ipcMain.handle("index-and-embed-paths", async (_, directories: string[]) => {
   try {
     const processor = new FileProcessor(db, mainWindow);
     return await processor.processPaths(directories);
@@ -166,6 +180,87 @@ ipcMain.handle(
       ...options,
     });
     return result;
+  }
+);
+
+ipcMain.handle(
+  "search-files-and-embeddings",
+  async (_, query: string): Promise<SearchSection[]> => {
+    console.log("query", query);
+    try {
+      // text-based search
+      const textStmt = db.prepare(`
+      SELECT 
+        id,
+        name,
+        path,
+        extension,
+        size,
+        modified
+      FROM files 
+      WHERE name LIKE ? 
+         OR path LIKE ? 
+      LIMIT 50
+    `);
+
+      const searchPattern = `%${query}%`;
+      const nameResults = textStmt.all(
+        searchPattern,
+        searchPattern
+      ) as FileMetadata[];
+
+      // embedding search
+      const response = await fetch("http://127.0.0.1:8000/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, k: 1 }),
+      });
+      if (!response.ok) throw new Error("Semantic search failed");
+      const embeddingResponse =
+        (await response.json()) as EmbeddingSearchResults;
+
+      // For each result from the embedding search, query SQLite for metadata.
+      const embedStmt = db.prepare(`
+      SELECT id, path, name, category, embedding
+      FROM files
+      WHERE id = ?
+    `);
+
+      console.log("embeddingResponse", embeddingResponse);
+
+      const semanticResults = embeddingResponse.results.map((result) => {
+        const fileRow = embedStmt.get(result.file_id) as FileMetadata;
+        console.log("file row", fileRow);
+        return {
+          ...fileRow,
+          distance: result.distance, // Add the distance metric from the vector search
+        };
+      });
+
+      console.log("semantic results", semanticResults);
+
+      // create search sections and return
+      const sections: SearchSection[] = [];
+      if (nameResults.length > 0) {
+        sections.push({
+          type: "files",
+          title: "Name Matches",
+          items: nameResults,
+        });
+      }
+      if (semanticResults.length > 0) {
+        sections.push({
+          type: "files",
+          title: "Semantic Matches",
+          items: semanticResults,
+        });
+      }
+
+      return sections;
+    } catch (error) {
+      console.error("Error in combined-search:", error);
+      throw error;
+    }
   }
 );
 
@@ -352,483 +447,6 @@ ipcMain.handle("get-recents", async () => {
     throw error;
   }
 });
-
-// ipcMain.handle("db-get-setting", async (_event, key: string) => {
-//   return settingManager.get(key);
-// });
-
-// ipcMain.handle(
-//   "db-set-setting",
-//   async (_event, key: string, value: SettingsValue) => {
-//     return settingManager.set(key, value);
-//   }
-// );
-
-// ipcMain.handle("db-get-all-settings", async () => {
-//   return settingManager.getAll();
-// });
-
-// ipcMain.handle(
-//   "db-set-multiple-settings",
-//   async (_event, settings: Record<string, SettingsValue>) => {
-//     return settingManager.setMultiple(settings);
-//   }
-// );
-
-// ipcMain.handle("set-user", (_, user: User) => {
-//   const stmt = db.prepare(`
-//     INSERT into user (name) values (?)`);
-
-//   return stmt.run(user.name);
-// });
-
-// ipcMain.handle("get-user", () => {
-//   try {
-//     const stmt = db.prepare(`SELECT id, name from user`);
-//     const user = stmt.get();
-//     return user;
-//   } catch (error) {
-//     throw error;
-//   }
-// });
-
-// ipcMain.handle("get-providers", () => {
-//   try {
-//     const stmt = db.prepare(
-//       "SELECT id, name, type, baseUrl, apiPath, apiKey, model, config FROM providers"
-//     );
-//     return stmt.all();
-//   } catch (error) {
-//     throw error;
-//   }
-// });
-
-// ipcMain.handle("add-provider", (_, provider: Provider) => {
-//   try {
-//     const stmt = db.prepare(
-//       "INSERT INTO providers (name, type, baseUrl, apiPath, apiKey, model, config) VALUES (?, ?, ?, ?, ?, ?, ?)"
-//     );
-//     return stmt.run(
-//       provider.name,
-//       provider.type,
-//       provider.baseUrl,
-//       provider.apiPath,
-//       provider.apiKey,
-//       provider.model,
-//       provider.config
-//     );
-//   } catch (error) {
-//     console.log("unable to create new provider", error);
-//     throw new error("unable to create new provider");
-//   }
-// });
-
-// ipcMain.handle("delete-provider", (_, id: number) => {
-//   try {
-//     const stmt = db.prepare("DELETE FROM providers WHERE id = ?");
-//     const result = stmt.run(id);
-//     if (result.changes === 0) {
-//       throw new Error(`No provider found with id ${id}`);
-//     }
-//     return result;
-//   } catch (error) {
-//     console.error("Error deleting provider:", error);
-//     throw error;
-//   }
-// });
-
-// ipcMain.handle("update-provider", async (_, provider: Provider) => {
-//   try {
-//     const stmt = db.prepare(
-//       "UPDATE providers SET name = ?, type = ?, baseUrl = ?, apiPath = ?, apiKey = ?, model = ?, config = ? WHERE id = ?"
-//     );
-//     return stmt.run(
-//       provider.name,
-//       provider.type,
-//       provider.baseUrl,
-//       provider.apiPath,
-//       provider.apiKey,
-//       provider.model,
-//       provider.config,
-//       provider.id
-//     );
-//   } catch (error) {
-//     console.log("unable to update provider", error);
-//     throw new Error("unable to update provider");
-//   }
-// });
-
-// ipcMain.handle("select-provider", (_, provider: Provider) => {
-//   providers.setProvider(provider);
-//   return true;
-// });
-
-// ipcMain.handle("get-servers", () => {
-//   return mcp.getServers();
-// });
-
-// ipcMain.handle("add-server", async (_, config: ServerConfig) => {
-//   try {
-//     // Install the server and get updated config
-//     const server = await mcp.serverManager.installServer(config, db);
-
-//     // Save to database
-//     const stmt = db.prepare(`
-//       INSERT INTO servers (
-//         name,
-//         description,
-//         installType,
-//         package,
-//         startCommand,
-//         args,
-//         version,
-//         enabled
-//       ) VALUES (?,?,?,?,?,?,?,?)
-//     `);
-
-//     const result = stmt.run(
-//       server.name,
-//       server.description || null,
-//       server.installType,
-//       server.package,
-//       server.startCommand || null,
-//       JSON.stringify(server.args),
-//       server.version || null,
-//       server.enabled ? 1 : 0
-//     );
-
-//     if (result.changes === 0) {
-//       throw new Error("Failed to save server to database");
-//     }
-
-//     return result.lastInsertRowid;
-//   } catch (error) {
-//     log.error("Error adding server:", error);
-//     throw error;
-//   }
-// });
-
-// ipcMain.handle("delete-server", async (_, id: number) => {
-//   try {
-//     const getStmt = db.prepare("SELECT name FROM servers WHERE id = ?");
-//     const server = getStmt.get(id) as { name: string } | undefined;
-
-//     if (!server) {
-//       throw new Error(`No server found with id ${id}`);
-//     }
-
-//     // Clean up the server
-//     await mcp.serverManager.cleanupServer(id, server.name);
-
-//     // Delete from database
-//     const deleteStmt = db.prepare("DELETE FROM servers WHERE id = ?");
-//     const result = deleteStmt.run(id);
-
-//     if (result.changes === 0) {
-//       throw new Error(`Failed to delete server from database`);
-//     }
-
-//     return result;
-//   } catch (error) {
-//     log.error("Error deleting server:", error);
-//     throw error;
-//   }
-// });
-
-// ipcMain.handle("update-server", (_, config: ServerConfig) => {
-//   const stmt = db.prepare(`
-//     UPDATE servers SET
-//       name = ?,
-//       description = ?,
-//       installType = ?,
-//       package = ?,
-//       startCommand = ?,
-//       args = ?,
-//       version = ?,
-//       enabled = ?
-//     WHERE id = ?
-//   `);
-
-//   const args = Array.isArray(config.args) ? JSON.stringify(config.args) : "[]";
-//   const result = stmt.run(
-//     config.name,
-//     config.description || null,
-//     config.installType,
-//     config.package,
-//     config.startCommand || null,
-//     args,
-//     config.version || null,
-//     config.enabled ? 1 : 0,
-//     config.id
-//   );
-//   return result;
-// });
-
-// ipcMain.handle("start-server", async (_, serverId: number) => {
-//   const stmt = db.prepare("SELECT * FROM servers WHERE id = ?");
-//   const dbRecord = stmt.get(serverId) as ServerConfig;
-//   if (!dbRecord) throw new Error("Server not found");
-
-//   const server: ServerConfig = {
-//     id: dbRecord.id,
-//     name: dbRecord.name,
-//     description: dbRecord.description || undefined,
-//     installType: dbRecord.installType,
-//     package: dbRecord.package,
-//     startCommand: dbRecord.startCommand || undefined,
-//     args: JSON.parse(String(dbRecord.args)),
-//     version: dbRecord.version || undefined,
-//     enabled: dbRecord.enabled === true,
-//   };
-
-//   return mcp.createClient(server);
-// });
-
-// ipcMain.handle("stop-server", async (_, id: number) => {
-//   const stmt = db.prepare("SELECT * FROM servers WHERE id = ?");
-//   const dbRecord = stmt.get(id) as ServerConfig;
-//   if (!dbRecord) throw new Error("Server not found");
-
-//   const server: ServerConfig = {
-//     id: dbRecord.id,
-//     name: dbRecord.name,
-//     description: dbRecord.description || undefined,
-//     installType: dbRecord.installType,
-//     package: dbRecord.package,
-//     startCommand: dbRecord.startCommand || undefined,
-//     args: JSON.parse(String(dbRecord.args)),
-//     version: dbRecord.version || undefined,
-//     enabled: dbRecord.enabled === true,
-//   };
-//   return mcp.closeClient(server);
-// });
-
-// ipcMain.handle("get-conversations", () => {
-//   try {
-//     const stmt = db.prepare(`
-//       SELECT
-//         c.id,
-//         c.providerId,
-//         c.title,
-//         c.createdAt,
-//         c.parent_conversation_id,
-//         json_group_array(
-//           json_object(
-//             'id', m.id,
-//             'conversationId', m.conversationId,
-//             'role', m.role,
-//             'content', m.content,
-//             'createdAt', m.createdAt
-//           )
-//         ) as messages
-//       FROM conversations c
-//       LEFT JOIN messages m ON c.id = m.conversationId
-//       GROUP BY c.id
-//     `);
-
-//     const rawResults = stmt.all() as {
-//       id: number;
-//       providerId: number;
-//       title: string;
-//       createdAt: string;
-//       parent_conversation_id: number | null;
-//       messages: string;
-//     }[];
-
-//     const conversations = rawResults.map((convo) => {
-//       const parsedMessages = JSON.parse(convo.messages as string);
-
-//       return {
-//         ...convo,
-//         messages: parsedMessages.filter((m: any) => m.id !== null),
-//       };
-//     });
-
-//     return conversations;
-//   } catch (error) {
-//     console.log("unable to get conversations", error);
-//     throw error;
-//   }
-// });
-
-// ipcMain.handle("create-conversation", (_, convo: Partial<Conversation>) => {
-//   try {
-//     const stmt = db.prepare(`
-//     INSERT into conversations (providerId, title, parent_conversation_id ) VALUES(?,?,?)
-//     `);
-
-//     const result = stmt.run(
-//       convo.providerId,
-//       convo.title,
-//       convo.parent_conversation_id || null
-//     );
-
-//     return result.lastInsertRowid;
-//   } catch (error) {
-//     console.log("unable to create new conversation");
-//     throw error;
-//   }
-// });
-
-// ipcMain.handle("delete-conversation", (_, convoId: number) => {
-//   try {
-//     const getStmt = db.prepare("SELECT title FROM conversations WHERE id = ?");
-//     const convo = getStmt.get(convoId) as { title: string } | undefined;
-
-//     if (!convo) {
-//       throw new Error(`No conversation found with id ${convoId}`);
-//     }
-
-//     db.transaction(() => {
-//       const deleteMessages = db.prepare(
-//         "DELETE FROM messages WHERE conversationId = ?"
-//       );
-//       deleteMessages.run(convoId);
-
-//       const deleteConvo = db.prepare("DELETE FROM conversations WHERE id = ?");
-//       const result = deleteConvo.run(convoId);
-
-//       if (result.changes === 0) {
-//         throw new Error(`Failed to delete conversation from database`);
-//       }
-//     })();
-
-//     return { success: true };
-//   } catch (error) {
-//     console.log("unable to delete conversation", error);
-//     throw error;
-//   }
-// });
-
-// ipcMain.handle("save-message", (_, message: Message) => {
-//   try {
-//     const content = message.content.content || message.content;
-
-//     const stmt = db.prepare(`
-//       INSERT INTO messages (
-//         conversationId,
-//         role,
-//         content
-//       ) VALUES (?, ?, ?)
-//     `);
-
-//     const result = stmt.run(
-//       message.conversationId,
-//       message.role,
-//       JSON.stringify(content) // Store the actual content array
-//     );
-
-//     return result.lastInsertRowid;
-//   } catch (error) {
-//     console.log("unable to save message", error);
-//     throw error;
-//   }
-// });
-
-// ipcMain.handle("save-messages", (_, messages: Message[]) => {
-//   try {
-//     const stmt = db.prepare(`
-//       INSERT INTO messages (
-//         conversationId,
-//         role,
-//         content
-//       ) VALUES (?, ?, ?)
-//     `);
-
-//     const results = db.transaction((messages: Message[]) => {
-//       return messages.map((message) =>
-//         stmt.run(message.conversationId, message.role, message.content)
-//       );
-//     })(messages);
-
-//     return results.map((result) => result.lastInsertRowid);
-//   } catch (error) {
-//     console.log("unable to save messages", error);
-//     throw error;
-//   }
-// });
-
-// ipcMain.handle("delete-message", (_, messageId: number) => {
-//   try {
-//     const stmt = db.prepare(`
-//   DELETE from messages where id = ?`);
-
-//     return stmt.run(messageId);
-//   } catch (error) {
-//     console.log("unable to delete message", error);
-//   }
-// });
-
-// ipcMain.handle(
-//   "update-conversation-title",
-//   (_, convoId: number, newTitle: string) => {
-//     try {
-//       const stmt = db.prepare(`
-//       UPDATE conversations
-//       SET title = ?
-//       WHERE id = ?
-//     `);
-
-//       const result = stmt.run(newTitle, convoId);
-
-//       if (result.changes === 0) {
-//         throw new Error(`No conversation found with id ${convoId}`);
-//       }
-
-//       return { success: true };
-//     } catch (error) {
-//       console.log("unable to update conversation title", error);
-//       throw error;
-//     }
-//   }
-// );
-
-// ipcMain.handle("get-conversation-messages", (_, conversationId: number) => {
-//   try {
-//     const stmt = db.prepare(`
-//       SELECT
-//         id,
-//         conversationId,
-//         role,
-//         content,
-//         createdAt
-//       FROM messages
-//       WHERE conversationId = ?
-//       ORDER BY createdAt ASC
-//     `);
-
-//     return stmt.all(conversationId);
-//   } catch (error) {
-//     console.log("unable to get conversation messages", error);
-//     throw error;
-//   }
-// });
-
-// ipcMain.handle("chat", async (_, data: Message[]) => {
-//   if (!providers.getCurrentProvider()) {
-//     throw new Error("No provider selected");
-//   }
-//   return providers.processQuery(data);
-// });
-
-// ipcMain.handle("summarize-context", async (_, data: Message[]) => {
-//   if (!providers.getCurrentProvider()) {
-//     throw new Error("No provider selected");
-//   }
-//   return providers.summarizeContext(data);
-// });
-
-// ipcMain.handle("extractPDFText", async (_, file) => {
-//   // Implement PDF text extraction
-// });
-
-// ipcMain.handle("parseCSV", async (_, file) => {
-//   // Implement CSV parsing
-// });
-
-// ipcMain.handle("parseSpreadsheet", async (_, file) => {
-//   // Implement spreadsheet parsing
-// });
 
 // called when Electron has initialized and is ready to create browser windows.
 app.on("ready", createWindow);

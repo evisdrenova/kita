@@ -97,6 +97,11 @@ export function debounce<T extends (...args: any[]) => any>(
 }
 
 export function getCategoryFromExtension(extension: string): SearchCategory {
+  if (!extension || typeof extension !== "string") {
+    return "Other";
+  }
+
+  console.log("extension", extension);
   switch (extension.toLowerCase()) {
     case ".app":
       return "Applications";
@@ -114,4 +119,23 @@ export function getCategoryFromExtension(extension: string): SearchCategory {
     default:
       return "Other";
   }
+}
+
+export function truncatePath(path: string, maxLength: number = 50) {
+  const parts = path.split("/");
+  const fileName = parts.pop() || "";
+  const directory = parts.join("/");
+
+  if (path.length <= maxLength) return path;
+
+  // Calculate how many characters we can show from start and end of the directory
+  const dotsLength = 3;
+  const maxDirLength = maxLength - fileName.length - dotsLength;
+  const startLength = Math.floor(maxDirLength / 2);
+  const endLength = Math.floor(maxDirLength / 2);
+
+  const startPath = directory.slice(0, startLength);
+  const endPath = directory.slice(-endLength);
+
+  return `${startPath}...${endPath}/${fileName}`;
 }

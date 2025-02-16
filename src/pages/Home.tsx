@@ -35,7 +35,7 @@ import { Button } from "../../components/ui/button";
 import WindowAction from "../../components/WindowActions";
 import { toast } from "sonner";
 import { Input } from "../../components/ui/input";
-import { getCategoryFromExtension } from "../../src/lib/utils";
+import { getCategoryFromExtension, truncatePath } from "../../src/lib/utils";
 
 export const searchCategories = [
   "Applications",
@@ -117,7 +117,7 @@ export default function Home() {
     }
 
     try {
-      const sections = await window.electron.searchFiles(query);
+      const sections = await window.electron.searchFilesAndEmbeddings(query);
       setSearchSections(sections);
       setSelectedSection(0);
       setSelectedItem(0);
@@ -138,7 +138,7 @@ export default function Home() {
       setIndexingProgress(null);
 
       // Index all selected paths
-      await window.electron.indexDirectories(result.filePaths);
+      await window.electron.indexAndEmbedPaths(result.filePaths);
 
       setIsIndexing(false);
       setIndexingProgress(null);
@@ -199,7 +199,7 @@ export default function Home() {
 
   const handleResultSelect = async (
     item: FileMetadata | AppInfo,
-    type: "apps" | "files"
+    type: "apps" | "files" | "semantic"
   ) => {
     try {
       if (type === "apps") {
@@ -211,6 +211,8 @@ export default function Home() {
       toast.error("Error opening item");
     }
   };
+
+  console.log("search sections", searchSections);
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
@@ -237,7 +239,7 @@ export default function Home() {
           // Show search results
           searchSections.map((section, sectionIndex) => (
             <div
-              key={section.type}
+              key={sectionIndex}
               className={`${sectionIndex > 0 ? "mt-6" : ""}`}
             >
               <h2 className="text-xs font-semibold text-muted-foreground mb-2">
@@ -317,25 +319,6 @@ interface SearchResultsProps {
   updatedApps: AppInfo[];
 }
 
-function truncatePath(path: string, maxLength: number = 50) {
-  const parts = path.split("/");
-  const fileName = parts.pop() || "";
-  const directory = parts.join("/");
-
-  if (path.length <= maxLength) return path;
-
-  // Calculate how many characters we can show from start and end of the directory
-  const dotsLength = 3;
-  const maxDirLength = maxLength - fileName.length - dotsLength;
-  const startLength = Math.floor(maxDirLength / 2);
-  const endLength = Math.floor(maxDirLength / 2);
-
-  const startPath = directory.slice(0, startLength);
-  const endPath = directory.slice(-endLength);
-
-  return `${startPath}...${endPath}/${fileName}`;
-}
-
 function SearchResults(props: SearchResultsProps) {
   const { items, selectedItem, onSelect, updatedApps } = props;
   const [copiedId, setCopiedId] = useState<number | null>(null);
@@ -372,7 +355,7 @@ function SearchResults(props: SearchResultsProps) {
 
         return (
           <div
-            key={id}
+            key={index}
             className={`flex items-center justify-between cursor-pointer hover:bg-muted p-2 rounded-md group ${
               selectedItem === index ? "bg-muted" : ""
             }`}
@@ -416,6 +399,8 @@ function AppRow(props: AppRowProps) {
 
   const appInfo = getAppInfo(item);
   const fileInfo = getFileInfo(item);
+
+  console.log("item", item);
 
   return (
     <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -572,7 +557,6 @@ function getFileIcon(filePath: string) {
 
   return icon;
 }
-
 interface FooterProps {
   setIsSettingsOpen: (val: boolean) => void;
 }

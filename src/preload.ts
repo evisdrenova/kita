@@ -16,8 +16,8 @@ contextBridge.exposeInMainWorld("electron", {
   setMultipleSettings: (settings: Record<string, SettingsValue>) => {
     return ipcRenderer.invoke("db-set-multiple-settings", settings);
   },
-  indexDirectories: (directories: string[]) => {
-    return ipcRenderer.invoke("index-directories", directories);
+  indexAndEmbedPaths: (directories: string[]) => {
+    return ipcRenderer.invoke("index-and-embed-paths", directories);
   },
   onIndexingProgress: (callback: (progress: any) => void) => {
     return ipcRenderer.on("indexing-progress", callback);
@@ -30,6 +30,9 @@ contextBridge.exposeInMainWorld("electron", {
   },
   searchFiles: (query: string) => {
     return ipcRenderer.invoke("search-files", query);
+  },
+  searchFilesAndEmbeddings: (query: string) => {
+    return ipcRenderer.invoke("search-files-and-embeddings", query);
   },
   launchOrSwitch: (appInfo: AppInfo) => {
     return ipcRenderer.invoke("launch-or-switch", appInfo);

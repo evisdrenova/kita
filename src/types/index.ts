@@ -11,7 +11,7 @@ export interface IElectronAPI {
   setMultipleSettings: (
     settings: Record<string, SettingsValue>
   ) => Promise<boolean>;
-  indexDirectories: (directories: string[]) => Promise<{
+  indexAndEmbedPaths: (directories: string[]) => Promise<{
     success: boolean;
     totalFiles: number;
   }>;
@@ -23,6 +23,7 @@ export interface IElectronAPI {
     callback: (event: any, progress: IndexingProgress) => void
   ) => void;
   searchFiles: (query: string) => Promise<SearchSection[]>;
+  searchFilesAndEmbeddings: (query: string) => Promise<SearchSection[]>;
   launchOrSwitch: (appInfo: AppInfo) => Promise<boolean>;
   openFile: (filePath: string) => Promise<boolean>;
   minimizeWindow: () => void;
@@ -55,7 +56,7 @@ export interface AppInfo {
 }
 
 export interface SearchSection {
-  type: "apps" | "files";
+  type: "apps" | "files" | "semantic";
   title: string;
   items: (FileMetadata | AppInfo)[];
 }
@@ -89,6 +90,15 @@ export interface SearchResult {
   size: number;
   modified: string;
   icon?: React.ReactNode;
+}
+
+export interface EmbeddingSearchResults {
+  results: EmbeddingSearchResult[];
+}
+
+export interface EmbeddingSearchResult {
+  file_id: number;
+  distance: number;
 }
 
 export interface DBResult {

@@ -74,25 +74,64 @@ export default class FileProcessor {
     const category = getCategoryFromExtension(ext);
     const name = path.basename(file.path);
     const content = await this.extractText(file.path);
-    let embedding: number[] = [];
-    if (content) {
-      embedding = await this.getEmbedding(content);
+
+    if (!content) {
+      return;
     }
-    const embeddingJson = JSON.stringify(embedding);
 
-    // Try to update first.
-    const updateStmt = this.db.prepare(`
-      UPDATE files 
-      SET name = ?, category = ?, embedding = ?, updated_at = CURRENT_TIMESTAMP 
-      WHERE path = ?
-    `);
+    try {
+      // First check if file exists in database
+      const checkStmt = this.db.prepare("SELECT id FROM files WHERE path = ?");
+      const existingFile = checkStmt.get(file.path) as
+        | { id: number }
+        | undefined;
 
-    const result = updateStmt.run(name, category, embeddingJson, file.path);
-    if (result.changes === 0) {
-      const insertStmt = this.db.prepare(`
-        INSERT INTO files (path, name, category, embedding) VALUES (?, ?, ?, ?)
-      `);
-      insertStmt.run(file.path, name, category, embeddingJson);
+      if (existingFile) {
+        // File exists, generate new embedding and update
+        const embedding = await this.addFileEmbedding(existingFile.id, content);
+        const embeddingJson = JSON.stringify(embedding);
+
+        const updateStmt = this.db.prepare(`
+          UPDATE files 
+          SET name = ?, 
+              category = ?, 
+              embedding = ?, 
+              updated_at = CURRENT_TIMESTAMP 
+          WHERE id = ?
+        `);
+
+        updateStmt.run(name, category, embeddingJson, existingFile.id);
+      } else {
+        // File doesn't exist, insert first to get ID
+        const insertStmt = this.db.prepare(`
+          INSERT INTO files (path, name, category, extension) 
+          VALUES (?, ?, ?,?)
+        `);
+
+        const result = insertStmt.run(
+          file.path,
+          name,
+          category,
+          file.extension
+        );
+        const newFileId = result.lastInsertRowid as number;
+
+        // Now generate embedding with the new ID
+        const embedding = await this.addFileEmbedding(newFileId, content);
+        const embeddingJson = JSON.stringify(embedding);
+
+        // Update the record with the embedding
+        const updateStmt = this.db.prepare(`
+          UPDATE files 
+          SET embedding = ? 
+          WHERE id = ?
+        `);
+
+        updateStmt.run(embeddingJson, newFileId);
+      }
+    } catch (error) {
+      console.error(`Error processing file ${file.path}:`, error);
+      throw error;
     }
   }
 
@@ -191,6 +230,32 @@ export default class FileProcessor {
     }
     const data = await response.json();
     return data.embedding;
+  }
+
+  /**
+   * Generates an embedding for the given text and then adds or updates that file's embedding
+   * in the vector index via the /add_file endpoint.
+   *
+   * @param fileId - A unique identifier for the file (managed by your app)
+   * @param text - The text content extracted from the file
+   * @returns The embedding vector as an array of numbers
+   */
+  private async addFileEmbedding(
+    fileId: number,
+    text: string
+  ): Promise<number[]> {
+    const embedding = await this.getEmbedding(text);
+
+    // update the vector index
+    const response = await fetch("http://127.0.0.1:8000/add_file", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file_id: fileId ?? 0, embedding }),
+    });
+    if (!response.ok) {
+      throw new Error("Failed to add file embedding");
+    }
+    return embedding;
   }
 
   private updateProgress(): void {
