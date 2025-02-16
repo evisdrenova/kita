@@ -100,8 +100,6 @@ export function getCategoryFromExtension(extension: string): SearchCategory {
   if (!extension || typeof extension !== "string") {
     return "Other";
   }
-
-  console.log("extension", extension);
   switch (extension.toLowerCase()) {
     case ".app":
       return "Applications";

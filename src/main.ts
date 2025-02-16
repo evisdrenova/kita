@@ -45,7 +45,6 @@ const initializeDatabase = () => {
         name TEXT,
         extension TEXT,
         size INTEGER,
-        modified TEXT,
         embedding TEXT,
         category TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -199,7 +198,8 @@ ipcMain.handle(
         path,
         extension,
         size,
-        modified
+        created_at,
+        updated_at
       FROM files 
       WHERE name LIKE ? 
          OR path LIKE ? 
@@ -231,10 +231,9 @@ ipcMain.handle(
 
       const semanticResults = embeddingResponse.results.map((result) => {
         const fileRow = embedStmt.get(result.file_id) as FileMetadata;
-        console.log("file row", fileRow);
         return {
           ...fileRow,
-          distance: result.distance, // Add the distance metric from the vector search
+          distance: result.distance,
         };
       });
 

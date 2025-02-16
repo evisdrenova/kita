@@ -23,7 +23,6 @@ import {
   Cpu,
 } from "lucide-react";
 import {
-  SearchResult,
   SearchCategory,
   FileMetadata,
   SearchSection,
@@ -201,11 +200,11 @@ export default function Home() {
   }, [searchSections, selectedSection, selectedItem]);
 
   const handleResultSelect = async (
-    item: FileMetadata | AppMetadata | SemanticMetadata,
-    type: "apps" | "files" | "semantic"
+    item: SearchItem,
+    type: SearchSectionType
   ) => {
     try {
-      if (type === "apps") {
+      if (type === SearchSectionType.Apps) {
         await window.electron.launchOrSwitch(item as AppMetadata);
       } else {
         await window.electron.openFile((item as FileMetadata).path);
@@ -249,7 +248,7 @@ export default function Home() {
                 {section.title}
               </h2>
               <SearchResults
-                items={section.items}
+                section={section}
                 selectedItem={
                   sectionIndex === selectedSection ? selectedItem : -1
                 }
@@ -316,14 +315,14 @@ function Header(props: HeaderProps) {
 }
 
 interface SearchResultsProps {
-  items: SearchItem[];
+  section: SearchSection;
   selectedItem: number;
   onSelect: (item: SearchItem, index: number) => void;
   updatedApps: AppMetadata[];
 }
 
 function SearchResults(props: SearchResultsProps) {
-  const { items, selectedItem, onSelect, updatedApps } = props;
+  const { section, selectedItem, onSelect, updatedApps } = props;
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
   const handleCopy = async (path: string, id: number) => {
@@ -345,11 +344,11 @@ function SearchResults(props: SearchResultsProps) {
       : app;
   };
 
-  console.log("item", items);
+  console.log("section", section);
 
   return (
     <div className="flex flex-col">
-      {items.map((item, index) => {
+      {section.items.map((item, index) => {
         return (
           <div
             key={item.id || index}
@@ -359,11 +358,11 @@ function SearchResults(props: SearchResultsProps) {
             onClick={() => onSelect(item, index)}
           >
             {(() => {
-              switch (item.type) {
+              switch (section.type) {
                 case SearchSectionType.Apps:
                   return (
                     <AppRow
-                      app={getUpdatedApp(item)}
+                      app={getUpdatedApp(item as AppMetadata)}
                       handleCopy={handleCopy}
                       copiedId={copiedId}
                     />
@@ -371,7 +370,7 @@ function SearchResults(props: SearchResultsProps) {
                 case SearchSectionType.Files:
                   return (
                     <FileRow
-                      file={item}
+                      file={item as FileMetadata}
                       handleCopy={handleCopy}
                       copiedId={copiedId}
                     />
@@ -379,7 +378,7 @@ function SearchResults(props: SearchResultsProps) {
                 case SearchSectionType.Semantic:
                   return (
                     <SemanticRow
-                      file={item}
+                      file={item as SemanticMetadata}
                       handleCopy={handleCopy}
                       copiedId={copiedId}
                     />
@@ -407,7 +406,7 @@ function FileRow(props: FileRowProps) {
       <div className="flex flex-col min-w-0 flex-1">
         <div className="flex flex-row items-center gap-1">
           {getFileIcon(file.path)}
-          <span className="text-sm">{file.name}</span>
+          <span className="text-sm text-primary-foreground">{file.name}</span>
           {
             <button
               onClick={(e) => {
@@ -467,7 +466,7 @@ function AppRow(props: AppRowProps) {
           ) : (
             <Package className="h-4 w-4" />
           )}
-          <span className="text-sm">{app?.name}</span>
+          <span className="text-sm text-primary-foreground">{app?.name}</span>
           {app?.isRunning && (
             <Circle className="bg-green-500 border-0 rounded-full w-2 h-2" />
           )}
@@ -528,8 +527,8 @@ function SemanticRow(props: SemanticRowProps) {
       <div className="flex flex-col min-w-0 flex-1">
         <div className="flex flex-row items-center gap-1">
           {getFileIcon(file.path)}
-          <span className="text-sm">{file.name}</span>
-          <span>{file.distance}%</span>
+          <span className="text-sm text-primary-foreground">{file.name}</span>
+          <span className="pl-2">{Math.floor(file.distance * 100)}%</span>
           {
             <button
               onClick={(e) => {
@@ -687,8 +686,8 @@ function EmptyState() {
 interface RecentsProps {
   recents: FileMetadata[];
   handleResultSelect: (
-    item: FileMetadata | AppMetadata,
-    type: "apps" | "files"
+    item: SearchItem,
+    type: SearchSectionType
   ) => Promise<void>;
 }
 
@@ -705,7 +704,7 @@ function Recents(props: RecentsProps) {
           <div
             key={index}
             className="flex items-center cursor-pointer hover:bg-muted p-2 rounded-md group"
-            onClick={() => handleResultSelect(file, "files")}
+            onClick={() => handleResultSelect(file, SearchSectionType.Files)}
           >
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <div className="flex flex-col min-w-0 flex-1">

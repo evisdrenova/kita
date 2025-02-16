@@ -8,6 +8,8 @@ The best local search app for your mac
 - real time mode to handle new files
 - customizable hot key
 - everything has to be very very fast
+- split out embeddings from file and make it it's own table with foreign key to files.id
+  - that way we can use ids for key={id} in Home.tsx
 
 # Built-in embedding pipeline
 

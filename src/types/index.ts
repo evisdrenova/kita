@@ -78,7 +78,7 @@ export enum SearchSectionType {
 export interface SearchSection {
   type: SearchSectionType;
   title: string;
-  items: (FileMetadata | AppMetadata | SemanticMetadata)[];
+  items: SearchItem[];
 }
 
 export interface IndexingProgress {
@@ -108,7 +108,8 @@ export interface SearchResult {
   category: SearchCategory; // this will be based on file extension
   path: string;
   size: number;
-  modified: string;
+  updated_at?: string;
+  created_at?: string;
   icon?: React.ReactNode;
 }
 
@@ -127,7 +128,8 @@ export interface DBResult {
   path: string;
   extension: string;
   size: number;
-  modified: string;
+  updated_at?: string;
+  created_at?: string;
 }
 
 export type SearchCategory = (typeof searchCategories)[number];
