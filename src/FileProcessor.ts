@@ -5,7 +5,7 @@ import { BrowserWindow } from "electron";
 import { statSync } from "fs";
 import fetch from "node-fetch";
 import { getCategoryFromExtension } from "./lib/utils";
-import { FileMetadata } from "./types";
+import { FileMetadata, SearchSectionType } from "./types";
 
 export default class FileProcessor {
   private db: Database.Database;
@@ -41,7 +41,7 @@ export default class FileProcessor {
             name: path.basename(targetPath),
             extension: path.extname(targetPath),
             size: stats.size,
-            modified: stats.mtime.toISOString(),
+            type: SearchSectionType.Files,
           });
         }
       }
@@ -193,7 +193,7 @@ export default class FileProcessor {
             name: entry.name,
             extension: path.extname(entry.name),
             size: stats.size,
-            modified: stats.mtime.toISOString(),
+            type: SearchSectionType.Files,
           });
         }
       }

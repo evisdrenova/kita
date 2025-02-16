@@ -24,41 +24,61 @@ export interface IElectronAPI {
   ) => void;
   searchFiles: (query: string) => Promise<SearchSection[]>;
   searchFilesAndEmbeddings: (query: string) => Promise<SearchSection[]>;
-  launchOrSwitch: (appInfo: AppInfo) => Promise<boolean>;
+  launchOrSwitch: (appInfo: AppMetadata) => Promise<boolean>;
   openFile: (filePath: string) => Promise<boolean>;
   minimizeWindow: () => void;
   maximizeWindow: () => void;
   closeWindow: () => void;
   onResourceUsageUpdated: (
-    callback: (event: IpcRendererEvent, updatedApps: AppInfo[]) => void
+    callback: (event: IpcRendererEvent, updatedApps: AppMetadata[]) => void
   ) => void;
   removeResourceUsageUpdated: (
-    callback: (event: IpcRendererEvent, updatedApps: AppInfo[]) => void
+    callback: (event: IpcRendererEvent, updatedApps: AppMetadata[]) => void
   ) => void;
   getRecents: () => Promise<FileMetadata[]>;
 }
-export interface FileMetadata {
+
+interface BaseMetadata {
   id?: number;
-  path: string;
   name: string;
-  extension: string;
-  size: number;
-  modified: string;
+  path: string;
 }
 
-export interface AppInfo {
-  name: string;
-  path: string;
+export interface FileMetadata extends BaseMetadata {
+  type: SearchSectionType.Files;
+  extension: string;
+  size: number;
+  updated_at?: string;
+  created_at?: string;
+}
+
+export interface AppMetadata extends BaseMetadata {
+  type: SearchSectionType.Apps;
   isRunning: boolean;
+  memoryUsage?: number;
+  cpuUsage?: number;
   iconDataUrl?: string;
-  memoryUsage?: number; // in MiB
-  cpuUsage?: number; // in %
+}
+
+export interface SemanticMetadata extends BaseMetadata {
+  type: SearchSectionType.Semantic;
+  extension: string;
+  distance: number;
+  content?: string;
+}
+
+export type SearchItem = FileMetadata | AppMetadata | SemanticMetadata;
+
+export enum SearchSectionType {
+  Apps = "apps",
+  Files = "files",
+  Semantic = "semantic",
 }
 
 export interface SearchSection {
-  type: "apps" | "files" | "semantic";
+  type: SearchSectionType;
   title: string;
-  items: (FileMetadata | AppInfo)[];
+  items: (FileMetadata | AppMetadata | SemanticMetadata)[];
 }
 
 export interface IndexingProgress {

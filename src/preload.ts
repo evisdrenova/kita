@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from "electron";
 import { SettingsValue } from "./settings/Settings";
-import { AppInfo } from "./types";
+import { AppMetadata } from "./types";
 
 contextBridge.exposeInMainWorld("electron", {
   // settings methods
@@ -34,7 +34,7 @@ contextBridge.exposeInMainWorld("electron", {
   searchFilesAndEmbeddings: (query: string) => {
     return ipcRenderer.invoke("search-files-and-embeddings", query);
   },
-  launchOrSwitch: (appInfo: AppInfo) => {
+  launchOrSwitch: (appInfo: AppMetadata) => {
     return ipcRenderer.invoke("launch-or-switch", appInfo);
   },
 
@@ -45,10 +45,10 @@ contextBridge.exposeInMainWorld("electron", {
   maximizeWindow: () => ipcRenderer.send("window-maximize"),
   closeWindow: () => ipcRenderer.send("window-close"),
   onResourceUsageUpdated: (
-    callback: (event: IpcRendererEvent, updatedApps: AppInfo[]) => void
+    callback: (event: IpcRendererEvent, updatedApps: AppMetadata[]) => void
   ) => ipcRenderer.on("resource-usage-updated", callback),
   removeResourceUsageUpdated: (
-    callback: (event: IpcRendererEvent, updatedApps: AppInfo[]) => void
+    callback: (event: IpcRendererEvent, updatedApps: AppMetadata[]) => void
   ) => ipcRenderer.removeListener("resource-usage-updated", callback),
   getRecents: () => {
     return ipcRenderer.invoke("get-recents");

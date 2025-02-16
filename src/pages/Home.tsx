@@ -27,7 +27,10 @@ import {
   SearchCategory,
   FileMetadata,
   SearchSection,
-  AppInfo,
+  AppMetadata,
+  SemanticMetadata,
+  SearchSectionType,
+  SearchItem,
 } from "../../src/types/index";
 import { ThemeToggle } from "../../src/ThemeProvider";
 import { FaRegFilePdf } from "react-icons/fa";
@@ -67,7 +70,7 @@ export default function Home() {
   const [searchSections, setSearchSections] = useState<SearchSection[]>([]);
   const [selectedSection, setSelectedSection] = useState<number>(0);
   const [selectedItem, setSelectedItem] = useState<number>(0);
-  const [updatedApps, setUpdatedApps] = useState<AppInfo[]>([]);
+  const [updatedApps, setUpdatedApps] = useState<AppMetadata[]>([]);
   const [recents, setRecents] = useState<FileMetadata[]>([]);
 
   useEffect(() => {
@@ -82,7 +85,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const handler = (event: any, apps: AppInfo[]) => {
+    const handler = (event: any, apps: AppMetadata[]) => {
       setUpdatedApps(apps);
     };
 
@@ -198,12 +201,12 @@ export default function Home() {
   }, [searchSections, selectedSection, selectedItem]);
 
   const handleResultSelect = async (
-    item: FileMetadata | AppInfo,
+    item: FileMetadata | AppMetadata | SemanticMetadata,
     type: "apps" | "files" | "semantic"
   ) => {
     try {
       if (type === "apps") {
-        await window.electron.launchOrSwitch(item as AppInfo);
+        await window.electron.launchOrSwitch(item as AppMetadata);
       } else {
         await window.electron.openFile((item as FileMetadata).path);
       }
@@ -313,10 +316,10 @@ function Header(props: HeaderProps) {
 }
 
 interface SearchResultsProps {
-  items: (FileMetadata | AppInfo)[];
+  items: SearchItem[];
   selectedItem: number;
-  onSelect: (item: FileMetadata | AppInfo, index: number) => void;
-  updatedApps: AppInfo[];
+  onSelect: (item: SearchItem, index: number) => void;
+  updatedApps: AppMetadata[];
 }
 
 function SearchResults(props: SearchResultsProps) {
@@ -333,11 +336,7 @@ function SearchResults(props: SearchResultsProps) {
     }
   };
 
-  const isAppInfo = (item: FileMetadata | AppInfo): item is AppInfo => {
-    return "isRunning" in item;
-  };
-
-  const getUpdatedApp = (app: AppInfo): AppInfo => {
+  const getUpdatedApp = (app: AppMetadata): AppMetadata => {
     const updated = updatedApps.find(
       (u) => u.name.toLowerCase() === app.name.toLowerCase()
     );
@@ -346,29 +345,47 @@ function SearchResults(props: SearchResultsProps) {
       : app;
   };
 
+  console.log("item", items);
+
   return (
     <div className="flex flex-col">
       {items.map((item, index) => {
-        const isApp = isAppInfo(item);
-        const id = isApp ? index : (item as FileMetadata).id;
-        const itemToRender = isApp ? getUpdatedApp(item as AppInfo) : item;
-
         return (
           <div
-            key={index}
+            key={item.id || index}
             className={`flex items-center justify-between cursor-pointer hover:bg-muted p-2 rounded-md group ${
               selectedItem === index ? "bg-muted" : ""
             }`}
             onClick={() => onSelect(item, index)}
           >
-            <AppRow
-              isApp={isAppInfo(item)}
-              item={itemToRender}
-              appPath={itemToRender.path}
-              handleCopy={handleCopy}
-              copiedId={copiedId}
-              id={id}
-            />
+            {(() => {
+              switch (item.type) {
+                case SearchSectionType.Apps:
+                  return (
+                    <AppRow
+                      app={getUpdatedApp(item)}
+                      handleCopy={handleCopy}
+                      copiedId={copiedId}
+                    />
+                  );
+                case SearchSectionType.Files:
+                  return (
+                    <FileRow
+                      file={item}
+                      handleCopy={handleCopy}
+                      copiedId={copiedId}
+                    />
+                  );
+                case SearchSectionType.Semantic:
+                  return (
+                    <SemanticRow
+                      file={item}
+                      handleCopy={handleCopy}
+                      copiedId={copiedId}
+                    />
+                  );
+              }
+            })()}
           </div>
         );
       })}
@@ -376,104 +393,174 @@ function SearchResults(props: SearchResultsProps) {
   );
 }
 
-interface AppRowProps {
-  item: AppInfo | FileMetadata;
-  isApp: boolean;
-  appPath: string;
+interface FileRowProps {
+  file: Extract<SearchItem, { type: SearchSectionType.Files }>;
   handleCopy: (path: string, id: number) => Promise<void>;
-  copiedId: number;
-  id: number;
+  copiedId: number | null;
 }
 
-function AppRow(props: AppRowProps) {
-  const { item, isApp, appPath, handleCopy, copiedId, id } = props;
-
-  // narrow the types since item is a union type
-  const getAppInfo = (item: FileMetadata | AppInfo): AppInfo | null => {
-    return isApp ? (item as AppInfo) : null;
-  };
-
-  const getFileInfo = (item: FileMetadata | AppInfo): FileMetadata | null => {
-    return !isApp ? (item as FileMetadata) : null;
-  };
-
-  const appInfo = getAppInfo(item);
-  const fileInfo = getFileInfo(item);
-
-  console.log("item", item);
+function FileRow(props: FileRowProps) {
+  const { file, handleCopy, copiedId } = props;
 
   return (
     <div className="flex items-center gap-2 min-w-0 flex-1">
       <div className="flex flex-col min-w-0 flex-1">
         <div className="flex flex-row items-center gap-1">
-          {isApp ? (
-            appInfo?.iconDataUrl ? (
-              <img
-                src={appInfo.iconDataUrl}
-                className="w-4 h-4 object-contain"
-                alt={appInfo.name}
-              />
-            ) : (
-              <Package className="h-4 w-4" />
-            )
+          {getFileIcon(file.path)}
+          <span className="text-sm">{file.name}</span>
+          {
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCopy(file.path, file.id);
+              }}
+              className={`opacity-0 group-hover:opacity-100 ml-2 p-1 hover:bg-background rounded transition-opacity duration-200 ${
+                copiedId === file.id
+                  ? "text-green-500"
+                  : "text-muted-foreground"
+              }`}
+            >
+              {copiedId === file.id ? (
+                <Check className="h-3 w-3" />
+              ) : (
+                <Copy className="h-3 w-3" />
+              )}
+            </button>
+          }
+        </div>
+        <div className="flex items-center gap-2 min-w-0 h-0 group-hover:h-auto overflow-hidden transition-all duration-200">
+          {
+            <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-5 flex-1">
+              {truncatePath(file.path)}
+            </span>
+          }
+          {
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              {getCategoryFromExtension(file.extension)}
+            </span>
+          }
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface AppRowProps {
+  app: Extract<SearchItem, { type: SearchSectionType.Apps }>;
+  handleCopy: (path: string, id: number) => Promise<void>;
+  copiedId: number | null;
+}
+
+function AppRow(props: AppRowProps) {
+  const { app, handleCopy, copiedId } = props;
+
+  return (
+    <div className="flex items-center gap-2 min-w-0 flex-1">
+      <div className="flex flex-col min-w-0 flex-1">
+        <div className="flex flex-row items-center gap-1">
+          {app?.iconDataUrl ? (
+            <img
+              src={app.iconDataUrl}
+              className="w-4 h-4 object-contain"
+              alt={app.name}
+            />
           ) : (
-            getFileIcon(appPath)
+            <Package className="h-4 w-4" />
           )}
-          <span className="text-sm">
-            {isApp ? appInfo?.name : fileInfo?.name}
-          </span>
-          {isApp && appInfo?.isRunning && (
+          <span className="text-sm">{app?.name}</span>
+          {app?.isRunning && (
             <Circle className="bg-green-500 border-0 rounded-full w-2 h-2" />
           )}
-          {isApp && appInfo?.isRunning && (
+          {app?.isRunning && (
             <span className="text-xs text-gray-500 ml-2">
-              {appInfo.memoryUsage !== undefined ? (
+              {app.memoryUsage !== undefined ? (
                 <div className="flex flex-row items-center gap-1">
                   <MemoryStick className="w-3 h-3" />
-                  {appInfo.memoryUsage.toFixed(1)} MB
+                  {app.memoryUsage.toFixed(1)} MB
                 </div>
               ) : (
                 "—"
               )}
             </span>
           )}
-          {isApp && appInfo?.isRunning && appInfo?.cpuUsage !== undefined && (
+          {app?.isRunning && app?.cpuUsage !== undefined && (
             <span className="text-xs text-gray-500 ml-2">
               <div className="flex flex-row items-center gap-1">
                 <Cpu className="w-3 h-3" />
-                {appInfo.cpuUsage.toFixed(1)}% CPU
+                {app.cpuUsage.toFixed(1)}% CPU
               </div>
             </span>
           )}
-          {!isApp && (
+          {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                handleCopy(appPath, id);
+                handleCopy(app.path, app.id);
               }}
               className={`opacity-0 group-hover:opacity-100 ml-2 p-1 hover:bg-background rounded transition-opacity duration-200 ${
-                copiedId === id ? "text-green-500" : "text-muted-foreground"
+                copiedId === app.id ? "text-green-500" : "text-muted-foreground"
               }`}
             >
-              {copiedId === id ? (
+              {copiedId === app.id ? (
                 <Check className="h-3 w-3" />
               ) : (
                 <Copy className="h-3 w-3" />
               )}
             </button>
-          )}
+          }
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface SemanticRowProps {
+  file: Extract<SearchItem, { type: SearchSectionType.Semantic }>;
+  handleCopy: (path: string, id: number) => Promise<void>;
+  copiedId: number | null;
+}
+
+function SemanticRow(props: SemanticRowProps) {
+  const { file, handleCopy, copiedId } = props;
+
+  return (
+    <div className="flex items-center gap-2 min-w-0 flex-1">
+      <div className="flex flex-col min-w-0 flex-1">
+        <div className="flex flex-row items-center gap-1">
+          {getFileIcon(file.path)}
+          <span className="text-sm">{file.name}</span>
+          <span>{file.distance}%</span>
+          {
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCopy(file.path, file.id);
+              }}
+              className={`opacity-0 group-hover:opacity-100 ml-2 p-1 hover:bg-background rounded transition-opacity duration-200 ${
+                copiedId === file.id
+                  ? "text-green-500"
+                  : "text-muted-foreground"
+              }`}
+            >
+              {copiedId === file.id ? (
+                <Check className="h-3 w-3" />
+              ) : (
+                <Copy className="h-3 w-3" />
+              )}
+            </button>
+          }
         </div>
         <div className="flex items-center gap-2 min-w-0 h-0 group-hover:h-auto overflow-hidden transition-all duration-200">
-          {!isApp && (
+          {
             <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-5 flex-1">
-              {truncatePath(appPath)}
+              {truncatePath(file.path)}
             </span>
-          )}
-          {!isApp && (
+          }
+          {
             <span className="text-xs text-muted-foreground whitespace-nowrap">
-              {getCategoryFromExtension((item as FileMetadata).extension)}
+              {getCategoryFromExtension(file.extension)}
             </span>
-          )}
+          }
         </div>
       </div>
     </div>
@@ -600,7 +687,7 @@ function EmptyState() {
 interface RecentsProps {
   recents: FileMetadata[];
   handleResultSelect: (
-    item: FileMetadata | AppInfo,
+    item: FileMetadata | AppMetadata,
     type: "apps" | "files"
   ) => Promise<void>;
 }

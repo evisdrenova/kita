@@ -14,11 +14,12 @@ import log from "electron-log/main";
 import FileProcessor from "./FileProcessor";
 import { exec } from "child_process";
 import {
-  AppInfo,
+  AppMetadata,
   DBResult,
   EmbeddingSearchResults,
   FileMetadata,
   SearchSection,
+  SearchSectionType,
 } from "./types";
 import AppHandler from "./AppHandler";
 
@@ -186,8 +187,10 @@ ipcMain.handle(
 ipcMain.handle(
   "search-files-and-embeddings",
   async (_, query: string): Promise<SearchSection[]> => {
-    console.log("query", query);
     try {
+      // get apps
+      const apps = await appHandler.getAllApps(query);
+
       // text-based search
       const textStmt = db.prepare(`
       SELECT 
@@ -204,7 +207,7 @@ ipcMain.handle(
     `);
 
       const searchPattern = `%${query}%`;
-      const nameResults = textStmt.all(
+      const fileResults = textStmt.all(
         searchPattern,
         searchPattern
       ) as FileMetadata[];
@@ -226,8 +229,6 @@ ipcMain.handle(
       WHERE id = ?
     `);
 
-      console.log("embeddingResponse", embeddingResponse);
-
       const semanticResults = embeddingResponse.results.map((result) => {
         const fileRow = embedStmt.get(result.file_id) as FileMetadata;
         console.log("file row", fileRow);
@@ -237,91 +238,34 @@ ipcMain.handle(
         };
       });
 
-      console.log("semantic results", semanticResults);
-
       // create search sections and return
       const sections: SearchSection[] = [];
-      if (nameResults.length > 0) {
+      if (fileResults.length > 0) {
         sections.push({
-          type: "files",
-          title: "Name Matches",
-          items: nameResults,
+          type: SearchSectionType.Files,
+          title: "File Name Matches",
+          items: fileResults,
         });
       }
       if (semanticResults.length > 0) {
         sections.push({
-          type: "files",
+          type: SearchSectionType.Semantic,
           title: "Semantic Matches",
           items: semanticResults,
+        });
+      }
+
+      if (apps.length > 0) {
+        sections.push({
+          type: SearchSectionType.Apps,
+          title: "Applications",
+          items: apps,
         });
       }
 
       return sections;
     } catch (error) {
       console.error("Error in combined-search:", error);
-      throw error;
-    }
-  }
-);
-
-ipcMain.handle(
-  "search-files",
-  async (_, query: string): Promise<SearchSection[]> => {
-    try {
-      const apps = await appHandler.getAllApps(query);
-
-      // Get matching files from database with proper typing
-      const stmt = db.prepare(`
-      SELECT 
-        id,
-        name,
-        path,
-        extension,
-        size,
-        modified
-      FROM files 
-      WHERE name LIKE ? 
-      OR path LIKE ? 
-      LIMIT 50
-    `);
-
-      const searchPattern = `%${query}%`;
-      const dbResults = stmt.all(searchPattern, searchPattern) as DBResult[];
-
-      // Explicitly type the database results
-      const files = dbResults.map(
-        (row: any): FileMetadata => ({
-          id: row.id,
-          name: row.name,
-          path: row.path,
-          extension: row.extension,
-          size: row.size,
-          modified: row.modified,
-        })
-      );
-
-      // Return organized sections with proper typing
-      const sections: SearchSection[] = [];
-
-      if (apps.length > 0) {
-        sections.push({
-          type: "apps",
-          title: "Applications",
-          items: apps,
-        });
-      }
-
-      if (files.length > 0) {
-        sections.push({
-          type: "files",
-          title: "Files",
-          items: files,
-        });
-      }
-
-      return sections;
-    } catch (error) {
-      console.error("Error searching:", error);
       throw error;
     }
   }
@@ -358,7 +302,7 @@ ipcMain.handle(
 
       return [
         {
-          type: "files",
+          type: SearchSectionType.Files,
           title: "Files",
           items: matchedFiles,
         },
@@ -372,7 +316,7 @@ ipcMain.handle(
 
 ipcMain.handle(
   "launch-or-switch",
-  async (_, appInfo: AppInfo): Promise<boolean> => {
+  async (_, appInfo: AppMetadata): Promise<boolean> => {
     try {
       return await appHandler.launchOrSwitchToApp(appInfo);
     } catch (error) {
