@@ -1,7 +1,7 @@
 import { exec } from "child_process";
 import * as path from "path";
 import * as os from "os";
-import { AppInfo } from "./types";
+import { AppMetadata, SearchSectionType } from "./types";
 import { BrowserWindow, nativeImage } from "electron";
 import chokidar from "chokidar";
 import { debounce } from "./lib/utils";
@@ -17,7 +17,7 @@ import * as fs from "fs/promises";
  * ```
  */
 export default class AppHandler {
-  private cachedApps: AppInfo[] = [];
+  private cachedApps: AppMetadata[] = [];
   private readonly appDirectories: string[];
   private readonly debounceDelay = 2000;
   private mainWindow: BrowserWindow; // used to udpate the resource stats in real time
@@ -50,7 +50,7 @@ export default class AppHandler {
    *
    * @throws {Error} If there's an error accessing the file system or getting app information
    */
-  async getAllApps(searchQuery: string): Promise<AppInfo[]> {
+  async getAllApps(searchQuery: string): Promise<AppMetadata[]> {
     try {
       return this.filterAndSortApps(searchQuery);
     } catch (error) {
@@ -73,7 +73,7 @@ export default class AppHandler {
    *
    * @throws {Error} If there's an error launching or switching to the application
    */
-  async launchOrSwitchToApp(appInfo: AppInfo): Promise<boolean> {
+  async launchOrSwitchToApp(appInfo: AppMetadata): Promise<boolean> {
     try {
       if (appInfo.isRunning) {
         await this.switchToApp(appInfo.name);
@@ -236,7 +236,7 @@ export default class AppHandler {
   private async mergeAppInfo(
     appPaths: string[],
     runningAppNames: string[]
-  ): Promise<AppInfo[]> {
+  ): Promise<AppMetadata[]> {
     return Promise.all(
       appPaths.map(async (appPath) => {
         const name = path.basename(appPath, ".app");
@@ -246,6 +246,7 @@ export default class AppHandler {
           path: appPath,
           isRunning: runningAppNames.includes(name),
           iconDataUrl,
+          type: SearchSectionType.Apps,
         };
       })
     );
@@ -265,7 +266,7 @@ export default class AppHandler {
    *
    * @private
    */
-  private filterAndSortApps(searchQuery: string): AppInfo[] {
+  private filterAndSortApps(searchQuery: string): AppMetadata[] {
     return this.cachedApps
       .filter((app) =>
         app.name.toLowerCase().includes(searchQuery.toLowerCase())
