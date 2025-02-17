@@ -23,8 +23,10 @@
     "@electron/fuses": "^1.8.0",
     "@types/better-sqlite3": "^7.6.12",
     "@types/electron-squirrel-startup": "^1",
+    "@types/pdf-parse": "^1.1.4",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "@types/textract": "^2.4.5",
     "@typescript-eslint/eslint-plugin": "^5.0.0",
     "@typescript-eslint/parser": "^5.0.0",
     "autoprefixer": "^10.4.20",
@@ -89,8 +91,10 @@
     "framer-motion": "^11.17.0",
     "input-otp": "^1.4.1",
     "lucide-react": "^0.469.0",
+    "mammoth": "^1.9.0",
     "next-themes": "^0.4.4",
     "openai": "^4.77.3",
+    "pdf-parse": "^1.1.1",
     "prism-react-renderer": "^2.4.1",
     "prismjs": "^1.29.0",
     "react": "^19.0.0",
@@ -109,7 +113,10 @@
     "tailwind": "^4.0.0",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
+    "tesseract.js": "^6.0.0",
+    "textract": "^2.5.0",
     "vaul": "^1.1.2",
+    "xlsx": "^0.18.5",
     "yaml": "^2.7.0"
   }
 }

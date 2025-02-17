@@ -100,20 +100,69 @@ export function getCategoryFromExtension(extension: string): SearchCategory {
   if (!extension || typeof extension !== "string") {
     return "Other";
   }
+
   switch (extension.toLowerCase()) {
     case ".app":
+    case ".exe":
+    case ".dmg":
       return "Applications";
+
     case ".pdf":
       return "PDF Documents";
+
     case ".doc":
     case ".docx":
     case ".txt":
+    case ".rtf":
       return "Documents";
+
     case ".jpg":
     case ".jpeg":
     case ".png":
     case ".gif":
+    case ".svg":
+    case ".webp":
       return "Images";
+
+    case ".js":
+    case ".ts":
+    case ".jsx":
+    case ".tsx":
+    case ".py":
+    case ".java":
+    case ".cpp":
+    case ".html":
+    case ".css":
+    case ".json":
+    case ".xml":
+    case ".yaml":
+    case ".yml":
+      return "Documents";
+
+    case ".mp4":
+    case ".mov":
+    case ".avi":
+    case ".mkv":
+      return "Other";
+
+    case ".mp3":
+    case ".wav":
+    case ".flac":
+    case ".m4a":
+      return "Other";
+
+    case ".xlsx":
+    case ".xls":
+    case ".csv":
+      return "Spreadsheets";
+
+    case ".zip":
+    case ".rar":
+    case ".7z":
+    case ".tar":
+    case ".gz":
+      return "Other";
+
     default:
       return "Other";
   }

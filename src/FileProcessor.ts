@@ -6,6 +6,9 @@ import { statSync } from "fs";
 import fetch from "node-fetch";
 import { getCategoryFromExtension } from "./lib/utils";
 import { FileMetadata, SearchSectionType } from "./types";
+import mammoth from "mammoth";
+import pdfParse from "pdf-parse";
+import textract from "textract";
 
 export default class FileProcessor {
   private db: Database.Database;
@@ -209,11 +212,80 @@ export default class FileProcessor {
    */
   private async extractText(filePath: string): Promise<string> {
     const ext = path.extname(filePath).toLowerCase();
-    if (ext === ".txt") {
-      return await fs.readFile(filePath, "utf-8");
+
+    // Extensions we can treat as plain text.
+    const plainTextExtensions = new Set([
+      ".txt",
+      ".js",
+      ".ts",
+      ".jsx",
+      ".tsx",
+      ".py",
+      ".java",
+      ".cpp",
+      ".html",
+      ".css",
+      ".json",
+      ".xml",
+      ".yaml",
+      ".yml",
+    ]);
+
+    if (plainTextExtensions.has(ext)) {
+      return this.extractTextFromPlain(filePath);
+    } else if (ext === ".docx") {
+      return this.extractTextFromDocx(filePath);
+    } else if (ext === ".pdf") {
+      return this.extractTextFromPDF(filePath);
+    } else if (ext === ".doc" || ext === ".rtf") {
+      return this.extractTextFromDocOrRtf(filePath);
     }
-    // TODO: Add support for PDF, DOCX, etc.
+
+    // If extension is not supported, return an empty string.
     return "";
+  }
+
+  async extractTextFromDocOrRtf(filePath: string): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      textract.fromFileWithPath(filePath, (err, text) => {
+        if (err) {
+          console.error(`Error extracting DOC/RTF file ${filePath}:`, err);
+          reject(err);
+        } else {
+          resolve(text);
+        }
+      });
+    }).catch(() => "");
+  }
+
+  async extractTextFromPDF(filePath: string): Promise<string> {
+    try {
+      const dataBuffer = await fs.readFile(filePath);
+      const data = await pdfParse(dataBuffer);
+      return data.text;
+    } catch (error) {
+      console.error(`Error extracting PDF file ${filePath}:`, error);
+      return "";
+    }
+  }
+
+  async extractTextFromDocx(filePath: string): Promise<string> {
+    try {
+      const result = await mammoth.extractRawText({ path: filePath });
+      return result.value;
+    } catch (error) {
+      console.error(`Error extracting DOCX file ${filePath}:`, error);
+      return "";
+    }
+  }
+
+  async extractTextFromPlain(filePath: string): Promise<string> {
+    try {
+      return await fs.readFile(filePath, "utf-8");
+    } catch (error) {
+      console.error(`Error reading plain text file ${filePath}:`, error);
+      return "";
+    }
   }
 
   /**
