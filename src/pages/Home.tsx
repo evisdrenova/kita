@@ -17,7 +17,6 @@ import {
   Copy,
   Circle,
   Files,
-  Table,
   Check,
   MemoryStick,
   Cpu,

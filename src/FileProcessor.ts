@@ -7,7 +7,7 @@ import fetch from "node-fetch";
 import { getCategoryFromExtension } from "./lib/utils";
 import { FileMetadata, SearchSectionType } from "./types";
 import mammoth from "mammoth";
-import pdfParse from "pdf-parse";
+import PDFParser from "pdf2json";
 import textract from "textract";
 
 export default class FileProcessor {
@@ -276,17 +276,38 @@ export default class FileProcessor {
     }).catch(() => "");
   }
 
-  async extractTextFromPDF(filePath: string): Promise<string> {
-    try {
-      const dataBuffer = await fs.readFile(filePath);
-      const data = await pdfParse(dataBuffer);
-      return data.text;
-    } catch (error) {
-      console.error(`Error extracting PDF file ${filePath}:`, error);
-      return "";
-    }
-  }
+  private async extractTextFromPDF(filePath: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const pdfParser = new PDFParser();
 
+      pdfParser.on("pdfParser_dataReady", (pdfData) => {
+        try {
+          // Convert the PDF data to text
+          const text = pdfData.Pages.map((page) =>
+            page.Texts.map((text) => decodeURIComponent(text.R[0].T)).join(" ")
+          ).join("\n");
+
+          resolve(text);
+        } catch (error) {
+          console.error(`Error parsing PDF data from ${filePath}:`, error);
+          resolve(""); // Resolve with empty string on error
+        }
+      });
+
+      pdfParser.on("pdfParser_dataError", (error) => {
+        console.error(`Error reading PDF file ${filePath}:`, error);
+        resolve(""); // Resolve with empty string on error
+      });
+
+      // Load and parse PDF file
+      try {
+        pdfParser.loadPDF(filePath);
+      } catch (error) {
+        console.error(`Error loading PDF file ${filePath}:`, error);
+        resolve(""); // Resolve with empty string on error
+      }
+    });
+  }
   async extractTextFromDocx(filePath: string): Promise<string> {
     try {
       const result = await mammoth.extractRawText({ path: filePath });
