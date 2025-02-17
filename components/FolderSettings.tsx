@@ -1,4 +1,4 @@
-import { Folder, FolderGit2, Loader2, Settings } from "lucide-react";
+import { Folder, Loader2 } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -11,16 +11,19 @@ import { Checkbox } from "./ui/checkbox";
 import { SearchCategory } from "../src/types/index";
 import { IndexingProgress } from "../src/pages/Home";
 import { Progress } from "./ui/progress";
+import { useEffect } from "react";
 
 interface FolderSettingsProps {
   toggleCategory: (category: SearchCategory) => void;
   selectedCategories: Set<SearchCategory>;
   searchCategories: readonly SearchCategory[];
   isIndexing: boolean;
+  setIsIndexing: (val: boolean) => void;
   indexingProgress: IndexingProgress | null;
   handleSelectPaths: () => void;
   isSettingsOpen: boolean;
   setIsSettingsOpen: (val: boolean) => void;
+  setIndexingProgress: (val: IndexingProgress) => void;
 }
 
 export default function FolderSettings(props: FolderSettingsProps) {
@@ -33,7 +36,22 @@ export default function FolderSettings(props: FolderSettingsProps) {
     handleSelectPaths,
     isSettingsOpen,
     setIsSettingsOpen,
+    setIsIndexing,
+    setIndexingProgress,
   } = props;
+
+  useEffect(() => {
+    if (indexingProgress?.percentage === 100) {
+      // Add a small delay to show the 100% state briefly
+      const timer = setTimeout(() => {
+        setIsIndexing(false);
+        setIndexingProgress(null);
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [indexingProgress?.percentage]);
+
   return (
     <Sheet open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
       <SheetContent side="right" className="w-[400px] sm:w-[540px]">
@@ -60,7 +78,7 @@ export default function FolderSettings(props: FolderSettingsProps) {
             )}
             {isIndexing ? "Processing..." : "Select Folders/Files"}
           </Button>
-          {indexingProgress && (
+          {isIndexing && indexingProgress && (
             <div className="mt-2 space-y-1">
               <Progress value={indexingProgress.percentage} className="h-1" />
               <p className="text-xs text-muted-foreground">

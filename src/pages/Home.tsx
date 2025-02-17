@@ -273,8 +273,10 @@ export default function Home() {
         isIndexing={isIndexing}
         indexingProgress={indexingProgress}
         handleSelectPaths={handleSelectPaths}
+        setIsIndexing={setIsIndexing}
         isSettingsOpen={isSettingsOpen}
         setIsSettingsOpen={setIsSettingsOpen}
+        setIndexingProgress={setIndexingProgress}
       />
     </div>
   );

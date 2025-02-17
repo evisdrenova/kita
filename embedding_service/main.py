@@ -25,7 +25,7 @@ class SearchResponse(BaseModel):
 class FileData(BaseModel):
     file_id: int  # for new files, this can be 0 or -1
     embedding: list
-    
+
 # configuration & persistence path
 INDEX_PATH = "vector_index.bin"
 max_elements = 10000
@@ -55,7 +55,6 @@ async def embed_text(request: EmbedRequest):
 # searcg for similar files
 @app.post("/search", response_model=SearchResponse)
 async def search_files(request: SearchRequest):
-    print("search query", request.query)
     query_emb = model.encode(request.query)
     labels, distances = index.knn_query(np.array([query_emb]), k=request.k)
     results = []

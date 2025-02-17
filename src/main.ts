@@ -385,6 +385,7 @@ ipcMain.handle("open-file", async (_, filePath: string) => {
     return false;
   }
 });
+
 ipcMain.handle("get-recents", async () => {
   try {
     // First, try to get recents from the database.
