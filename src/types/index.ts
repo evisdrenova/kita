@@ -132,6 +132,12 @@ export interface DBResult {
   created_at?: string;
 }
 
+export interface RecentDbResult {
+  id: number;
+  path: string;
+  lastClicked: string;
+}
+
 export type SearchCategory = (typeof searchCategories)[number];
 
 declare global {

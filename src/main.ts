@@ -18,6 +18,7 @@ import {
   DBResult,
   EmbeddingSearchResults,
   FileMetadata,
+  RecentDbResult,
   SearchSection,
   SearchSectionType,
 } from "./types";
@@ -384,7 +385,6 @@ ipcMain.handle("open-file", async (_, filePath: string) => {
     return false;
   }
 });
-
 ipcMain.handle("get-recents", async () => {
   try {
     // First, try to get recents from the database.
@@ -395,7 +395,7 @@ ipcMain.handle("get-recents", async () => {
       LIMIT 50
     `);
 
-    const results = stmt.all();
+    const results = stmt.all() as RecentDbResult[];
 
     if (results && results.length > 0) {
       return results.map((row: any) => ({
@@ -405,29 +405,38 @@ ipcMain.handle("get-recents", async () => {
       }));
     }
 
-    // If no recents are stored, query files used in the last 7 days (for example).
+    // If no recents are stored, query files used in the last 7 days
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const isoDate = sevenDaysAgo.toISOString();
 
-    // This query finds files whose last used date is later than ISO date.
     const query = `mdfind 'kMDItemLastUsedDate >= "${isoDate}"' | head -n 50`;
     const recents: string[] = await new Promise((resolve, reject) => {
       exec(query, (error, stdout) => {
         if (error) {
           reject(error);
         } else {
-          const paths = stdout.trim().split("\n");
+          // Filter out empty strings and whitespace-only strings
+          const paths = stdout
+            .trim()
+            .split("\n")
+            .filter((path) => path && path.trim().length > 0);
           resolve(paths);
         }
       });
     });
 
-    return recents.map((filePath) => ({
-      path: filePath,
-      name: path.basename(filePath),
-      extension: path.extname(filePath),
-    }));
+    // Only map if we have actual paths
+    if (recents.length > 0) {
+      return recents.map((filePath) => ({
+        path: filePath,
+        name: path.basename(filePath),
+        extension: path.extname(filePath),
+      }));
+    }
+
+    // Return empty array if no results
+    return [];
   } catch (error) {
     console.error("Error getting recents:", error);
     throw error;

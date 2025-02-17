@@ -214,6 +214,7 @@ export default function Home() {
   };
 
   console.log("search sections", searchSections);
+  console.log("recents", recents);
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
