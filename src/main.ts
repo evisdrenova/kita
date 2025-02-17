@@ -45,10 +45,20 @@ const initializeDatabase = () => {
         name TEXT,
         extension TEXT,
         size INTEGER,
-        embedding TEXT,
         category TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS embeddings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_id INTEGER NOT NULL,
+        embedding TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
       )
     `);
 
@@ -187,7 +197,6 @@ ipcMain.handle(
     return result;
   }
 );
-
 ipcMain.handle(
   "search-files-and-embeddings",
   async (_, query: string): Promise<SearchSection[]> => {
@@ -197,19 +206,19 @@ ipcMain.handle(
 
       // text-based search
       const textStmt = db.prepare(`
-      SELECT 
-        id,
-        name,
-        path,
-        extension,
-        size,
-        created_at,
-        updated_at
-      FROM files 
-      WHERE name LIKE ? 
-         OR path LIKE ? 
-      LIMIT 50
-    `);
+        SELECT 
+          id,
+          name,
+          path,
+          extension,
+          size,
+          created_at,
+          updated_at
+        FROM files 
+        WHERE name LIKE ? 
+           OR path LIKE ? 
+        LIMIT 50
+      `);
 
       const searchPattern = `%${query}%`;
       const fileResults = textStmt.all(
@@ -227,20 +236,36 @@ ipcMain.handle(
       const embeddingResponse =
         (await response.json()) as EmbeddingSearchResults;
 
-      // For each result from the embedding search, query SQLite for metadata.
+      // For each result from the embedding search, query SQLite for metadata
+      // Updated to join files and embeddings tables
       const embedStmt = db.prepare(`
-      SELECT id, path, name, category, embedding
-      FROM files
-      WHERE id = ?
-    `);
+        SELECT 
+          f.id,
+          f.path,
+          f.name,
+          f.category,
+          f.extension,
+          f.size,
+          f.created_at,
+          f.updated_at,
+          e.embedding
+        FROM files f
+        LEFT JOIN embeddings e ON f.id = e.file_id
+        WHERE f.id = ?
+      `);
 
-      const semanticResults = embeddingResponse.results.map((result) => {
-        const fileRow = embedStmt.get(result.file_id) as FileMetadata;
-        return {
-          ...fileRow,
-          distance: result.distance,
-        };
-      });
+      const semanticResults = embeddingResponse.results
+        .map((result) => {
+          const fileRow = embedStmt.get(result.file_id) as FileMetadata;
+          if (!fileRow) return null;
+          return {
+            ...fileRow,
+            distance: result.distance,
+          };
+        })
+        .filter(
+          (result): result is NonNullable<typeof result> => result !== null
+        );
 
       // create search sections and return
       const sections: SearchSection[] = [];
@@ -288,21 +313,35 @@ ipcMain.handle(
       if (!response.ok) throw new Error("Search failed");
       const searchResponse = await response.json();
 
-      // Now, for each result, query SQLite to get metadata.
+      // Now, for each result, query SQLite to get metadata with joined embeddings
       const stmt = db.prepare(`
-      SELECT id, path, name, category, embedding
-      FROM files
-      WHERE id = ?
-    `);
+        SELECT 
+          f.id,
+          f.path,
+          f.name,
+          f.category,
+          f.extension,
+          f.size,
+          f.created_at,
+          f.updated_at,
+          e.embedding
+        FROM files f
+        LEFT JOIN embeddings e ON f.id = e.file_id
+        WHERE f.id = ?
+      `);
 
-      const matchedFiles = searchResponse.results.map((result: any) => {
-        // Assume the file ID from the microservice corresponds to our SQLite row id.
-        const fileRow = stmt.get(result.file_id) as FileMetadata;
-        return {
-          ...fileRow,
-          distance: result.distance,
-        };
-      });
+      const matchedFiles = searchResponse.results
+        .map((result: any) => {
+          const fileRow = stmt.get(result.file_id) as FileMetadata;
+          if (!fileRow) return null;
+          return {
+            ...fileRow,
+            distance: result.distance,
+          };
+        })
+        .filter(
+          (result: any): result is NonNullable<typeof result> => result !== null
+        );
 
       return [
         {
@@ -317,7 +356,6 @@ ipcMain.handle(
     }
   }
 );
-
 ipcMain.handle(
   "launch-or-switch",
   async (_, appInfo: AppMetadata): Promise<boolean> => {

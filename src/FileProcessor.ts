@@ -90,28 +90,44 @@ export default class FileProcessor {
         | undefined;
 
       if (existingFile) {
-        // File exists, generate new embedding and update
-        const embedding = await this.addFileEmbedding(existingFile.id, content);
-        const embeddingJson = JSON.stringify(embedding);
-
-        const updateStmt = this.db.prepare(`
+        // File exists, update file metadata
+        const updateFileStmt = this.db.prepare(`
           UPDATE files 
           SET name = ?, 
               category = ?, 
-              embedding = ?, 
               updated_at = CURRENT_TIMESTAMP 
           WHERE id = ?
         `);
 
-        updateStmt.run(name, category, embeddingJson, existingFile.id);
-      } else {
-        // File doesn't exist, insert first to get ID
-        const insertStmt = this.db.prepare(`
-          INSERT INTO files (path, name, category, extension) 
-          VALUES (?, ?, ?,?)
+        updateFileStmt.run(name, category, existingFile.id);
+
+        // Generate new embedding and update embeddings table
+        const embedding = await this.addFileEmbedding(existingFile.id, content);
+        const embeddingJson = JSON.stringify(embedding);
+
+        const updateEmbeddingStmt = this.db.prepare(`
+          INSERT OR REPLACE INTO embeddings (
+            file_id, 
+            embedding, 
+            updated_at
+          ) VALUES (?, ?, CURRENT_TIMESTAMP)
         `);
 
-        const result = insertStmt.run(
+        updateEmbeddingStmt.run(existingFile.id, embeddingJson);
+      } else {
+        // File doesn't exist, insert file first to get ID
+        const insertFileStmt = this.db.prepare(`
+          INSERT INTO files (
+            path, 
+            name, 
+            category, 
+            extension,
+            created_at,
+            updated_at
+          ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `);
+
+        const result = insertFileStmt.run(
           file.path,
           name,
           category,
@@ -119,18 +135,20 @@ export default class FileProcessor {
         );
         const newFileId = result.lastInsertRowid as number;
 
-        // Now generate embedding with the new ID
+        // Now generate embedding and insert into embeddings table
         const embedding = await this.addFileEmbedding(newFileId, content);
         const embeddingJson = JSON.stringify(embedding);
 
-        // Update the record with the embedding
-        const updateStmt = this.db.prepare(`
-          UPDATE files 
-          SET embedding = ? 
-          WHERE id = ?
+        const insertEmbeddingStmt = this.db.prepare(`
+          INSERT INTO embeddings (
+            file_id, 
+            embedding,
+            created_at,
+            updated_at
+          ) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         `);
 
-        updateStmt.run(embeddingJson, newFileId);
+        insertEmbeddingStmt.run(newFileId, embeddingJson);
       }
     } catch (error) {
       console.error(`Error processing file ${file.path}:`, error);
