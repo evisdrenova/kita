@@ -75,7 +75,7 @@ const createWindow = async () => {
       width: 600,
       height: 500,
       frame: false,
-      icon: path.join(__dirname, "../assets/kita_logo.icns"),
+      icon: path.join(__dirname, "../../assets/kita_icon_margin.icns"),
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
@@ -83,6 +83,11 @@ const createWindow = async () => {
         devTools: true,
       },
     });
+
+    if (process.platform === "darwin") {
+      const dockIcon = path.join(__dirname, "../../assets/kita_margin.png");
+      app.dock.setIcon(dockIcon);
+    }
 
     const hotkey = "Command+Shift+Space";
 

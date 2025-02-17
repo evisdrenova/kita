@@ -10,18 +10,18 @@ import { FuseV1Options, FuseVersion } from "@electron/fuses";
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
-    icon: "./assets/kita_logo",
+    icon: "./assets/kita_icon",
   },
   rebuildConfig: { extraModules: ["better-sqlite3"] },
   makers: [
     new MakerSquirrel({
-      setupIcon: "/assets/kita_logo.ico",
+      setupIcon: "./assets/kita_logo.ico",
     }),
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({}),
     new MakerDeb({
       options: {
-        icon: "/assets/kita_logo.png",
+        icon: "./assets/kita_logo.png",
       },
     }),
   ],
