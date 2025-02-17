@@ -20,6 +20,7 @@ import {
   Check,
   MemoryStick,
   Cpu,
+  Search,
 } from "lucide-react";
 import {
   SearchCategory,
@@ -303,7 +304,7 @@ function Header(props: HeaderProps) {
         </div>
         <div className="flex-1 flex justify-center pr-14">Kita</div>
       </div>
-      <div className="py-2">
+      <div className="py-2 ">
         <Input
           placeholder="Type a command or search..."
           value={searchQuery}
@@ -678,9 +679,14 @@ function Footer(props: FooterProps) {
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center p-8 space-y-2 border border-border border-dashed text-primary-foreground/40 rounded-xl">
-      <Files />
-      <h2 className="mb-2 text-xs">No files found</h2>
+    <div className="flex flex-col items-center justify-center p-8 space-y-2 text-primary-foreground/40 rounded-xl">
+      <div className="bg-gray-200 dark:bg-muted rounded-full p-4">
+        <Search className="text-primary-foreground/80" />
+      </div>
+      <h2 className="mb-2 text-xs font-semibold text-primary-foreground">
+        No files found
+      </h2>
+      <p>Try searching for something else</p>
     </div>
   );
 }
