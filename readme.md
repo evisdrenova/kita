@@ -1,16 +1,34 @@
 # Kita
 
-The best local search app for your mac
+Fast and intelligent search running locally on your mac.
 
-## Roadmap
+(Kita means "found" in Japanese)
 
-- RAG pipeline
-- real time mode to handle new files
-- customizable hot key
+# Architecture
 
-# Built-in embedding pipeline
+![alt text](image.png)
 
-1. Kita tries to create embeddings from all of the files that you have given it access to.
-2. it reads the files, creates an embedding to each file and then stores that embedding in sqllite
-3. then when you query, it searches HNSW for the ANN and returns the id
-4. we then resolve that id to a file that we return the link to the file
+## Components
+
+1. Electron Frontend Layer
+
+   - UI Components: User interface elements
+   - IPC Bridge: Handles communication between frontend and backend
+   - State Management: Manages application state and UI updates
+
+2. Go Orchestrator Layer
+
+   - Request Router: Handles incoming requests from the frontend
+   - File Processor: Handles file operations and indexing
+   - Cache Manager: Manages in-memory caching for performance
+   - Worker Pool Manager: Coordinates Python workers
+
+3. Python Workers Layer
+
+   - Embedding Worker: Generates embeddings for files
+   - LLM Worker: Handles LLM operations
+   - Vector Store: Manages vector embeddings
+
+4. Storage Layer
+   - SQLite: Persistent storage for metadata and embeddings
+   - File System: Raw file storage and access
