@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 
 	fileprocessor "github.com/evisdrenova/kita/go-orchestrator/file-processor"
@@ -31,4 +32,6 @@ func main() {
 	}
 
 	json.NewEncoder(os.Stdout).Encode(result)
+
+	log.Println("All files processed.")
 }
