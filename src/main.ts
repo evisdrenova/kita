@@ -14,7 +14,6 @@ import log from "electron-log/main";
 import { ChildProcess, exec } from "child_process";
 import {
   AppMetadata,
-  DBResult,
   EmbeddingSearchResults,
   FileMetadata,
   RecentDbResult,
@@ -33,7 +32,6 @@ log.initialize();
 let mainWindow: BrowserWindow | null = null;
 let appHandler: AppHandler;
 let orchestratorProcess: ChildProcess | null = null;
-
 function startOrchestrator() {
   const dbPath = path.join(app.getPath("userData"), "kita-database.sqlite");
   const goBinaryPath = path.join(
@@ -45,53 +43,51 @@ function startOrchestrator() {
     stdio: ["pipe", "pipe", "pipe"],
   });
 
+  // Handle stdout - Progress updates and results
   let buffer = "";
   orchestratorProcess.stdout.on("data", (data) => {
-    console.log("Raw data received:", data.toString());
     buffer += data.toString();
+    const lines = buffer.split("\n");
 
-    try {
-      // Split by newlines in case we get multiple messages
-      const lines = buffer.split("\n");
+    // Process all complete lines
+    for (let i = 0; i < lines.length - 1; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
 
-      // Log what we're processing
-      console.log("Processing lines:", lines);
-
-      // Process all complete lines except the last one
-      for (let i = 0; i < lines.length - 1; i++) {
-        const line = lines[i].trim();
-        if (line) {
-          console.log("Attempting to parse line:", line);
-          const result = JSON.parse(line);
-          console.log("Successfully parsed JSON:", result);
-          if (mainWindow) {
-            mainWindow.webContents.send("processing-status", result);
+      try {
+        const result = JSON.parse(line);
+        if (mainWindow && result) {
+          // If it's a progress update (has percentage field)
+          if ("percentage" in result) {
+            mainWindow.webContents.send("indexing-progress", {
+              total: result.total,
+              processed: result.processed,
+              percentage: result.percentage,
+            });
+          } else {
+            // It's the final result
+            mainWindow.webContents.send("processing-complete", result);
           }
         }
+      } catch (err) {
+        console.error("Error parsing JSON from orchestrator:", line);
       }
-
-      // Keep the last (potentially incomplete) line in the buffer
-      buffer = lines[lines.length - 1];
-      console.log("Remaining buffer:", buffer);
-    } catch (err) {
-      console.error("Error parsing orchestrator output:", err);
-      console.error("Current buffer content:", buffer);
-      console.error("Buffer length:", buffer.length);
-      // Print first 100 chars of buffer to see what we're dealing with
-      console.error("Buffer preview:", buffer.substring(0, 100));
     }
+
+    // Keep any incomplete data in the buffer
+    buffer = lines[lines.length - 1];
   });
 
+  // Handle stderr - Log messages and errors
   orchestratorProcess.stderr.on("data", (data) => {
-    console.error("Orchestrator stderr:", data.toString());
-  });
-
-  orchestratorProcess.stderr.on("data", (data) => {
-    console.error("Orchestrator error:", data.toString());
+    console.log("Orchestrator log:", data.toString());
   });
 
   orchestratorProcess.on("error", (err) => {
     console.error("Failed to start Go orchestrator:", err);
+    if (mainWindow) {
+      mainWindow.webContents.send("orchestrator-error", err.message);
+    }
   });
 
   orchestratorProcess.on("exit", (code, signal) => {
@@ -436,6 +432,7 @@ ipcMain.handle(
     }
   }
 );
+
 ipcMain.handle(
   "launch-or-switch",
   async (_, appInfo: AppMetadata): Promise<boolean> => {
