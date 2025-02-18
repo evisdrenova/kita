@@ -11,8 +11,7 @@ import path from "path";
 import started from "electron-squirrel-startup";
 import Database from "better-sqlite3";
 import log from "electron-log/main";
-import FileProcessor from "./FileProcessor";
-import { exec } from "child_process";
+import { ChildProcess, exec } from "child_process";
 import {
   AppMetadata,
   DBResult,
@@ -23,6 +22,7 @@ import {
   SearchSectionType,
 } from "./types";
 import AppHandler from "./AppHandler";
+import { spawn } from "child_process";
 
 if (started) {
   app.quit();
@@ -32,6 +32,46 @@ let db: Database.Database;
 log.initialize();
 let mainWindow: BrowserWindow | null = null;
 let appHandler: AppHandler;
+let orchestratorProcess: ChildProcess | null = null;
+
+function startOrchestrator() {
+  const dbPath = path.join(app.getPath("userData"), "kita-database.sqlite");
+  const goBinaryPath = path.join(
+    __dirname,
+    "../../go-orchestrator/bin/file-processor"
+  );
+
+  console.log("Binary path:", goBinaryPath);
+
+  orchestratorProcess = spawn(goBinaryPath, ["-db", dbPath], {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  orchestratorProcess.stdout.on("data", (data) => {
+    try {
+      const result = JSON.parse(data.toString());
+      if (mainWindow) {
+        mainWindow.webContents.send("processing-status", result);
+      }
+    } catch (err) {
+      console.error("Error parsing orchestrator output:", err);
+    }
+  });
+
+  orchestratorProcess.stderr.on("data", (data) => {
+    console.error("Orchestrator error:", data.toString());
+  });
+
+  orchestratorProcess.on("error", (err) => {
+    console.error("Failed to start Go orchestrator:", err);
+  });
+
+  orchestratorProcess.on("exit", (code, signal) => {
+    console.log(
+      `Go orchestrator exited with code ${code} and signal ${signal}`
+    );
+  });
+}
 
 const initializeDatabase = () => {
   try {
@@ -177,8 +217,19 @@ ipcMain.on("window-close", () => {
 
 ipcMain.handle("index-and-embed-paths", async (_, directories: string[]) => {
   try {
-    const processor = new FileProcessor(db, mainWindow);
-    return await processor.processPaths(directories);
+    if (!orchestratorProcess) {
+      throw new Error("Orchestrator process not running");
+    }
+
+    // Send the directories to the Go process
+    orchestratorProcess.stdin.write(
+      JSON.stringify({
+        paths: directories,
+      }) + "\n"
+    );
+
+    // The result will come back through the stdout handler
+    return { success: true };
   } catch (error) {
     console.error("Error indexing directories:", error);
     throw error;
@@ -198,6 +249,7 @@ ipcMain.handle(
     return result;
   }
 );
+
 ipcMain.handle(
   "search-files-and-embeddings",
   async (_, query: string): Promise<SearchSection[]> => {
@@ -445,7 +497,10 @@ ipcMain.handle("get-recents", async () => {
 });
 
 // called when Electron has initialized and is ready to create browser windows.
-app.on("ready", createWindow);
+app.on("ready", () => {
+  startOrchestrator();
+  createWindow();
+});
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
@@ -456,6 +511,9 @@ app.on("will-quit", () => {
   if (db) {
     db.close();
     globalShortcut.unregisterAll();
+  }
+  if (orchestratorProcess) {
+    orchestratorProcess.kill();
   }
   globalShortcut.unregisterAll();
 });

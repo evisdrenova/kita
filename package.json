@@ -5,10 +5,13 @@
   "description": "My Electron application description",
   "main": ".vite/build/main.js",
   "scripts": {
+    "build:go": "cd go-orchestrator && mkdir -p bin && go build -o bin/file-processor && chmod +x bin/file-processor",
+    "build:go:win": "cd go-orchestrator && mkdir -p bin && go build -o bin/file-processor.exe",
+    "prestart": "npm run build:go",
     "start": "DEBUG=electron-forge:* ELECTRON_ENABLE_LOGGING=true electron-forge start",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
-    "publish": "electron-forge publish",
+    "package": "npm run build:go && electron-forge package",
+    "make": "npm run build:go && electron-forge make",
+    "publish": "npm run build:go && electron-forge publish",
     "lint": "eslint --ext .ts,.tsx ."
   },
   "devDependencies": {

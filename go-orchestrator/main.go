@@ -2,36 +2,71 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"os"
-
-	fileprocessor "github.com/evisdrenova/kita/go-orchestrator/file-processor"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "Usage: %s <database_path> <file_paths...>\n", os.Args[0])
+	// Setup command line flags
+	dbPath := flag.String("db", "", "Path to SQLite database")
+	flag.Parse()
+
+	if *dbPath == "" {
+		fmt.Fprintf(os.Stderr, "Error: database path is required\n")
+		flag.Usage()
 		os.Exit(1)
 	}
 
-	dbPath := os.Args[1]
-	paths := os.Args[2:]
-
-	fp, err := fileprocessor.NewFileProcessor(dbPath)
+	// Initialize the file processor
+	fp, err := NewFileProcessor(*dbPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing processor: %v\n", err)
 		os.Exit(1)
 	}
 	defer fp.Db.Close()
 
-	result, err := fp.ProcessPaths(paths)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error processing paths: %v\n", err)
-		os.Exit(1)
+	// Setup signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	log.Printf("File processor started with database: %s\n", *dbPath)
+
+	// Handle incoming paths from stdin
+	decoder := json.NewDecoder(os.Stdin)
+	encoder := json.NewEncoder(os.Stdout)
+
+	for {
+		select {
+		case sig := <-sigChan:
+			log.Printf("Received signal %v, shutting down...\n", sig)
+			return
+		default:
+			var request struct {
+				Paths []string `json:"paths"`
+			}
+
+			if err := decoder.Decode(&request); err != nil {
+				log.Printf("Error decoding request: %v\n", err)
+				continue
+			}
+
+			result, err := fp.ProcessPaths(request.Paths)
+			if err != nil {
+				log.Printf("Error processing paths: %v\n", err)
+				encoder.Encode(map[string]interface{}{
+					"error": err.Error(),
+				})
+				continue
+			}
+
+			if err := encoder.Encode(result); err != nil {
+				log.Printf("Error encoding result: %v\n", err)
+				continue
+			}
+		}
 	}
-
-	json.NewEncoder(os.Stdout).Encode(result)
-
-	log.Println("All files processed.")
 }
