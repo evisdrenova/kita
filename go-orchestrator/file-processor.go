@@ -1,21 +1,15 @@
 package main
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/ledongthuc/pdf"
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/unidoc/unioffice/document"
 )
 
 type SearchSectionType string
@@ -101,40 +95,6 @@ func NewFileProcessor(dbPath string) (*FileProcessor, error) {
 	}, nil
 }
 
-// Add a helper function for retrying database operations
-func (fp *FileProcessor) retryDBOperation(operation func(*sql.Tx) error) error {
-	maxRetries := 3
-	for i := 0; i < maxRetries; i++ {
-		tx, err := fp.Db.Begin()
-		if err != nil {
-			continue
-		}
-
-		err = operation(tx)
-		if err != nil {
-			tx.Rollback()
-			if strings.Contains(err.Error(), "database is locked") {
-				// Wait before retrying, with exponential backoff
-				time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)
-				continue
-			}
-			return err
-		}
-
-		err = tx.Commit()
-		if err != nil {
-			if strings.Contains(err.Error(), "database is locked") {
-				time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)
-				continue
-			}
-			return err
-		}
-
-		return nil
-	}
-	return fmt.Errorf("database is locked after %d retries", maxRetries)
-}
-
 // ProcessPaths processes multiple file paths concurrently
 func (fp *FileProcessor) ProcessPaths(paths []string) (map[string]interface{}, error) {
 	fp.TotalFiles = 0
@@ -143,7 +103,7 @@ func (fp *FileProcessor) ProcessPaths(paths []string) (map[string]interface{}, e
 
 	// Collect all files first
 	for _, targetPath := range paths {
-		if fp.isDirectory(targetPath) {
+		if isDirectory(targetPath) {
 			files, err := fp.getAllFiles(targetPath)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error processing directory %s: %v\n", targetPath, err)
@@ -168,12 +128,7 @@ func (fp *FileProcessor) ProcessPaths(paths []string) (map[string]interface{}, e
 		}
 	}
 
-	// Log the collected files
 	fmt.Fprintf(os.Stderr, "Processing %d files:\n", len(allFiles))
-	for _, file := range allFiles {
-		fmt.Fprintf(os.Stderr, "  - %s\n", file.Path)
-	}
-	fmt.Fprintf(os.Stderr, "updating progress")
 
 	fp.TotalFiles = len(allFiles)
 	fp.updateProgress()
@@ -297,138 +252,6 @@ func (fp *FileProcessor) processFile(file FileMetadata) error {
 	return fp.retryDBOperation(dbOperation)
 }
 
-func (fp *FileProcessor) extractText(filePath string) (string, error) {
-	ext := strings.ToLower(filepath.Ext(filePath))
-
-	switch {
-	case isPlainText(ext):
-		return fp.extractTextFromPlain(filePath)
-	case ext == ".pdf":
-		return fp.extractTextFromPDF(filePath)
-	case ext == ".docx":
-		return fp.extractTextFromDOCX(filePath)
-	default:
-		return "", nil
-	}
-}
-
-func isPlainText(ext string) bool {
-	plainTextExts := map[string]bool{
-		".txt": true, ".js": true, ".ts": true,
-		".jsx": true, ".tsx": true, ".py": true,
-		".java": true, ".cpp": true, ".html": true,
-		".css": true, ".json": true, ".xml": true,
-		".yaml": true, ".yml": true,
-	}
-	return plainTextExts[ext]
-}
-
-func (fp *FileProcessor) extractTextFromPlain(filePath string) (string, error) {
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return "", err
-	}
-	return string(content), nil
-}
-
-func (fp *FileProcessor) extractTextFromPDF(filePath string) (string, error) {
-	f, r, err := pdf.Open(filePath)
-	if err != nil {
-		return "", fmt.Errorf("malformed PDF: %v", err)
-	}
-	defer f.Close()
-
-	var buf bytes.Buffer
-	b, err := r.GetPlainText()
-	if err != nil {
-		return "", fmt.Errorf("malformed PDF: %v", err)
-	}
-
-	_, err = buf.ReadFrom(b)
-	if err != nil {
-		return "", fmt.Errorf("error reading PDF content: %v", err)
-	}
-
-	if buf.Len() == 0 {
-		return "", fmt.Errorf("no text content found in PDF")
-	}
-
-	return buf.String(), nil
-}
-
-func (fp *FileProcessor) extractTextFromDOCX(filePath string) (string, error) {
-	doc, err := document.Open(filePath)
-	if err != nil {
-		return "", err
-	}
-	var text strings.Builder
-	for _, para := range doc.Paragraphs() {
-		for _, run := range para.Runs() {
-			text.WriteString(run.Text())
-		}
-		text.WriteString("\n")
-	}
-	return text.String(), nil
-}
-
-// getEmbedding gets embedding from the Python microservice
-func (fp *FileProcessor) getEmbedding(text string) ([]float64, error) {
-	payload := map[string]string{"text": text}
-	jsonData, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := http.Post("http://127.0.0.1:8000/embed", "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Embedding []float64 `json:"embedding"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-
-	return result.Embedding, nil
-}
-
-// updateVectorIndex updates the vector index in the Python microservice
-func (fp *FileProcessor) updateVectorIndex(fileID int64, embedding []float64) error {
-	payload := map[string]interface{}{
-		"file_id":   fileID,
-		"embedding": embedding,
-	}
-	jsonData, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-
-	resp, err := http.Post("http://127.0.0.1:8000/add_file", "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to update vector index: %s", body)
-	}
-
-	return nil
-}
-
-// checks if the path is a directory
-func (f *FileProcessor) isDirectory(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return info.IsDir()
-}
-
 // getAllFiles recursively gets all files in a directory
 func (fp *FileProcessor) getAllFiles(dirPath string) ([]FileMetadata, error) {
 	var files []FileMetadata
@@ -470,44 +293,5 @@ func (fp *FileProcessor) updateProgress() {
 		// Only write to stdout, use stderr just for errors
 		fmt.Fprintln(os.Stdout, string(jsonData))
 		os.Stdout.Sync()
-	}
-}
-
-func getCategoryFromExtension(extension string) SearchCategory {
-	if extension == "" {
-		return CategoryOther
-	}
-
-	switch strings.ToLower(extension) {
-	case ".app", ".exe", ".dmg":
-		return CategoryApplications
-
-	case ".pdf":
-		return CategoryPDFDocuments
-
-	case ".doc", ".docx", ".txt", ".rtf":
-		return CategoryDocuments
-
-	case ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp":
-		return CategoryImages
-
-	case ".js", ".ts", ".jsx", ".tsx", ".py", ".java", ".cpp",
-		".html", ".css", ".json", ".xml", ".yaml", ".yml":
-		return CategoryDocuments
-
-	case ".mp4", ".mov", ".avi", ".mkv":
-		return CategoryOther
-
-	case ".mp3", ".wav", ".flac", ".m4a":
-		return CategoryOther
-
-	case ".xlsx", ".xls", ".csv":
-		return CategorySpreadsheets
-
-	case ".zip", ".rar", ".7z", ".tar", ".gz":
-		return CategoryOther
-
-	default:
-		return CategoryOther
 	}
 }
