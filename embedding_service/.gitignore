@@ -46,15 +46,3 @@ htmlcov/
 *.h5
 *.model
 *.bin
-
-# Go build artifacts
-go-orchestrator/bin/
-*.exe
-*.dll
-*.so
-*.dylib
-go-orchestrator/vector_index.bin
-
-# Go build and test cache
-*.test
-*.out
