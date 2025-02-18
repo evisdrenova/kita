@@ -41,21 +41,49 @@ function startOrchestrator() {
     "../../go-orchestrator/bin/file-processor"
   );
 
-  console.log("Binary path:", goBinaryPath);
-
   orchestratorProcess = spawn(goBinaryPath, ["-db", dbPath], {
     stdio: ["pipe", "pipe", "pipe"],
   });
 
+  let buffer = "";
   orchestratorProcess.stdout.on("data", (data) => {
+    console.log("Raw data received:", data.toString());
+    buffer += data.toString();
+
     try {
-      const result = JSON.parse(data.toString());
-      if (mainWindow) {
-        mainWindow.webContents.send("processing-status", result);
+      // Split by newlines in case we get multiple messages
+      const lines = buffer.split("\n");
+
+      // Log what we're processing
+      console.log("Processing lines:", lines);
+
+      // Process all complete lines except the last one
+      for (let i = 0; i < lines.length - 1; i++) {
+        const line = lines[i].trim();
+        if (line) {
+          console.log("Attempting to parse line:", line);
+          const result = JSON.parse(line);
+          console.log("Successfully parsed JSON:", result);
+          if (mainWindow) {
+            mainWindow.webContents.send("processing-status", result);
+          }
+        }
       }
+
+      // Keep the last (potentially incomplete) line in the buffer
+      buffer = lines[lines.length - 1];
+      console.log("Remaining buffer:", buffer);
     } catch (err) {
       console.error("Error parsing orchestrator output:", err);
+      console.error("Current buffer content:", buffer);
+      console.error("Buffer length:", buffer.length);
+      // Print first 100 chars of buffer to see what we're dealing with
+      console.error("Buffer preview:", buffer.substring(0, 100));
     }
+  });
+
+  orchestratorProcess.stderr.on("data", (data) => {
+    console.error("Orchestrator stderr:", data.toString());
   });
 
   orchestratorProcess.stderr.on("data", (data) => {
@@ -228,7 +256,6 @@ ipcMain.handle("index-and-embed-paths", async (_, directories: string[]) => {
       }) + "\n"
     );
 
-    // The result will come back through the stdout handler
     return { success: true };
   } catch (error) {
     console.error("Error indexing directories:", error);

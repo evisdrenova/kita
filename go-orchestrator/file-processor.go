@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ledongthuc/pdf"
 	_ "github.com/mattn/go-sqlite3"
@@ -91,10 +92,47 @@ func NewFileProcessor(dbPath string) (*FileProcessor, error) {
 		return nil, fmt.Errorf("failed to open database: %v", err)
 	}
 
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(2)
+
 	return &FileProcessor{
 		Db:        db,
-		semaphore: make(chan struct{}, 4), // limit to 4 concurrent ops, but we can be smarter about this
+		semaphore: make(chan struct{}, 4), // limit to 4 concurrent ops
 	}, nil
+}
+
+// Add a helper function for retrying database operations
+func (fp *FileProcessor) retryDBOperation(operation func(*sql.Tx) error) error {
+	maxRetries := 3
+	for i := 0; i < maxRetries; i++ {
+		tx, err := fp.Db.Begin()
+		if err != nil {
+			continue
+		}
+
+		err = operation(tx)
+		if err != nil {
+			tx.Rollback()
+			if strings.Contains(err.Error(), "database is locked") {
+				// Wait before retrying, with exponential backoff
+				time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)
+				continue
+			}
+			return err
+		}
+
+		err = tx.Commit()
+		if err != nil {
+			if strings.Contains(err.Error(), "database is locked") {
+				time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)
+				continue
+			}
+			return err
+		}
+
+		return nil
+	}
+	return fmt.Errorf("database is locked after %d retries", maxRetries)
 }
 
 // ProcessPaths processes multiple file paths concurrently
@@ -129,6 +167,13 @@ func (fp *FileProcessor) ProcessPaths(paths []string) (map[string]interface{}, e
 			})
 		}
 	}
+
+	// Log the collected files
+	fmt.Fprintf(os.Stderr, "Processing %d files:\n", len(allFiles))
+	for _, file := range allFiles {
+		fmt.Fprintf(os.Stderr, "  - %s\n", file.Path)
+	}
+	fmt.Fprintf(os.Stderr, "updating progress")
 
 	fp.TotalFiles = len(allFiles)
 	fp.updateProgress()
@@ -179,6 +224,10 @@ func (fp *FileProcessor) ProcessPaths(paths []string) (map[string]interface{}, e
 func (fp *FileProcessor) processFile(file FileMetadata) error {
 	content, err := fp.extractText(file.Path)
 	if err != nil {
+		if strings.Contains(err.Error(), "malformed PDF") {
+			fmt.Fprintf(os.Stderr, "Skipping malformed PDF %s: %v\n", file.Path, err)
+			return nil
+		}
 		return fmt.Errorf("failed to extract text: %v", err)
 	}
 	if content == "" {
@@ -187,68 +236,65 @@ func (fp *FileProcessor) processFile(file FileMetadata) error {
 
 	category := getCategoryFromExtension(file.Extension)
 
-	// start a transaction
-	tx, err := fp.Db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+	// Create the database operation
+	dbOperation := func(tx *sql.Tx) error {
+		var fileID int64
+		err := tx.QueryRow("SELECT id FROM files WHERE path = ?", file.Path).Scan(&fileID)
+		if err == sql.ErrNoRows {
+			// Insert new file
+			result, err := tx.Exec(`
+                INSERT INTO files (path, name, category, extension, created_at, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+				file.Path, file.Name, category, file.Extension)
+			if err != nil {
+				return err
+			}
+			fileID, _ = result.LastInsertId()
+		} else if err != nil {
+			return err
+		} else {
+			// Update existing file
+			_, err = tx.Exec(`
+                UPDATE files 
+                SET name = ?, category = ?, updated_at = CURRENT_TIMESTAMP 
+                WHERE id = ?`,
+				file.Name, category, fileID)
+			if err != nil {
+				return err
+			}
+		}
 
-	// Check if file exists
-	var fileID int64
-	err = tx.QueryRow("SELECT id FROM files WHERE path = ?", file.Path).Scan(&fileID)
-	if err == sql.ErrNoRows {
-		// Insert new file
-		result, err := tx.Exec(`
-			INSERT INTO files (path, name, category, extension, created_at, updated_at)
-			VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-			file.Path, file.Name, category, file.Extension)
+		// Generate embedding
+		embedding, err := fp.getEmbedding(content)
 		if err != nil {
 			return err
 		}
-		fileID, _ = result.LastInsertId()
-	} else if err != nil {
-		return err
-	} else {
-		// Update existing file
+
+		embeddingJSON, err := json.Marshal(embedding)
+		if err != nil {
+			return err
+		}
+
+		// Update embedding
 		_, err = tx.Exec(`
-			UPDATE files 
-			SET name = ?, category = ?, updated_at = CURRENT_TIMESTAMP 
-			WHERE id = ?`,
-			file.Name, category, fileID)
+            INSERT OR REPLACE INTO embeddings (file_id, embedding, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)`,
+			fileID, string(embeddingJSON))
 		if err != nil {
 			return err
 		}
+
+		// Update vector index
+		err = fp.updateVectorIndex(fileID, embedding)
+		if err != nil {
+			return err
+		}
+
+		return nil
 	}
 
-	// Generate embedding
-	embedding, err := fp.getEmbedding(content)
-	if err != nil {
-		return err
-	}
-
-	embeddingJSON, err := json.Marshal(embedding)
-	if err != nil {
-		return err
-	}
-
-	// Update embedding
-	_, err = tx.Exec(`
-		INSERT OR REPLACE INTO embeddings (file_id, embedding, updated_at)
-		VALUES (?, ?, CURRENT_TIMESTAMP)`,
-		fileID, string(embeddingJSON))
-	if err != nil {
-		return err
-	}
-
-	// Update vector index
-	err = fp.updateVectorIndex(fileID, embedding)
-	if err != nil {
-		return err
-	}
-
-	// commit the transaction
-	return tx.Commit()
+	// Execute the operation with retries
+	return fp.retryDBOperation(dbOperation)
 }
 
 func (fp *FileProcessor) extractText(filePath string) (string, error) {
@@ -288,19 +334,25 @@ func (fp *FileProcessor) extractTextFromPlain(filePath string) (string, error) {
 func (fp *FileProcessor) extractTextFromPDF(filePath string) (string, error) {
 	f, r, err := pdf.Open(filePath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("malformed PDF: %v", err)
 	}
 	defer f.Close()
 
 	var buf bytes.Buffer
 	b, err := r.GetPlainText()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("malformed PDF: %v", err)
 	}
+
 	_, err = buf.ReadFrom(b)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error reading PDF content: %v", err)
 	}
+
+	if buf.Len() == 0 {
+		return "", fmt.Errorf("no text content found in PDF")
+	}
+
 	return buf.String(), nil
 }
 
@@ -408,7 +460,16 @@ func (fp *FileProcessor) updateProgress() {
 			Processed:  fp.ProcessedFiles,
 			Percentage: int((float64(fp.ProcessedFiles) / float64(fp.TotalFiles)) * 100),
 		}
-		json.NewEncoder(os.Stdout).Encode(status)
+
+		jsonData, err := json.Marshal(status)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error marshaling status: %v\n", err)
+			return
+		}
+
+		// Only write to stdout, use stderr just for errors
+		fmt.Fprintln(os.Stdout, string(jsonData))
+		os.Stdout.Sync()
 	}
 }
 
