@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package embedding.v1;
+
+option go_package = "github.com/evisdrenova/orchestrator/generated/pb";
+
+message EmbedTextRequest {
+  string text = 1;
+}
+
+message EmbedTextResponse {
+  repeated float embedding = 1;
+}
+
+message SearchFilesRequest {
+  string query = 1;
+  int32 k = 2;
+}
+
+message SearchResult {
+  int32 file_id = 1;
+  float distance = 2;
+}
+
+message SearchFilesResponse {
+  repeated SearchResult results = 1;
+}
+
+message FileData {
+  int32 file_id = 1;
+  repeated float embedding = 2;
+}
+
+service EmbeddingService {
+  rpc EmbedText (EmbedTextRequest) returns (EmbedTextResponse) {}
+  rpc SearchFiles (SearchFilesRequest) returns (SearchFilesResponse) {}
+  rpc AddFile (FileData) returns (FileData) {}
+}

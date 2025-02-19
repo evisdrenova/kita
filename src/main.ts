@@ -36,7 +36,7 @@ function startOrchestrator() {
   const dbPath = path.join(app.getPath("userData"), "kita-database.sqlite");
   const goBinaryPath = path.join(
     __dirname,
-    "../../go-orchestrator/bin/file-processor"
+    "../../orchestrator/bin/file-processor"
   );
 
   orchestratorProcess = spawn(goBinaryPath, ["-db", dbPath], {

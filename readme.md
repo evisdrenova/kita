@@ -32,5 +32,3 @@ Fast and intelligent search running locally on your mac.
 4. Storage Layer
    - SQLite: Persistent storage for metadata and embeddings
    - File System: Raw file storage and access
-
-// TODO: build script to compile the go orchestrator into a binary, main.ts logic to call go binary, stdout and stderr communication channels
