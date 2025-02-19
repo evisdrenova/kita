@@ -1,20 +1,16 @@
 .PHONY: gen clean
 
-# The .proto file is in orchestrator/protos/pb/v1/embedding_service.proto
-# but we reference it as pb/v1/embedding_service.proto relative to the -I path
-PROTO_FILE          = v1/embedding_service.proto
-PROTO_GO_OUT_DIR    = ./orchestrator/gen/pb
-PROTO_PYTHON_OUT_DIR= ./embedding_service/gen/pb
+PROTO_GO_OUT_DIR    = ./orchestrator/gen
+PROTO_TS_OUT_DIR    = ./gen/ts
+PROTO_PYTHON_OUT_DIR= ./embedding_service/gen
 
-gen:
-	python -m grpc_tools.protoc \
-		-I orchestrator/protos/pb \
-		--python_out=$(PROTO_PYTHON_OUT_DIR) \
-		--grpc_python_out=$(PROTO_PYTHON_OUT_DIR) \
-		$(PROTO_FILE)
+clean:
+	rm -rf $(PROTO_GO_OUT_DIR)/*
+	rm -rf $(PROTO_TS_OUT_DIR)/*
+	rm -rf $(PROTO_PYTHON_OUT_DIR)/*
+	mkdir -p $(PROTO_GO_OUT_DIR)
+	mkdir -p $(PROTO_TS_OUT_DIR)
+	mkdir -p $(PROTO_PYTHON_OUT_DIR)
 
-	protoc \
-		-I orchestrator/protos/pb \
-		--go_out=$(PROTO_GO_OUT_DIR) --go_opt=paths=source_relative \
-		--go-grpc_out=$(PROTO_GO_OUT_DIR) --go-grpc_opt=paths=source_relative \
-		$(PROTO_FILE)
+gen: clean
+	buf generate

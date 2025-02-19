@@ -22,6 +22,16 @@ import {
 } from "./types";
 import AppHandler from "./AppHandler";
 import { spawn } from "child_process";
+import {
+  EmbeddingServiceClient,
+  SearchFilesResponse,
+} from "../gen/ts/pb/v1/embedding_service";
+import {
+  SearchFilesRequest,
+  EmbedTextRequest,
+  FileData,
+} from "../gen/ts/pb/v1/embedding_service";
+import { credentials } from "@grpc/grpc-js";
 
 if (started) {
   app.quit();
@@ -32,6 +42,8 @@ log.initialize();
 let mainWindow: BrowserWindow | null = null;
 let appHandler: AppHandler;
 let orchestratorProcess: ChildProcess | null = null;
+let grpcClient: EmbeddingServiceClient | null = null;
+
 function startOrchestrator() {
   const dbPath = path.join(app.getPath("userData"), "kita-database.sqlite");
   const goBinaryPath = path.join(
@@ -77,6 +89,12 @@ function startOrchestrator() {
     // Keep any incomplete data in the buffer
     buffer = lines[lines.length - 1];
   });
+
+  // connect to the embedding service
+  grpcClient = new EmbeddingServiceClient(
+    "localhost:50051",
+    credentials.createInsecure()
+  );
 
   // Handle stderr - Log messages and errors
   orchestratorProcess.stderr.on("data", (data) => {
@@ -277,6 +295,10 @@ ipcMain.handle(
   "search-files-and-embeddings",
   async (_, query: string): Promise<SearchSection[]> => {
     try {
+      if (!grpcClient) {
+        throw new Error("gRPC client not initialized");
+      }
+
       // get apps
       const apps = await appHandler.getAllApps(query);
 
@@ -302,18 +324,22 @@ ipcMain.handle(
         searchPattern
       ) as FileMetadata[];
 
-      // embedding search
-      const response = await fetch("http://127.0.0.1:8000/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, k: 1 }),
+      // embedding search using gRPC
+      const searchRequest = SearchFilesRequest.create({
+        query,
+        k: 1,
       });
-      if (!response.ok) throw new Error("Semantic search failed");
-      const embeddingResponse =
-        (await response.json()) as EmbeddingSearchResults;
+
+      const embeddingResponse = await new Promise<SearchFilesResponse>(
+        (resolve, reject) => {
+          grpcClient!.searchFiles(searchRequest, (err, response) => {
+            if (err) reject(err);
+            else resolve(response);
+          });
+        }
+      );
 
       // For each result from the embedding search, query SQLite for metadata
-      // Updated to join files and embeddings tables
       const embedStmt = db.prepare(`
         SELECT 
           f.id,
@@ -332,7 +358,7 @@ ipcMain.handle(
 
       const semanticResults = embeddingResponse.results
         .map((result) => {
-          const fileRow = embedStmt.get(result.file_id) as FileMetadata;
+          const fileRow = embedStmt.get(result.fileId) as FileMetadata;
           if (!fileRow) return null;
           return {
             ...fileRow,
@@ -380,16 +406,26 @@ ipcMain.handle(
   "query-embeddings",
   async (_, query: string): Promise<SearchSection[]> => {
     try {
-      // Get search results from the Python microservice.
-      const response = await fetch("http://127.0.0.1:8000/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, k: 5 }),
-      });
-      if (!response.ok) throw new Error("Search failed");
-      const searchResponse = await response.json();
+      if (!grpcClient) {
+        throw new Error("gRPC client not initialized");
+      }
 
-      // Now, for each result, query SQLite to get metadata with joined embeddings
+      // Create and send search request
+      const searchRequest = SearchFilesRequest.create({
+        query,
+        k: 5,
+      });
+
+      const searchResponse = await new Promise<SearchFilesResponse>(
+        (resolve, reject) => {
+          grpcClient!.searchFiles(searchRequest, (err, response) => {
+            if (err) reject(err);
+            else resolve(response);
+          });
+        }
+      );
+
+      // Query SQLite for metadata
       const stmt = db.prepare(`
         SELECT 
           f.id,
@@ -407,8 +443,8 @@ ipcMain.handle(
       `);
 
       const matchedFiles = searchResponse.results
-        .map((result: any) => {
-          const fileRow = stmt.get(result.file_id) as FileMetadata;
+        .map((result) => {
+          const fileRow = stmt.get(result.fileId) as FileMetadata;
           if (!fileRow) return null;
           return {
             ...fileRow,
@@ -416,7 +452,7 @@ ipcMain.handle(
           };
         })
         .filter(
-          (result: any): result is NonNullable<typeof result> => result !== null
+          (result): result is NonNullable<typeof result> => result !== null
         );
 
       return [
@@ -534,10 +570,12 @@ app.on("window-all-closed", () => {});
 app.on("will-quit", () => {
   if (db) {
     db.close();
-    globalShortcut.unregisterAll();
   }
   if (orchestratorProcess) {
     orchestratorProcess.kill();
+  }
+  if (grpcClient) {
+    grpcClient.close();
   }
   globalShortcut.unregisterAll();
 });

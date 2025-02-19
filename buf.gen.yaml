@@ -1,0 +1,22 @@
+version: v1
+plugins:
+  # Go
+  - plugin: buf.build/protocolbuffers/go:v1.28.1
+    out: orchestrator/gen
+    opt: paths=source_relative
+  - plugin: buf.build/grpc/go:v1.2.0
+    out: orchestrator/gen
+    opt: paths=source_relative
+  # Python
+  - plugin: buf.build/grpc/python
+    out: embedding_service/gen
+  - plugin: buf.build/protocolbuffers/python
+    out: embedding_service/gen
+  # TypeScript
+  - plugin: buf.build/community/stephenh-ts-proto
+    out: gen/ts
+    opt:
+      - outputServices=grpc-js
+      - esModuleInterop=true
+      - useOptionals=messages
+      - useExactTypes=false

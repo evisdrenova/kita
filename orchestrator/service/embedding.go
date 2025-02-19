@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	pb "github.com/evisdrenova/kita/orchestrator/gen/pb"
+	pb "github.com/evisdrenova/kita/orchestrator/gen/pb/v1"
 	"google.golang.org/grpc"
 )
 
@@ -64,7 +64,7 @@ func (m *EmbeddingServiceManager) Stop() {
 }
 
 func (m *EmbeddingServiceManager) EmbedText(text string) ([]float32, error) {
-	resp, err := m.grpcClient.EmbedText(context.Background(), &pb.EmbedRequest{
+	resp, err := m.grpcClient.EmbedText(context.Background(), &pb.EmbedTextRequest{
 		Text: text,
 	})
 	if err != nil {
@@ -74,7 +74,7 @@ func (m *EmbeddingServiceManager) EmbedText(text string) ([]float32, error) {
 }
 
 func (m *EmbeddingServiceManager) SearchFiles(query string, k int32) ([]*pb.SearchResult, error) {
-	resp, err := m.grpcClient.SearchFiles(context.Background(), &pb.SearchRequest{
+	resp, err := m.grpcClient.SearchFiles(context.Background(), &pb.SearchFilesRequest{
 		Query: query,
 		K:     k,
 	})
