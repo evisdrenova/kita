@@ -7,6 +7,6 @@ gen:
 		./orchestrator/protos/embedding_service.proto
 
 	protoc -I. \
-		--go_out=./orchestrator/gen/pb --go_opt=paths=source_relative \
-		--go-grpc_out=./orchestrator/gen/pb --go-grpc_opt=paths=source_relative \
-		./orchestrator/protos/embedding_service.proto
+		--go_out=./gen/pb --go_opt=paths=source_relative \
+		--go-grpc_out=./gen/pb --go-grpc_opt=paths=source_relative \
+		./protos/embedding_service.proto
