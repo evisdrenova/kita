@@ -1,20 +1,20 @@
-// package main
+package main
 
-// import (
-//     "context"
-//     "fmt"
-//     "log"
-//     "os"
-//     "os/exec"
-//     "path/filepath"
-//     "time"
+import (
+    "context"
+    "fmt"
+    "log"
+    "os"
+    "os/exec"
+    "path/filepath"
+    "time"
 
-//     "google.golang.org/grpc"
-//     pb "github.com/evisdrenova/kita/orchestrator/pb"
-// )
+    "google.golang.org/grpc"
+    pb "github.com/evisdrenova/kita/orchestrator/gen/pb"
+)
 
-// type EmbeddingServiceManager struct {
-// 	pythonProcess *os.Process
-// 	grpcClient    pb.orchestrator.protos.EmbeddingServiceClient
-// 	conn  *grpc.ClientConn
-// }
+type EmbeddingServiceManager struct {
+	pythonProcess *os.Process
+	grpcClient    pb.orchestrator.protos.EmbeddingServiceClient
+	conn  *grpc.ClientConn
+}
