@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from orchestrator.protos import embedding_service_pb2 as orchestrator_dot_protos_dot_embedding__service__pb2
+from v1 import embedding_service_pb2 as v1_dot_embedding__service__pb2
 
 GRPC_GENERATED_VERSION = '1.70.0'
 GRPC_VERSION = grpc.__version__
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in orchestrator/protos/embedding_service_pb2_grpc.py depends on'
+        + f' but the generated code in v1/embedding_service_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -35,19 +35,19 @@ class EmbeddingServiceStub(object):
             channel: A grpc.Channel.
         """
         self.EmbedText = channel.unary_unary(
-                '/embedding.v1.EmbeddingService/EmbedText',
-                request_serializer=orchestrator_dot_protos_dot_embedding__service__pb2.EmbedTextRequest.SerializeToString,
-                response_deserializer=orchestrator_dot_protos_dot_embedding__service__pb2.EmbedTextResponse.FromString,
+                '/pb.v1.EmbeddingService/EmbedText',
+                request_serializer=v1_dot_embedding__service__pb2.EmbedTextRequest.SerializeToString,
+                response_deserializer=v1_dot_embedding__service__pb2.EmbedTextResponse.FromString,
                 _registered_method=True)
         self.SearchFiles = channel.unary_unary(
-                '/embedding.v1.EmbeddingService/SearchFiles',
-                request_serializer=orchestrator_dot_protos_dot_embedding__service__pb2.SearchFilesRequest.SerializeToString,
-                response_deserializer=orchestrator_dot_protos_dot_embedding__service__pb2.SearchFilesResponse.FromString,
+                '/pb.v1.EmbeddingService/SearchFiles',
+                request_serializer=v1_dot_embedding__service__pb2.SearchFilesRequest.SerializeToString,
+                response_deserializer=v1_dot_embedding__service__pb2.SearchFilesResponse.FromString,
                 _registered_method=True)
         self.AddFile = channel.unary_unary(
-                '/embedding.v1.EmbeddingService/AddFile',
-                request_serializer=orchestrator_dot_protos_dot_embedding__service__pb2.FileData.SerializeToString,
-                response_deserializer=orchestrator_dot_protos_dot_embedding__service__pb2.FileData.FromString,
+                '/pb.v1.EmbeddingService/AddFile',
+                request_serializer=v1_dot_embedding__service__pb2.FileData.SerializeToString,
+                response_deserializer=v1_dot_embedding__service__pb2.FileData.FromString,
                 _registered_method=True)
 
 
@@ -77,24 +77,24 @@ def add_EmbeddingServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'EmbedText': grpc.unary_unary_rpc_method_handler(
                     servicer.EmbedText,
-                    request_deserializer=orchestrator_dot_protos_dot_embedding__service__pb2.EmbedTextRequest.FromString,
-                    response_serializer=orchestrator_dot_protos_dot_embedding__service__pb2.EmbedTextResponse.SerializeToString,
+                    request_deserializer=v1_dot_embedding__service__pb2.EmbedTextRequest.FromString,
+                    response_serializer=v1_dot_embedding__service__pb2.EmbedTextResponse.SerializeToString,
             ),
             'SearchFiles': grpc.unary_unary_rpc_method_handler(
                     servicer.SearchFiles,
-                    request_deserializer=orchestrator_dot_protos_dot_embedding__service__pb2.SearchFilesRequest.FromString,
-                    response_serializer=orchestrator_dot_protos_dot_embedding__service__pb2.SearchFilesResponse.SerializeToString,
+                    request_deserializer=v1_dot_embedding__service__pb2.SearchFilesRequest.FromString,
+                    response_serializer=v1_dot_embedding__service__pb2.SearchFilesResponse.SerializeToString,
             ),
             'AddFile': grpc.unary_unary_rpc_method_handler(
                     servicer.AddFile,
-                    request_deserializer=orchestrator_dot_protos_dot_embedding__service__pb2.FileData.FromString,
-                    response_serializer=orchestrator_dot_protos_dot_embedding__service__pb2.FileData.SerializeToString,
+                    request_deserializer=v1_dot_embedding__service__pb2.FileData.FromString,
+                    response_serializer=v1_dot_embedding__service__pb2.FileData.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'embedding.v1.EmbeddingService', rpc_method_handlers)
+            'pb.v1.EmbeddingService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('embedding.v1.EmbeddingService', rpc_method_handlers)
+    server.add_registered_method_handlers('pb.v1.EmbeddingService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
@@ -115,9 +115,9 @@ class EmbeddingService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/embedding.v1.EmbeddingService/EmbedText',
-            orchestrator_dot_protos_dot_embedding__service__pb2.EmbedTextRequest.SerializeToString,
-            orchestrator_dot_protos_dot_embedding__service__pb2.EmbedTextResponse.FromString,
+            '/pb.v1.EmbeddingService/EmbedText',
+            v1_dot_embedding__service__pb2.EmbedTextRequest.SerializeToString,
+            v1_dot_embedding__service__pb2.EmbedTextResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -142,9 +142,9 @@ class EmbeddingService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/embedding.v1.EmbeddingService/SearchFiles',
-            orchestrator_dot_protos_dot_embedding__service__pb2.SearchFilesRequest.SerializeToString,
-            orchestrator_dot_protos_dot_embedding__service__pb2.SearchFilesResponse.FromString,
+            '/pb.v1.EmbeddingService/SearchFiles',
+            v1_dot_embedding__service__pb2.SearchFilesRequest.SerializeToString,
+            v1_dot_embedding__service__pb2.SearchFilesResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -169,9 +169,9 @@ class EmbeddingService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/embedding.v1.EmbeddingService/AddFile',
-            orchestrator_dot_protos_dot_embedding__service__pb2.FileData.SerializeToString,
-            orchestrator_dot_protos_dot_embedding__service__pb2.FileData.FromString,
+            '/pb.v1.EmbeddingService/AddFile',
+            v1_dot_embedding__service__pb2.FileData.SerializeToString,
+            v1_dot_embedding__service__pb2.FileData.FromString,
             options,
             channel_credentials,
             insecure,

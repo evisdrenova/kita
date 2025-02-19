@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package pb.v1;
 
-option go_package = "github.com/evisdrenova/kita/orchestrator/gen/pb";
+option go_package = "github.com/evisdrenova/kita/orchestrator/gen/pb/v1;v1";
 
 message EmbedTextRequest {
   string text = 1;
