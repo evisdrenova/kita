@@ -37,7 +37,7 @@ func NewEmbeddingServiceClient(cc grpc.ClientConnInterface) EmbeddingServiceClie
 
 func (c *embeddingServiceClient) EmbedText(ctx context.Context, in *EmbedTextRequest, opts ...grpc.CallOption) (*EmbedTextResponse, error) {
 	out := new(EmbedTextResponse)
-	err := c.cc.Invoke(ctx, "/embedding.v1.EmbeddingService/EmbedText", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/orchestrator.protos.v1.EmbeddingService/EmbedText", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func (c *embeddingServiceClient) EmbedText(ctx context.Context, in *EmbedTextReq
 
 func (c *embeddingServiceClient) SearchFiles(ctx context.Context, in *SearchFilesRequest, opts ...grpc.CallOption) (*SearchFilesResponse, error) {
 	out := new(SearchFilesResponse)
-	err := c.cc.Invoke(ctx, "/embedding.v1.EmbeddingService/SearchFiles", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/orchestrator.protos.v1.EmbeddingService/SearchFiles", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func (c *embeddingServiceClient) SearchFiles(ctx context.Context, in *SearchFile
 
 func (c *embeddingServiceClient) AddFile(ctx context.Context, in *FileData, opts ...grpc.CallOption) (*FileData, error) {
 	out := new(FileData)
-	err := c.cc.Invoke(ctx, "/embedding.v1.EmbeddingService/AddFile", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/orchestrator.protos.v1.EmbeddingService/AddFile", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func _EmbeddingService_EmbedText_Handler(srv interface{}, ctx context.Context, d
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/embedding.v1.EmbeddingService/EmbedText",
+		FullMethod: "/orchestrator.protos.v1.EmbeddingService/EmbedText",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(EmbeddingServiceServer).EmbedText(ctx, req.(*EmbedTextRequest))
@@ -126,7 +126,7 @@ func _EmbeddingService_SearchFiles_Handler(srv interface{}, ctx context.Context,
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/embedding.v1.EmbeddingService/SearchFiles",
+		FullMethod: "/orchestrator.protos.v1.EmbeddingService/SearchFiles",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(EmbeddingServiceServer).SearchFiles(ctx, req.(*SearchFilesRequest))
@@ -144,7 +144,7 @@ func _EmbeddingService_AddFile_Handler(srv interface{}, ctx context.Context, dec
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/embedding.v1.EmbeddingService/AddFile",
+		FullMethod: "/orchestrator.protos.v1.EmbeddingService/AddFile",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(EmbeddingServiceServer).AddFile(ctx, req.(*FileData))
@@ -156,7 +156,7 @@ func _EmbeddingService_AddFile_Handler(srv interface{}, ctx context.Context, dec
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var EmbeddingService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "embedding.v1.EmbeddingService",
+	ServiceName: "orchestrator.protos.v1.EmbeddingService",
 	HandlerType: (*EmbeddingServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
