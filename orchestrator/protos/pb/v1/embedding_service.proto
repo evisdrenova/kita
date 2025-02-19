@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package orchestrator.protos.v1;
+package pb.v1;
 
-option go_package = "github.com/evisdrenova/orchestrator/gen/pb";
+option go_package = "github.com/evisdrenova/kita/orchestrator/gen/pb";
 
 message EmbedTextRequest {
   string text = 1;
