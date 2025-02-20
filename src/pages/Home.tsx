@@ -12,15 +12,15 @@ import {
   Package,
   FileArchive,
   FileSpreadsheet,
-  ArrowUpDown,
   CornerDownLeft,
   Copy,
   Circle,
-  Files,
   Check,
   MemoryStick,
   Cpu,
   Search,
+  ArrowDown,
+  ArrowUp,
 } from "lucide-react";
 import {
   SearchCategory,
@@ -38,6 +38,7 @@ import WindowAction from "../../components/WindowActions";
 import { toast } from "sonner";
 import { Input } from "../../components/ui/input";
 import { getCategoryFromExtension, truncatePath } from "../../src/lib/utils";
+import { CommandShortcut } from "../../components/ui/command";
 
 export const searchCategories = [
   "Applications",
@@ -297,14 +298,14 @@ function Header(props: HeaderProps) {
   }, []);
 
   return (
-    <div className="sticky top-0 bg-background flex flex-col gap-2 border-b border-b-border">
+    <div className="sticky top-0 flex flex-col gap-2 border-b border-b-border">
       <div className="flex flex-row w-full items-center select-none dragable px-3 mt-2">
         <div className="flex-none">
           <WindowAction />
         </div>
         <div className="flex-1 flex justify-center pr-14">Kita</div>
       </div>
-      <div className="py-2 ">
+      <div className="py-2 flex flex-row items-center justify-between">
         <Input
           placeholder="Type a command or search..."
           value={searchQuery}
@@ -312,6 +313,7 @@ function Header(props: HeaderProps) {
           onChange={(e) => handleSearch(e.target.value)}
           className="text-xs placeholder:pl-2 border-0 focus-visible:outline-none focus-visible:ring-0 shadow-none"
         />
+        <CommandShortcut className="mr-4">⌘+space</CommandShortcut>
       </div>
     </div>
   );
@@ -653,13 +655,22 @@ interface FooterProps {
 function Footer(props: FooterProps) {
   const { setIsSettingsOpen } = props;
   return (
-    <div className="h-8 bg-background flex justify-between items-center px-3 border-t border-t-border">
+    <div className="h-8 flex justify-between items-center px-3 my-1 border-t border-t-border">
       <div className="flex flex-row items-center gap-4 text-primary-foreground/60">
         <div className="flex flex-row items-center gap-1 text-xs">
-          <ArrowUpDown className="w-3 h-3 " /> <div>Select</div>
+          <div className=" border border-border p-1 rounded-lg">
+            <ArrowUp className="w-3 h-3 " />
+          </div>
+          <div className=" border border-border p-1 rounded-lg">
+            <ArrowDown className="w-3 h-3 " />{" "}
+          </div>
+          <div className="text-[10px]">to navigate</div>
         </div>
         <div className="flex flex-row items-center gap-1 text-xs">
-          <CornerDownLeft className="w-3 h-3 " /> <div>Open</div>
+          <div className=" border border-border p-1 rounded-lg">
+            <CornerDownLeft className="w-3 h-3 " />{" "}
+          </div>
+          <div className="text-[10px]">to select</div>
         </div>
       </div>
       <div className="flex flex-row items-center gap-2">
