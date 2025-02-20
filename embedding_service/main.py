@@ -4,10 +4,10 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 import hnswlib
 import os
-from gen.pb.v1.orchestrator.protos.embedding_service_pb2 import (
-    EmbedResponse, SearchResponse, SearchResult, FileData
+from gen.pb.v1.embedding_service_pb2 import (
+    EmbedTextResponse, SearchFilesResponse, SearchResult, FileData
 )
-from gen.pb.v1.orchestrator.protos.embedding_service_pb2_grpc import (
+from gen.pb.v1.embedding_service_pb2_grpc import (
     EmbeddingServiceServicer, add_EmbeddingServiceServicer_to_server
 )
 class EmbeddingService(EmbeddingServiceServicer):
@@ -32,7 +32,7 @@ class EmbeddingService(EmbeddingServiceServicer):
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Text cannot be empty")
         
         emb = self.model.encode(request.text)
-        return EmbedResponse(embedding=emb.tolist())
+        return EmbedTextResponse(embedding=emb.tolist())
 
     def SearchFiles(self, request, context):
         query_emb = self.model.encode(request.query)
@@ -44,7 +44,7 @@ class EmbeddingService(EmbeddingServiceServicer):
                 file_id=int(label),
                 distance=float(distance)
             ))
-        return SearchResponse(results=results)
+        return SearchFilesResponse(results=results)
 
     def AddFile(self, request, context):
         embedding = np.array(request.embedding)
@@ -56,11 +56,22 @@ class EmbeddingService(EmbeddingServiceServicer):
         return request
 
 def serve():
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    add_EmbeddingServiceServicer_to_server(EmbeddingService(), server)
-    server.add_insecure_port('[::]:50051')
-    server.start()
-    server.wait_for_termination()
+    try:
+        print("Starting gRPC server...")
+        server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+        service = EmbeddingService()
+        print("Initialized EmbeddingService")
+        add_EmbeddingServiceServicer_to_server(service, server)
+        address = '[::]:50051'
+        server.add_insecure_port(address)
+        print(f"Added insecure port: {address}")
+        server.start()
+        print("Server started successfully")
+        server.wait_for_termination()
+    except Exception as e:
+        print(f"Failed to start server: {e}")
+        raise
 
 if __name__ == '__main__':
+    print("Starting embedding service...")
     serve()

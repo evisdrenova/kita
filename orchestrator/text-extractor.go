@@ -1,3 +1,8 @@
+/*
+Contains functions that extract the text from different types of documents and processes them
+*/
+
+
 package main
 
 import (

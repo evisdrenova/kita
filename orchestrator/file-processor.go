@@ -71,6 +71,7 @@ type FileProcessor struct {
 	mu             sync.Mutex
 	wg             sync.WaitGroup
 	semaphore      chan struct{} // for limiting concurrent operations
+	Embeddings *EmbeddingServiceManager
 }
 
 type ProcessingStatus struct {
@@ -89,9 +90,16 @@ func NewFileProcessor(dbPath string) (*FileProcessor, error) {
 	db.SetMaxOpenConns(4)
 	db.SetMaxIdleConns(2)
 
+	embedManager, err := NewEmbeddingServiceManager()
+    if err != nil {
+        db.Close()
+        return nil, fmt.Errorf("failed to start embedding service: %v", err)
+    }
+
 	return &FileProcessor{
 		Db:        db,
 		semaphore: make(chan struct{}, 4), // limit to 4 concurrent ops
+		embeddings: embedManager,
 	}, nil
 }
 

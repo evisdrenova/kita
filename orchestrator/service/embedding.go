@@ -29,18 +29,29 @@ func NewEmbeddingServiceManager() (*EmbeddingServiceManager, error) {
 
 func (m *EmbeddingServiceManager) Start() error {
 	// Start Python gRPC server
-	pythonScript := filepath.Join("python", "embedding_service.py")
-	cmd := exec.Command("python", pythonScript)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	execPath, err := os.Executable()
+    if err != nil {
+        return fmt.Errorf("failed to get executable path: %v", err)
+    }
+    execDir := filepath.Dir(execPath)
+    
+    // Construct absolute path to Python script
+    pythonScript := filepath.Join(execDir, "../../embedding_service/main.py")
+    fmt.Printf("Starting Python service from: %s\n", pythonScript)
+    
+    cmd := exec.Command("python", pythonScript)
+    cmd.Stdout = os.Stdout
+    cmd.Stderr = os.Stderr
 
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start Python service: %v", err)
-	}
-	m.pythonProcess = cmd.Process
+    if err := cmd.Start(); err != nil {
+        return fmt.Errorf("failed to start Python service: %v", err)
+    }
+    m.pythonProcess = cmd.Process
 
 	// Wait for the server to start
 	time.Sleep(2 * time.Second)
+
+	fmt.Printf("Python process started with PID: %d\n", m.pythonProcess.Pid)
 
 	// Connect to the gRPC server
 	conn, err := grpc.Dial("localhost:50051", grpc.WithInsecure())

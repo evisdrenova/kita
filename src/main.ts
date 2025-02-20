@@ -289,9 +289,12 @@ ipcMain.handle(
 ipcMain.handle(
   "search-files-and-embeddings",
   async (_, query: string): Promise<SearchSection[]> => {
+    console.log("the query", query);
     try {
       if (!grpcClient) {
         throw new Error("gRPC client not initialized");
+      } else {
+        console.log("grpcClient successfully initialized");
       }
 
       // get apps
