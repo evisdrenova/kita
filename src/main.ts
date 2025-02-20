@@ -14,7 +14,6 @@ import log from "electron-log/main";
 import { ChildProcess, exec } from "child_process";
 import {
   AppMetadata,
-  EmbeddingSearchResults,
   FileMetadata,
   RecentDbResult,
   SearchSection,
@@ -26,11 +25,7 @@ import {
   EmbeddingServiceClient,
   SearchFilesResponse,
 } from "../gen/ts/pb/v1/embedding_service";
-import {
-  SearchFilesRequest,
-  EmbedTextRequest,
-  FileData,
-} from "../gen/ts/pb/v1/embedding_service";
+import { SearchFilesRequest } from "../gen/ts/pb/v1/embedding_service";
 import { credentials } from "@grpc/grpc-js";
 
 if (started) {
@@ -304,7 +299,7 @@ ipcMain.handle(
 
       // text-based search
       const textStmt = db.prepare(`
-        SELECT 
+        SELECT
           id,
           name,
           path,
@@ -312,9 +307,9 @@ ipcMain.handle(
           size,
           created_at,
           updated_at
-        FROM files 
-        WHERE name LIKE ? 
-           OR path LIKE ? 
+        FROM files
+        WHERE name LIKE ?
+           OR path LIKE ?
         LIMIT 50
       `);
 
@@ -341,7 +336,7 @@ ipcMain.handle(
 
       // For each result from the embedding search, query SQLite for metadata
       const embedStmt = db.prepare(`
-        SELECT 
+        SELECT
           f.id,
           f.path,
           f.name,
@@ -427,7 +422,7 @@ ipcMain.handle(
 
       // Query SQLite for metadata
       const stmt = db.prepare(`
-        SELECT 
+        SELECT
           f.id,
           f.path,
           f.name,

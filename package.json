@@ -2,11 +2,12 @@
   "name": "kita",
   "productName": "kita",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "Fast, local file search and inference for local files",
   "main": ".vite/build/main.js",
   "scripts": {
     "build:go": "cd orchestrator && mkdir -p bin && go build -o bin/file-processor && chmod +x bin/file-processor",
     "build:go:win": "cd orchestrator && mkdir -p bin && go build -o bin/file-processor.exe",
+    "build:main": "vite build --config vite.main.config.ts",
     "prestart": "npm run build:go",
     "start": "DEBUG=electron-forge:* ELECTRON_ENABLE_LOGGING=true electron-forge start",
     "package": "npm run build:go && electron-forge package",
@@ -50,6 +51,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.33.1",
     "@bufbuild/buf": "^1.50.0",
+    "@bufbuild/protobuf": "^2.2.3",
     "@fontsource/inter": "^5.1.1",
     "@grpc/grpc-js": "^1.12.6",
     "@modelcontextprotocol/sdk": "^1.1.0",
