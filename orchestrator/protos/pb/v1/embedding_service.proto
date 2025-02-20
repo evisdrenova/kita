@@ -26,13 +26,19 @@ message SearchFilesResponse {
   repeated SearchResult results = 1;
 }
 
-message FileData {
+message AddFileRequest {
   int32 file_id = 1;
   repeated float embedding = 2;
 }
 
+message AddFileResponse {
+  bool success = 1;
+  string message = 2; 
+}
+
+
 service EmbeddingService {
   rpc EmbedText (EmbedTextRequest) returns (EmbedTextResponse) {}
   rpc SearchFiles (SearchFilesRequest) returns (SearchFilesResponse) {}
-  rpc AddFile (FileData) returns (FileData) {}
+  rpc AddFile (AddFileRequest) returns (AddFileResponse) {}
 }
