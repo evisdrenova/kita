@@ -73,7 +73,7 @@ export function ThemeToggle() {
     <button
       onClick={toggleTheme}
       aria-label="Toggle theme"
-      className="flex flex-row items-center gap-1"
+      className="flex flex-row items-center gap-1 text-primary-foreground/70"
     >
       {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
     </button>

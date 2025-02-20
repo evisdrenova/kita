@@ -55,11 +55,8 @@
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
   body {
-    @apply font-sans antialiased bg-gradient-to-tr from-zinc-900 to-zinc-800 text-foreground text-xs;
+    @apply font-sans antialiased dark:bg-gradient-to-tr from-zinc-900 to-zinc-800 text-foreground text-xs;
   }
 }
 
