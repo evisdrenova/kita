@@ -32,3 +32,5 @@ Fast and intelligent search running locally on your mac.
 4. Storage Layer
    - SQLite: Persistent storage for metadata and embeddings
    - File System: Raw file storage and access
+
+// test that the python service actually works now that we've made it a child process
