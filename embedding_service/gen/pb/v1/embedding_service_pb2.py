@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1dpb/v1/embedding_service.proto\x12\x05pb.v1\"&\n\x10\x45mbedTextRequest\x12\x12\n\x04text\x18\x01 \x01(\tR\x04text\"1\n\x11\x45mbedTextResponse\x12\x1c\n\tembedding\x18\x01 \x03(\x02R\tembedding\"8\n\x12SearchFilesRequest\x12\x14\n\x05query\x18\x01 \x01(\tR\x05query\x12\x0c\n\x01k\x18\x02 \x01(\x05R\x01k\"C\n\x0cSearchResult\x12\x17\n\x07\x66ile_id\x18\x01 \x01(\x05R\x06\x66ileId\x12\x1a\n\x08\x64istance\x18\x02 \x01(\x02R\x08\x64istance\"D\n\x13SearchFilesResponse\x12-\n\x07results\x18\x01 \x03(\x0b\x32\x13.pb.v1.SearchResultR\x07results\"A\n\x08\x46ileData\x12\x17\n\x07\x66ile_id\x18\x01 \x01(\x05R\x06\x66ileId\x12\x1c\n\tembedding\x18\x02 \x03(\x02R\tembedding2\xcb\x01\n\x10\x45mbeddingService\x12@\n\tEmbedText\x12\x17.pb.v1.EmbedTextRequest\x1a\x18.pb.v1.EmbedTextResponse\"\x00\x12\x46\n\x0bSearchFiles\x12\x19.pb.v1.SearchFilesRequest\x1a\x1a.pb.v1.SearchFilesResponse\"\x00\x12-\n\x07\x41\x64\x64\x46ile\x12\x0f.pb.v1.FileData\x1a\x0f.pb.v1.FileData\"\x00\x42\x37Z5github.com/evisdrenova/kita/orchestrator/gen/pb/v1;v1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1dpb/v1/embedding_service.proto\x12\x05pb.v1\"&\n\x10\x45mbedTextRequest\x12\x12\n\x04text\x18\x01 \x01(\tR\x04text\"1\n\x11\x45mbedTextResponse\x12\x1c\n\tembedding\x18\x01 \x03(\x02R\tembedding\"8\n\x12SearchFilesRequest\x12\x14\n\x05query\x18\x01 \x01(\tR\x05query\x12\x0c\n\x01k\x18\x02 \x01(\x05R\x01k\"C\n\x0cSearchResult\x12\x17\n\x07\x66ile_id\x18\x01 \x01(\x05R\x06\x66ileId\x12\x1a\n\x08\x64istance\x18\x02 \x01(\x02R\x08\x64istance\"D\n\x13SearchFilesResponse\x12-\n\x07results\x18\x01 \x03(\x0b\x32\x13.pb.v1.SearchResultR\x07results\"G\n\x0e\x41\x64\x64\x46ileRequest\x12\x17\n\x07\x66ile_id\x18\x01 \x01(\x05R\x06\x66ileId\x12\x1c\n\tembedding\x18\x02 \x03(\x02R\tembedding\"E\n\x0f\x41\x64\x64\x46ileResponse\x12\x18\n\x07success\x18\x01 \x01(\x08R\x07success\x12\x18\n\x07message\x18\x02 \x01(\tR\x07message2\xd8\x01\n\x10\x45mbeddingService\x12@\n\tEmbedText\x12\x17.pb.v1.EmbedTextRequest\x1a\x18.pb.v1.EmbedTextResponse\"\x00\x12\x46\n\x0bSearchFiles\x12\x19.pb.v1.SearchFilesRequest\x1a\x1a.pb.v1.SearchFilesResponse\"\x00\x12:\n\x07\x41\x64\x64\x46ile\x12\x15.pb.v1.AddFileRequest\x1a\x16.pb.v1.AddFileResponse\"\x00\x42\x37Z5github.com/evisdrenova/kita/orchestrator/gen/pb/v1;v1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -42,8 +42,10 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_SEARCHRESULT']._serialized_end=256
   _globals['_SEARCHFILESRESPONSE']._serialized_start=258
   _globals['_SEARCHFILESRESPONSE']._serialized_end=326
-  _globals['_FILEDATA']._serialized_start=328
-  _globals['_FILEDATA']._serialized_end=393
-  _globals['_EMBEDDINGSERVICE']._serialized_start=396
-  _globals['_EMBEDDINGSERVICE']._serialized_end=599
+  _globals['_ADDFILEREQUEST']._serialized_start=328
+  _globals['_ADDFILEREQUEST']._serialized_end=399
+  _globals['_ADDFILERESPONSE']._serialized_start=401
+  _globals['_ADDFILERESPONSE']._serialized_end=470
+  _globals['_EMBEDDINGSERVICE']._serialized_start=473
+  _globals['_EMBEDDINGSERVICE']._serialized_end=689
 # @@protoc_insertion_point(module_scope)

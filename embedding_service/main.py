@@ -5,7 +5,7 @@ from sentence_transformers import SentenceTransformer
 import hnswlib
 import os
 from gen.pb.v1.embedding_service_pb2 import (
-    EmbedTextResponse, SearchFilesResponse, SearchResult, FileData
+    EmbedTextResponse, SearchFilesResponse, SearchResult, AddFileResponse
 )
 from gen.pb.v1.embedding_service_pb2_grpc import (
     EmbeddingServiceServicer, add_EmbeddingServiceServicer_to_server
@@ -47,13 +47,16 @@ class EmbeddingService(EmbeddingServiceServicer):
         return SearchFilesResponse(results=results)
 
     def AddFile(self, request, context):
-        embedding = np.array(request.embedding)
-        self.index.add_items(
-            np.array([embedding]), 
-            np.array([request.file_id])
-        )
-        self.index.save_index(self.INDEX_PATH)
-        return request
+        try:
+            embedding = np.array(request.embedding)
+            self.index.add_items(
+                np.array([embedding]), 
+                np.array([request.file_id])
+            )
+            self.index.save_index(self.INDEX_PATH)
+            return AddFileResponse(success=True, message="File added successfully")
+        except Exception as e:
+            return AddFileResponse(success=False, message=str(e))
 
 def serve():
     try:

@@ -43,9 +43,14 @@ export interface SearchFilesResponse {
   results: SearchResult[];
 }
 
-export interface FileData {
+export interface AddFileRequest {
   fileId: number;
   embedding: number[];
+}
+
+export interface AddFileResponse {
+  success: boolean;
+  message: string;
 }
 
 function createBaseEmbedTextRequest(): EmbedTextRequest {
@@ -394,12 +399,12 @@ export const SearchFilesResponse: MessageFns<SearchFilesResponse> = {
   },
 };
 
-function createBaseFileData(): FileData {
+function createBaseAddFileRequest(): AddFileRequest {
   return { fileId: 0, embedding: [] };
 }
 
-export const FileData: MessageFns<FileData> = {
-  encode(message: FileData, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+export const AddFileRequest: MessageFns<AddFileRequest> = {
+  encode(message: AddFileRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.fileId !== 0) {
       writer.uint32(8).int32(message.fileId);
     }
@@ -411,10 +416,10 @@ export const FileData: MessageFns<FileData> = {
     return writer;
   },
 
-  decode(input: BinaryReader | Uint8Array, length?: number): FileData {
+  decode(input: BinaryReader | Uint8Array, length?: number): AddFileRequest {
     const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseFileData();
+    const message = createBaseAddFileRequest();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -453,7 +458,7 @@ export const FileData: MessageFns<FileData> = {
     return message;
   },
 
-  fromJSON(object: any): FileData {
+  fromJSON(object: any): AddFileRequest {
     return {
       fileId: isSet(object.fileId) ? globalThis.Number(object.fileId) : 0,
       embedding: globalThis.Array.isArray(object?.embedding)
@@ -462,7 +467,7 @@ export const FileData: MessageFns<FileData> = {
     };
   },
 
-  toJSON(message: FileData): unknown {
+  toJSON(message: AddFileRequest): unknown {
     const obj: any = {};
     if (message.fileId !== 0) {
       obj.fileId = Math.round(message.fileId);
@@ -473,13 +478,89 @@ export const FileData: MessageFns<FileData> = {
     return obj;
   },
 
-  create(base?: DeepPartial<FileData>): FileData {
-    return FileData.fromPartial(base ?? {});
+  create(base?: DeepPartial<AddFileRequest>): AddFileRequest {
+    return AddFileRequest.fromPartial(base ?? {});
   },
-  fromPartial(object: DeepPartial<FileData>): FileData {
-    const message = createBaseFileData();
+  fromPartial(object: DeepPartial<AddFileRequest>): AddFileRequest {
+    const message = createBaseAddFileRequest();
     message.fileId = object.fileId ?? 0;
     message.embedding = object.embedding?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseAddFileResponse(): AddFileResponse {
+  return { success: false, message: "" };
+}
+
+export const AddFileResponse: MessageFns<AddFileResponse> = {
+  encode(message: AddFileResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.success !== false) {
+      writer.uint32(8).bool(message.success);
+    }
+    if (message.message !== "") {
+      writer.uint32(18).string(message.message);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AddFileResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseAddFileResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.success = reader.bool();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.message = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): AddFileResponse {
+    return {
+      success: isSet(object.success) ? globalThis.Boolean(object.success) : false,
+      message: isSet(object.message) ? globalThis.String(object.message) : "",
+    };
+  },
+
+  toJSON(message: AddFileResponse): unknown {
+    const obj: any = {};
+    if (message.success !== false) {
+      obj.success = message.success;
+    }
+    if (message.message !== "") {
+      obj.message = message.message;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<AddFileResponse>): AddFileResponse {
+    return AddFileResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<AddFileResponse>): AddFileResponse {
+    const message = createBaseAddFileResponse();
+    message.success = object.success ?? false;
+    message.message = object.message ?? "";
     return message;
   },
 };
@@ -508,17 +589,17 @@ export const EmbeddingServiceService = {
     path: "/pb.v1.EmbeddingService/AddFile",
     requestStream: false,
     responseStream: false,
-    requestSerialize: (value: FileData) => Buffer.from(FileData.encode(value).finish()),
-    requestDeserialize: (value: Buffer) => FileData.decode(value),
-    responseSerialize: (value: FileData) => Buffer.from(FileData.encode(value).finish()),
-    responseDeserialize: (value: Buffer) => FileData.decode(value),
+    requestSerialize: (value: AddFileRequest) => Buffer.from(AddFileRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer) => AddFileRequest.decode(value),
+    responseSerialize: (value: AddFileResponse) => Buffer.from(AddFileResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer) => AddFileResponse.decode(value),
   },
 } as const;
 
 export interface EmbeddingServiceServer extends UntypedServiceImplementation {
   embedText: handleUnaryCall<EmbedTextRequest, EmbedTextResponse>;
   searchFiles: handleUnaryCall<SearchFilesRequest, SearchFilesResponse>;
-  addFile: handleUnaryCall<FileData, FileData>;
+  addFile: handleUnaryCall<AddFileRequest, AddFileResponse>;
 }
 
 export interface EmbeddingServiceClient extends Client {
@@ -552,17 +633,20 @@ export interface EmbeddingServiceClient extends Client {
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: SearchFilesResponse) => void,
   ): ClientUnaryCall;
-  addFile(request: FileData, callback: (error: ServiceError | null, response: FileData) => void): ClientUnaryCall;
   addFile(
-    request: FileData,
-    metadata: Metadata,
-    callback: (error: ServiceError | null, response: FileData) => void,
+    request: AddFileRequest,
+    callback: (error: ServiceError | null, response: AddFileResponse) => void,
   ): ClientUnaryCall;
   addFile(
-    request: FileData,
+    request: AddFileRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: AddFileResponse) => void,
+  ): ClientUnaryCall;
+  addFile(
+    request: AddFileRequest,
     metadata: Metadata,
     options: Partial<CallOptions>,
-    callback: (error: ServiceError | null, response: FileData) => void,
+    callback: (error: ServiceError | null, response: AddFileResponse) => void,
   ): ClientUnaryCall;
 }
 

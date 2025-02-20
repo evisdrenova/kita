@@ -26,8 +26,8 @@ class EmbeddingServiceStub(object):
                 _registered_method=True)
         self.AddFile = channel.unary_unary(
                 '/pb.v1.EmbeddingService/AddFile',
-                request_serializer=pb_dot_v1_dot_embedding__service__pb2.FileData.SerializeToString,
-                response_deserializer=pb_dot_v1_dot_embedding__service__pb2.FileData.FromString,
+                request_serializer=pb_dot_v1_dot_embedding__service__pb2.AddFileRequest.SerializeToString,
+                response_deserializer=pb_dot_v1_dot_embedding__service__pb2.AddFileResponse.FromString,
                 _registered_method=True)
 
 
@@ -67,8 +67,8 @@ def add_EmbeddingServiceServicer_to_server(servicer, server):
             ),
             'AddFile': grpc.unary_unary_rpc_method_handler(
                     servicer.AddFile,
-                    request_deserializer=pb_dot_v1_dot_embedding__service__pb2.FileData.FromString,
-                    response_serializer=pb_dot_v1_dot_embedding__service__pb2.FileData.SerializeToString,
+                    request_deserializer=pb_dot_v1_dot_embedding__service__pb2.AddFileRequest.FromString,
+                    response_serializer=pb_dot_v1_dot_embedding__service__pb2.AddFileResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -150,8 +150,8 @@ class EmbeddingService(object):
             request,
             target,
             '/pb.v1.EmbeddingService/AddFile',
-            pb_dot_v1_dot_embedding__service__pb2.FileData.SerializeToString,
-            pb_dot_v1_dot_embedding__service__pb2.FileData.FromString,
+            pb_dot_v1_dot_embedding__service__pb2.AddFileRequest.SerializeToString,
+            pb_dot_v1_dot_embedding__service__pb2.AddFileResponse.FromString,
             options,
             channel_credentials,
             insecure,

@@ -24,7 +24,7 @@ const _ = grpc.SupportPackageIsVersion7
 type EmbeddingServiceClient interface {
 	EmbedText(ctx context.Context, in *EmbedTextRequest, opts ...grpc.CallOption) (*EmbedTextResponse, error)
 	SearchFiles(ctx context.Context, in *SearchFilesRequest, opts ...grpc.CallOption) (*SearchFilesResponse, error)
-	AddFile(ctx context.Context, in *FileData, opts ...grpc.CallOption) (*FileData, error)
+	AddFile(ctx context.Context, in *AddFileRequest, opts ...grpc.CallOption) (*AddFileResponse, error)
 }
 
 type embeddingServiceClient struct {
@@ -53,8 +53,8 @@ func (c *embeddingServiceClient) SearchFiles(ctx context.Context, in *SearchFile
 	return out, nil
 }
 
-func (c *embeddingServiceClient) AddFile(ctx context.Context, in *FileData, opts ...grpc.CallOption) (*FileData, error) {
-	out := new(FileData)
+func (c *embeddingServiceClient) AddFile(ctx context.Context, in *AddFileRequest, opts ...grpc.CallOption) (*AddFileResponse, error) {
+	out := new(AddFileResponse)
 	err := c.cc.Invoke(ctx, "/pb.v1.EmbeddingService/AddFile", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -68,7 +68,7 @@ func (c *embeddingServiceClient) AddFile(ctx context.Context, in *FileData, opts
 type EmbeddingServiceServer interface {
 	EmbedText(context.Context, *EmbedTextRequest) (*EmbedTextResponse, error)
 	SearchFiles(context.Context, *SearchFilesRequest) (*SearchFilesResponse, error)
-	AddFile(context.Context, *FileData) (*FileData, error)
+	AddFile(context.Context, *AddFileRequest) (*AddFileResponse, error)
 	mustEmbedUnimplementedEmbeddingServiceServer()
 }
 
@@ -82,7 +82,7 @@ func (UnimplementedEmbeddingServiceServer) EmbedText(context.Context, *EmbedText
 func (UnimplementedEmbeddingServiceServer) SearchFiles(context.Context, *SearchFilesRequest) (*SearchFilesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SearchFiles not implemented")
 }
-func (UnimplementedEmbeddingServiceServer) AddFile(context.Context, *FileData) (*FileData, error) {
+func (UnimplementedEmbeddingServiceServer) AddFile(context.Context, *AddFileRequest) (*AddFileResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddFile not implemented")
 }
 func (UnimplementedEmbeddingServiceServer) mustEmbedUnimplementedEmbeddingServiceServer() {}
@@ -135,7 +135,7 @@ func _EmbeddingService_SearchFiles_Handler(srv interface{}, ctx context.Context,
 }
 
 func _EmbeddingService_AddFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(FileData)
+	in := new(AddFileRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -147,7 +147,7 @@ func _EmbeddingService_AddFile_Handler(srv interface{}, ctx context.Context, dec
 		FullMethod: "/pb.v1.EmbeddingService/AddFile",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(EmbeddingServiceServer).AddFile(ctx, req.(*FileData))
+		return srv.(EmbeddingServiceServer).AddFile(ctx, req.(*AddFileRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
