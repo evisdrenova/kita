@@ -33,4 +33,4 @@ Fast and intelligent search running locally on your mac.
    - SQLite: Persistent storage for metadata and embeddings
    - File System: Raw file storage and access
 
-// resolve python import errors
+// update size handling

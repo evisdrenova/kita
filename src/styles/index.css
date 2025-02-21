@@ -73,7 +73,7 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: hsl(var(--background));
+  background: transparent;
   border-radius: 6px; /* Adjusted to match thicker width */
 }
 

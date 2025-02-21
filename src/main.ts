@@ -57,12 +57,10 @@ function startOrchestrator() {
     buffer += data.toString();
     const lines = buffer.split("\n");
 
-    // Process all complete lines
     for (let i = 0; i < lines.length - 1; i++) {
       const line = lines[i].trim();
       if (!line) continue;
 
-      // Validate JSON before attempting to use the parsed result
       if (isValidJSON(line)) {
         const result = JSON.parse(line);
         if (mainWindow && result) {
@@ -74,12 +72,11 @@ function startOrchestrator() {
               percentage: result.percentage,
             });
           } else {
-            // It's the final result
             mainWindow.webContents.send("processing-complete", result);
           }
         }
       } else {
-        // Just log non-JSON lines
+        // log non-JSON lines
         console.log("Orchestrator log:", line);
       }
     }
@@ -93,6 +90,28 @@ function startOrchestrator() {
     "localhost:50051",
     credentials.createInsecure()
   );
+
+  if (mainWindow) {
+    mainWindow.webContents.send("grpc-status", { status: "initializing" });
+  }
+
+  // Check connection in background
+  waitForGrpcConnection()
+    .then(() => {
+      console.log("gRPC connection established");
+      if (mainWindow) {
+        mainWindow.webContents.send("grpc-status", { status: "connected" });
+      }
+    })
+    .catch((err) => {
+      console.error("Failed to establish gRPC connection:", err);
+      if (mainWindow) {
+        mainWindow.webContents.send("grpc-status", {
+          status: "error",
+          error: err.message,
+        });
+      }
+    });
 
   // Handle stderr - Log messages and errors
   orchestratorProcess.stderr.on("data", (data) => {
@@ -303,6 +322,8 @@ ipcMain.handle(
 
       // get apps
       const apps = await appHandler.getAllApps(query);
+      const sections: SearchSection[] = [];
+      const searchPattern = `%${query}%`;
 
       // text-based search
       const textStmt = db.prepare(`
@@ -320,71 +341,16 @@ ipcMain.handle(
         LIMIT 50
       `);
 
-      const searchPattern = `%${query}%`;
       const fileResults = textStmt.all(
         searchPattern,
         searchPattern
       ) as FileMetadata[];
 
-      // embedding search using gRPC
-      const searchRequest = SearchFilesRequest.create({
-        query,
-        k: 1,
-      });
-
-      const embeddingResponse = await new Promise<SearchFilesResponse>(
-        (resolve, reject) => {
-          grpcClient!.searchFiles(searchRequest, (err, response) => {
-            if (err) reject(err);
-            else resolve(response);
-          });
-        }
-      );
-
-      // For each result from the embedding search, query SQLite for metadata
-      const embedStmt = db.prepare(`
-        SELECT
-          f.id,
-          f.path,
-          f.name,
-          f.category,
-          f.extension,
-          f.size,
-          f.created_at,
-          f.updated_at,
-          e.embedding
-        FROM files f
-        LEFT JOIN embeddings e ON f.id = e.file_id
-        WHERE f.id = ?
-      `);
-
-      const semanticResults = embeddingResponse.results
-        .map((result) => {
-          const fileRow = embedStmt.get(result.fileId) as FileMetadata;
-          if (!fileRow) return null;
-          return {
-            ...fileRow,
-            distance: result.distance,
-          };
-        })
-        .filter(
-          (result): result is NonNullable<typeof result> => result !== null
-        );
-
-      // create search sections and return
-      const sections: SearchSection[] = [];
       if (fileResults.length > 0) {
         sections.push({
           type: SearchSectionType.Files,
           title: "File Name Matches",
           items: fileResults,
-        });
-      }
-      if (semanticResults.length > 0) {
-        sections.push({
-          type: SearchSectionType.Semantic,
-          title: "Semantic Matches",
-          items: semanticResults,
         });
       }
 
@@ -394,6 +360,65 @@ ipcMain.handle(
           title: "Applications",
           items: apps,
         });
+      }
+
+      try {
+        await waitForGrpcConnection(3000); // Shorter timeout for interactive query
+
+        const searchRequest = SearchFilesRequest.create({
+          query,
+          k: 1,
+        });
+
+        const embeddingResponse = await new Promise<SearchFilesResponse>(
+          (resolve, reject) => {
+            grpcClient!.searchFiles(searchRequest, (err, response) => {
+              if (err) reject(err);
+              else resolve(response);
+            });
+          }
+        );
+
+        // Process semantic results...
+        const embedStmt = db.prepare(`
+          SELECT
+            f.id,
+            f.path,
+            f.name,
+            f.category,
+            f.extension,
+            f.size,
+            f.created_at,
+            f.updated_at,
+            e.embedding
+          FROM files f
+          LEFT JOIN embeddings e ON f.id = e.file_id
+          WHERE f.id = ?
+        `);
+
+        const semanticResults = embeddingResponse.results
+          .map((result) => {
+            const fileRow = embedStmt.get(result.fileId) as FileMetadata;
+            if (!fileRow) return null;
+            return {
+              ...fileRow,
+              distance: result.distance,
+            };
+          })
+          .filter(
+            (result): result is NonNullable<typeof result> => result !== null
+          );
+
+        if (semanticResults.length > 0) {
+          sections.push({
+            type: SearchSectionType.Semantic,
+            title: "Semantic Matches",
+            items: semanticResults,
+          });
+        }
+      } catch (semanticError) {
+        console.error("Error in semantic search:", semanticError);
+        // Continue without semantic results
       }
 
       return sections;
@@ -605,3 +630,43 @@ app.on("activate", () => {
     createWindow();
   }
 });
+
+// checks to make sure the Grpc connection is ready
+function waitForGrpcConnection(timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    if (!grpcClient) {
+      return reject(new Error("gRPC client not initialized"));
+    }
+
+    // 10 seconds
+    const deadline = Date.now() + timeoutMs;
+    const checkConnection = () => {
+      const checkRequest = SearchFilesRequest.create({
+        query: "",
+        k: 1,
+      });
+
+      const deadlineDate = new Date(deadline);
+
+      grpcClient.searchFiles(
+        checkRequest,
+        null,
+        { deadline: deadlineDate },
+        (err) => {
+          if (!err) {
+            resolve(true);
+          } else if (Date.now() >= deadline) {
+            reject(new Error(`gRPC connection timeout: ${err.message}`));
+          } else if (err.code === 14) {
+            // Not ready yet, try again after a short delay
+            setTimeout(checkConnection, 250);
+          } else {
+            reject(err);
+          }
+        }
+      );
+    };
+
+    checkConnection();
+  });
+}

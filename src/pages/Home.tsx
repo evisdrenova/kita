@@ -374,8 +374,6 @@ function SearchResults(props: SearchResultsProps) {
       : app;
   };
 
-  console.log("section", section);
-
   return (
     <div className="flex flex-col">
       {section.items.map((item, index) => {
@@ -390,13 +388,7 @@ function SearchResults(props: SearchResultsProps) {
             {(() => {
               switch (section.type) {
                 case SearchSectionType.Apps:
-                  return (
-                    <AppRow
-                      app={getUpdatedApp(item as AppMetadata)}
-                      handleCopy={handleCopy}
-                      copiedId={copiedId}
-                    />
-                  );
+                  return <AppRow app={getUpdatedApp(item as AppMetadata)} />;
                 case SearchSectionType.Files:
                   return (
                     <FileRow
@@ -432,43 +424,38 @@ function FileRow(props: FileRowProps) {
   const { file, handleCopy, copiedId } = props;
 
   return (
-    <div className="flex items-center gap-2 min-w-0 flex-1">
-      <div className="flex flex-col min-w-0 flex-1">
-        <div className="flex flex-row items-center gap-1">
+    <div className="flex flex-col w-full flex-1 gap-3">
+      <div className="flex flex-row justify-between w-full items-center gap-1">
+        <div className="flex flex-row w-full items-center gap-1">
           {getFileIcon(file.path)}
           <span className="text-sm text-primary-foreground">{file.name}</span>
-          {
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleCopy(file.path, file.id);
-              }}
-              className={`opacity-0 group-hover:opacity-100 ml-2 p-1 hover:bg-background rounded transition-opacity duration-200 ${
-                copiedId === file.id
-                  ? "text-green-500"
-                  : "text-muted-foreground"
-              }`}
-            >
-              {copiedId === file.id ? (
-                <Check className="h-3 w-3" />
-              ) : (
-                <Copy className="h-3 w-3" />
-              )}
-            </button>
-          }
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCopy(file.path, file.id);
+            }}
+            className={`opacity-0 group-hover:opacity-100 ml-2 p-1 hover:bg-background rounded transition-opacity duration-200 ${
+              copiedId === file.id ? "text-green-500" : "text-muted-foreground"
+            }`}
+          >
+            {copiedId === file.id ? (
+              <Check className="h-3 w-3" />
+            ) : (
+              <Copy className="h-3 w-3" />
+            )}
+          </button>
         </div>
-        <div className="flex items-center gap-2 min-w-0 h-0 group-hover:h-auto overflow-hidden transition-all duration-200">
-          {
-            <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-5 flex-1">
-              {truncatePath(file.path)}
-            </span>
-          }
-          {
-            <span className="text-xs text-muted-foreground whitespace-nowrap">
-              {getCategoryFromExtension(file.extension)}
-            </span>
-          }
-        </div>
+        <span className="text-xs text-muted-foreground whitespace-nowrap">
+          {getCategoryFromExtension(file.extension)}
+        </span>
+      </div>
+      <div className="flex justify-between items-center gap-2 w-full h-0">
+        <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-4 flex-1">
+          {truncatePath(file.path)}
+        </span>
+        <span className="text-xs text-muted-foreground whitespace-nowrap">
+          {file.size}
+        </span>
       </div>
     </div>
   );
@@ -476,12 +463,10 @@ function FileRow(props: FileRowProps) {
 
 interface AppRowProps {
   app: Extract<SearchItem, { type: SearchSectionType.Apps }>;
-  handleCopy: (path: string, id: number) => Promise<void>;
-  copiedId: number | null;
 }
 
 function AppRow(props: AppRowProps) {
-  const { app, handleCopy, copiedId } = props;
+  const { app } = props;
 
   return (
     <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -520,23 +505,6 @@ function AppRow(props: AppRowProps) {
               </div>
             </span>
           )}
-          {
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleCopy(app.path, app.id);
-              }}
-              className={`opacity-0 group-hover:opacity-100 ml-2 p-1 hover:bg-background rounded transition-opacity duration-200 ${
-                copiedId === app.id ? "text-green-500" : "text-muted-foreground"
-              }`}
-            >
-              {copiedId === app.id ? (
-                <Check className="h-3 w-3" />
-              ) : (
-                <Copy className="h-3 w-3" />
-              )}
-            </button>
-          }
         </div>
       </div>
     </div>
