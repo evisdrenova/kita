@@ -127,3 +127,16 @@ export function isValidJSON(str: string) {
     return false;
   }
 }
+
+export function FormatFileSize(bytes: number | undefined): string {
+  if (bytes === undefined || bytes === 0) return "0 B";
+
+  const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+
+  // Return bytes as is if less than 1 KB
+  if (i === 0) return `${bytes} ${units[i]}`;
+
+  // Otherwise format with 2 decimal places
+  return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${units[i]}`;
+}

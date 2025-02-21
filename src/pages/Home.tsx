@@ -37,7 +37,11 @@ import { Button } from "../../components/ui/button";
 import WindowAction from "../../components/WindowActions";
 import { toast } from "sonner";
 import { Input } from "../../components/ui/input";
-import { getCategoryFromExtension, truncatePath } from "../../src/lib/utils";
+import {
+  FormatFileSize,
+  getCategoryFromExtension,
+  truncatePath,
+} from "../../src/lib/utils";
 import { CommandShortcut } from "../../components/ui/command";
 
 export const searchCategories = [
@@ -472,7 +476,7 @@ function FileRow(props: FileRowProps) {
           {truncatePath(file.path)}
         </span>
         <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {file.size}
+          {FormatFileSize(file.size)}
         </span>
       </div>
     </div>

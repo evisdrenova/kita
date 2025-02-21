@@ -125,6 +125,8 @@ func (fp *FileProcessor) ProcessPaths(paths []string) (map[string]interface{}, e
 				fmt.Fprintf(os.Stderr, "Error getting file info %s: %v\n", targetPath, err)
 				continue
 			}
+			fmt.Fprintf(os.Stdout, "File size: %d bytes\n", info.Size())
+
 			allFiles = append(allFiles, FileMetadata{
 				BaseMetadata: BaseMetadata{
 					Path: targetPath,
@@ -207,9 +209,9 @@ func (fp *FileProcessor) processFile(file FileMetadata) error {
 		if err == sql.ErrNoRows {
 			// Insert new file
 			result, err := tx.Exec(`
-                INSERT INTO files (path, name, category, extension, created_at, updated_at)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-				file.Path, file.Name, category, file.Extension)
+                INSERT INTO files (path, name, category, extension,size, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+				file.Path, file.Name, category, file.Size, file.Extension)
 			if err != nil {
 				return err
 			}
@@ -220,9 +222,9 @@ func (fp *FileProcessor) processFile(file FileMetadata) error {
 			// Update existing file
 			_, err = tx.Exec(`
                 UPDATE files 
-                SET name = ?, category = ?, updated_at = CURRENT_TIMESTAMP 
+                SET name = ?, category = ?, size = ?, updated_at = CURRENT_TIMESTAMP 
                 WHERE id = ?`,
-				file.Name, category, fileID)
+				file.Name, category, file.Size, fileID)
 			if err != nil {
 				return err
 			}
