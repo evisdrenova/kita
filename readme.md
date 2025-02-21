@@ -32,5 +32,3 @@ Fast and intelligent search running locally on your mac.
 4. Storage Layer
    - SQLite: Persistent storage for metadata and embeddings
    - File System: Raw file storage and access
-
-// update size handling
