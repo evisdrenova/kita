@@ -9,9 +9,9 @@ plugins:
     opt: paths=source_relative
   # Python
   - plugin: buf.build/grpc/python
-    out: embedding_service/gen
+    out: embedding_service
   - plugin: buf.build/protocolbuffers/python
-    out: embedding_service/gen
+    out: embedding_service
   # TypeScript
   - plugin: buf.build/community/stephenh-ts-proto
     out: gen/ts

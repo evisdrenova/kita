@@ -54,7 +54,10 @@ export default function FolderSettings(props: FolderSettingsProps) {
 
   return (
     <Sheet open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-      <SheetContent side="right" className="w-[400px] sm:w-[540px]">
+      <SheetContent
+        side="right"
+        className="w-[400px] sm:w-[540px] border-l border-border"
+      >
         <SheetHeader>
           <SheetTitle className="justify-start flex">
             Files & Folders

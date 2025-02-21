@@ -7,20 +7,13 @@ import chokidar from "chokidar";
 import { debounce } from "./lib/utils";
 import * as fs from "fs/promises";
 
-/**
- * Handles application discovery, launching, and monitoring on macOS.
- *
- * @example
- * ```typescript
- * const appHandler = new AppHandler();
- * const apps = await appHandler.getAllApps('chrome');
- * ```
- */
 export default class AppHandler {
   private cachedApps: AppMetadata[] = [];
   private readonly appDirectories: string[];
   private readonly debounceDelay = 2000;
   private mainWindow: BrowserWindow; // used to udpate the resource stats in real time
+  private resourceInterval: NodeJS.Timeout | null = null;
+  private readonly resourceUpdateDelay = 1000;
 
   constructor(mainWindow: BrowserWindow) {
     this.mainWindow = mainWindow;
@@ -31,25 +24,8 @@ export default class AppHandler {
 
     this.loadInstalledApps();
     this.setupFileWatchers();
-    setInterval(() => {
-      this.updateResourceUsage();
-    }, 5000);
   }
 
-  /**
-   * Retrieves and filters all applications based on the search query.
-   *
-   * @param searchQuery - The search term to filter applications
-   * @returns A promise that resolves to an array of filtered and sorted AppInfo objects
-   *
-   * @example
-   * ```typescript
-   * const apps = await appHandler.getAllApps("chrome");
-   * // Returns: [{ name: "Google Chrome", path: "/Applications/Google Chrome.app", isRunning: true }, ...]
-   * ```
-   *
-   * @throws {Error} If there's an error accessing the file system or getting app information
-   */
   async getAllApps(searchQuery: string): Promise<AppMetadata[]> {
     try {
       return this.filterAndSortApps(searchQuery);
@@ -59,20 +35,6 @@ export default class AppHandler {
     }
   }
 
-  /**
-   * Launches a new application or switches to it if it's already running.
-   *
-   * @param appInfo - The application information object
-   * @returns A promise that resolves to true if the operation was successful, false otherwise
-   *
-   * @example
-   * ```typescript
-   * const app = { name: "Safari", path: "/Applications/Safari.app", isRunning: true };
-   * await appHandler.launchOrSwitchToApp(app);
-   * ```
-   *
-   * @throws {Error} If there's an error launching or switching to the application
-   */
   async launchOrSwitchToApp(appInfo: AppMetadata): Promise<boolean> {
     try {
       if (appInfo.isRunning) {
@@ -87,15 +49,6 @@ export default class AppHandler {
     }
   }
 
-  /**
-   * Loads all installed applications and updates the cache.
-   *
-   * @returns A promise that resolves when the cache has been updated
-   *
-   * @throws {Error} If there's an error reading directories or getting app information
-   *
-   * @private
-   */
   private async loadInstalledApps(): Promise<void> {
     try {
       const installedAppsPromises = this.appDirectories.map((dir) =>
@@ -110,11 +63,6 @@ export default class AppHandler {
     }
   }
 
-  /**
-   * Sets up file system watchers for application directories.
-   *
-   * @private
-   */
   private setupFileWatchers(): void {
     const debouncedRefresh = debounce(() => {
       this.loadInstalledApps();
@@ -138,16 +86,6 @@ export default class AppHandler {
     });
   }
 
-  /**
-   * Gets all installed applications in a specific directory.
-   *
-   * @param directory - The directory to scan for applications
-   * @returns A promise that resolves to an array of application paths
-   *
-   * @throws {Error} If there's an error accessing or reading the directory
-   *
-   * @private
-   */
   private async getInstalledApps(directory: string): Promise<string[]> {
     try {
       await fs.access(directory);
@@ -171,15 +109,6 @@ export default class AppHandler {
     }
   }
 
-  /**
-   * Gets the names of all currently running applications.
-   *
-   * @returns A promise that resolves to an array of running application names
-   *
-   * @throws {Error} If there's an error executing the AppleScript command
-   *
-   * @private
-   */
   private async getRunningAppNames(): Promise<string[]> {
     const script = `
       tell application "System Events"
@@ -199,16 +128,6 @@ export default class AppHandler {
       .map((app) => app.replace(/"/g, "").replace(".app", ""));
   }
 
-  /**
-   * Gets the icon for an application as a data URL.
-   *
-   * @param appPath - The path to the application
-   * @returns A promise that resolves to the icon data URL or undefined if not found
-   *
-   * @throws {Error} If there's an error creating the thumbnail
-   *
-   * @private
-   */
   private async getAppIcon(appPath: string): Promise<string | undefined> {
     try {
       const icon = await nativeImage.createThumbnailFromPath(appPath, {
@@ -222,17 +141,6 @@ export default class AppHandler {
     }
   }
 
-  /**
-   * Merges application paths and running states into AppInfo objects.
-   *
-   * @param appPaths - Array of application paths
-   * @param runningAppNames - Array of names of running applications
-   * @returns A promise that resolves to an array of AppInfo objects
-   *
-   * @throws {Error} If there's an error getting app icons
-   *
-   * @private
-   */
   private async mergeAppInfo(
     appPaths: string[],
     runningAppNames: string[]
@@ -252,20 +160,6 @@ export default class AppHandler {
     );
   }
 
-  /**
-   * Filters and sorts applications based on a search query.
-   *
-   * @param searchQuery - The search term to filter applications
-   * @returns Filtered and sorted array of AppInfo objects
-   *
-   * @example
-   * ```typescript
-   * const filteredApps = appHandler.filterAndSortApps("chrome");
-   * // Returns apps sorted with running apps first, then alphabetically
-   * ```
-   *
-   * @private
-   */
   private filterAndSortApps(searchQuery: string): AppMetadata[] {
     return this.cachedApps
       .filter((app) =>
@@ -279,16 +173,6 @@ export default class AppHandler {
       });
   }
 
-  /**
-   * Switches to a running application.
-   *
-   * @param appName - The name of the application to switch to
-   * @returns A promise that resolves when the switch is complete
-   *
-   * @throws {Error} If there's an error executing the AppleScript command
-   *
-   * @private
-   */
   private async switchToApp(appName: string): Promise<void> {
     const script = `
       tell application "System Events"
@@ -303,16 +187,6 @@ export default class AppHandler {
     });
   }
 
-  /**
-   * Launches an application.
-   *
-   * @param appPath - The path to the application to launch
-   * @returns A promise that resolves when the launch is complete
-   *
-   * @throws {Error} If there's an error launching the application
-   *
-   * @private
-   */
   private async launchApp(appPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
       exec(`open "${appPath}"`, (error) => {
@@ -321,12 +195,7 @@ export default class AppHandler {
       });
     });
   }
-  /**
-   * Updates resource (memory, cpu) usage information for running applications.
-   * Uses ps command with extended formatting to get accurate process information.
-   *
-   * @private
-   */
+
   private updateResourceUsage(): void {
     const cmd = "ps -axo pid,rss,pcpu,command";
     exec(cmd, (error, stdout) => {
@@ -407,5 +276,20 @@ export default class AppHandler {
         );
       }
     });
+  }
+
+  public startResourceMonitoring() {
+    this.stopResourceMonitoring();
+    this.resourceInterval = setInterval(() => {
+      this.updateResourceUsage();
+    }, this.resourceUpdateDelay);
+    this.updateResourceUsage();
+  }
+
+  public stopResourceMonitoring() {
+    if (this.resourceInterval) {
+      clearInterval(this.resourceInterval);
+      this.resourceInterval = null;
+    }
   }
 }

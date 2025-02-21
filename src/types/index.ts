@@ -35,6 +35,8 @@ export interface IElectronAPI {
   removeResourceUsageUpdated: (
     callback: (event: IpcRendererEvent, updatedApps: AppMetadata[]) => void
   ) => void;
+  startResourceMonitoring: () => Promise<void>;
+  stopResourceMonitoring: () => Promise<void>;
   getRecents: () => Promise<FileMetadata[]>;
 }
 

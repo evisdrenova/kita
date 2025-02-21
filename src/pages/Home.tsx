@@ -72,6 +72,7 @@ export default function Home() {
   const [selectedItem, setSelectedItem] = useState<number>(0);
   const [updatedApps, setUpdatedApps] = useState<AppMetadata[]>([]);
   const [recents, setRecents] = useState<FileMetadata[]>([]);
+  const [isSearchActive, setIsSearchActive] = useState(false);
 
   useEffect(() => {
     const handleProgress = (_: any, progress: IndexingProgress) => {
@@ -114,6 +115,21 @@ export default function Home() {
   const handleSearch = async (query: string) => {
     setSearchQuery(query);
 
+    // Start monitoring resources when the user is typing a search
+    if (query.trim()) {
+      if (!isSearchActive) {
+        setIsSearchActive(true);
+        window.electron.startResourceMonitoring();
+      }
+    } else {
+      setSearchSections([]);
+      if (isSearchActive) {
+        setIsSearchActive(false);
+        window.electron.stopResourceMonitoring();
+      }
+    }
+
+    // Rest of your existing search logic
     if (!query.trim()) {
       setSearchSections([]);
       return;
@@ -128,6 +144,15 @@ export default function Home() {
       toast.error("Error searching:", error);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      // Stop resource monitoring when component unmounts
+      if (isSearchActive) {
+        window.electron.stopResourceMonitoring();
+      }
+    };
+  }, [isSearchActive]);
 
   const handleSelectPaths = async () => {
     try {

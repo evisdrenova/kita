@@ -24,7 +24,7 @@ class EmbeddingService(EmbeddingServiceServicer):
         if os.path.exists(self.INDEX_PATH):
             self.index.load_index(self.INDEX_PATH)
         else:
-            self.index.init_index(max_elements=self.max_elements, ef_construction=200, M=16)
+            self.index.init_index(max_elements=self.max_elements, ef_construction=200, M=32)
         self.index.set_ef(50)
 
     def EmbedText(self, request, context):
@@ -35,6 +35,8 @@ class EmbeddingService(EmbeddingServiceServicer):
         return EmbedTextResponse(embedding=emb.tolist())
 
     def SearchFiles(self, request, context):
+
+        print("print in pythons search files", request.query)
         query_emb = self.model.encode(request.query)
         labels, distances = self.index.knn_query(np.array([query_emb]), k=request.k)
         

@@ -27,6 +27,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error initializing processor: %v\n", err)
 		os.Exit(1)
 	}
+
 	defer fp.Db.Close()
 
 	// Setup signal handling for graceful shutdown

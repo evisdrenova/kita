@@ -293,8 +293,6 @@ ipcMain.handle(
     try {
       if (!grpcClient) {
         throw new Error("gRPC client not initialized");
-      } else {
-        console.log("grpcClient successfully initialized");
       }
 
       // get apps
@@ -399,6 +397,22 @@ ipcMain.handle(
     }
   }
 );
+
+ipcMain.handle("start-resource-monitoring", () => {
+  if (appHandler) {
+    appHandler.startResourceMonitoring();
+    return true;
+  }
+  return false;
+});
+
+ipcMain.handle("stop-resource-monitoring", () => {
+  if (appHandler) {
+    appHandler.stopResourceMonitoring();
+    return true;
+  }
+  return false;
+});
 
 ipcMain.handle(
   "query-embeddings",
