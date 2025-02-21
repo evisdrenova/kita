@@ -60,7 +60,7 @@ function startOrchestrator() {
     for (let i = 0; i < lines.length - 1; i++) {
       const line = lines[i].trim();
       if (!line) continue;
-
+      console.log("lines", lines);
       try {
         const result = JSON.parse(line);
         if (mainWindow && result) {
@@ -253,9 +253,12 @@ ipcMain.on("window-close", () => {
 });
 
 ipcMain.handle("index-and-embed-paths", async (_, directories: string[]) => {
+  console.log("directories", directories);
   try {
     if (!orchestratorProcess) {
       throw new Error("Orchestrator process not running");
+    } else {
+      console.log("orchestrator process successfully started");
     }
 
     // Send the directories to the Go process

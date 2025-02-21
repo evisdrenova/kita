@@ -55,6 +55,8 @@ func main() {
 				continue
 			}
 
+			fmt.Println("request", request.Paths)
+
 			result, err := fp.ProcessPaths(request.Paths)
 			if err != nil {
 				log.Printf("Error processing paths: %v\n", err)
