@@ -4,10 +4,10 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 import hnswlib
 import os
-from gen.pb.v1.embedding_service_pb2 import (
+from pb.v1.embedding_service_pb2 import (
     EmbedTextResponse, SearchFilesResponse, SearchResult, AddFileResponse
 )
-from gen.pb.v1.embedding_service_pb2_grpc import (
+from pb.v1.embedding_service_pb2_grpc import (
     EmbeddingServiceServicer, add_EmbeddingServiceServicer_to_server
 )
 class EmbeddingService(EmbeddingServiceServicer):
