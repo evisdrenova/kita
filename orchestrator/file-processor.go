@@ -229,7 +229,7 @@ func (fp *FileProcessor) processFile(file FileMetadata) error {
 		}
 
 		// Generate embedding
-		embedding, err := fp.getEmbedding(content)
+		embedding, err := fp.Embeddings.EmbedText(content)
 		if err != nil {
 			return err
 		}
@@ -249,7 +249,7 @@ func (fp *FileProcessor) processFile(file FileMetadata) error {
 		}
 
 		// Update vector index
-		err = fp.updateVectorIndex(fileID, embedding)
+		err = fp.Embeddings.AddFile(fileID, embedding)
 		if err != nil {
 			return err
 		}

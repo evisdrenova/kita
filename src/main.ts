@@ -27,6 +27,7 @@ import {
 } from "../gen/ts/pb/v1/embedding_service";
 import { SearchFilesRequest } from "../gen/ts/pb/v1/embedding_service";
 import { credentials } from "@grpc/grpc-js";
+import { isValidJSON } from "./lib/utils";
 
 if (started) {
   app.quit();
@@ -60,8 +61,9 @@ function startOrchestrator() {
     for (let i = 0; i < lines.length - 1; i++) {
       const line = lines[i].trim();
       if (!line) continue;
-      console.log("lines", lines);
-      try {
+
+      // Validate JSON before attempting to use the parsed result
+      if (isValidJSON(line)) {
         const result = JSON.parse(line);
         if (mainWindow && result) {
           // If it's a progress update (has percentage field)
@@ -76,8 +78,9 @@ function startOrchestrator() {
             mainWindow.webContents.send("processing-complete", result);
           }
         }
-      } catch (err) {
-        console.error("Error parsing JSON from orchestrator:", line);
+      } else {
+        // Just log non-JSON lines
+        console.log("Orchestrator log:", line);
       }
     }
 

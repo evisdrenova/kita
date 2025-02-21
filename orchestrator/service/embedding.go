@@ -109,7 +109,7 @@ func (m *EmbeddingServiceManager) SearchFiles(query string, k int32) ([]*pb.Sear
 }
 
 // updates the vector index
-func (m *EmbeddingServiceManager) AddFile(fileID int32, embedding []float32) error {
+func (m *EmbeddingServiceManager) AddFile(fileID int64, embedding []float32) error {
 	_, err := m.GrpcClient.AddFile(context.Background(), &pb.AddFileRequest{
 		FileId:    fileID,
 		Embedding: embedding,

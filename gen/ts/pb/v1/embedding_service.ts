@@ -406,7 +406,7 @@ function createBaseAddFileRequest(): AddFileRequest {
 export const AddFileRequest: MessageFns<AddFileRequest> = {
   encode(message: AddFileRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.fileId !== 0) {
-      writer.uint32(8).int32(message.fileId);
+      writer.uint32(8).int64(message.fileId);
     }
     writer.uint32(18).fork();
     for (const v of message.embedding) {
@@ -428,7 +428,7 @@ export const AddFileRequest: MessageFns<AddFileRequest> = {
             break;
           }
 
-          message.fileId = reader.int32();
+          message.fileId = longToNumber(reader.int64());
           continue;
         }
         case 2: {
@@ -666,6 +666,17 @@ export type DeepPartial<T> = T extends Builtin ? T
   : T extends ReadonlyArray<infer U> ? ReadonlyArray<DeepPartial<U>>
   : T extends {} ? { [K in keyof T]?: DeepPartial<T[K]> }
   : Partial<T>;
+
+function longToNumber(int64: { toString(): string }): number {
+  const num = globalThis.Number(int64.toString());
+  if (num > globalThis.Number.MAX_SAFE_INTEGER) {
+    throw new globalThis.Error("Value is larger than Number.MAX_SAFE_INTEGER");
+  }
+  if (num < globalThis.Number.MIN_SAFE_INTEGER) {
+    throw new globalThis.Error("Value is smaller than Number.MIN_SAFE_INTEGER");
+  }
+  return num;
+}
 
 function isSet(value: any): boolean {
   return value !== null && value !== undefined;

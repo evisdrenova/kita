@@ -117,3 +117,13 @@ export function truncatePath(path: string, maxLength: number = 50) {
 
   return `${startPath}...${endPath}/${fileName}`;
 }
+
+// Helper function to check if a string is valid JSON
+export function isValidJSON(str: string) {
+  try {
+    JSON.parse(str);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}

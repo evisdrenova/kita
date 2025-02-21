@@ -27,7 +27,7 @@ message SearchFilesResponse {
 }
 
 message AddFileRequest {
-  int32 file_id = 1;
+  int64 file_id = 1;
   repeated float embedding = 2;
 }
 
