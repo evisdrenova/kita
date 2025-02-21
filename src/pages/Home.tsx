@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import FolderSettings from "../../components/FolderSettings";
 import {
   Folder,
@@ -374,9 +374,27 @@ function SearchResults(props: SearchResultsProps) {
       : app;
   };
 
+  const sortedItems = useMemo(() => {
+    if (section.type === SearchSectionType.Apps) {
+      return [...section.items].sort((a, b) => {
+        const appA = a as AppMetadata;
+        const appB = b as AppMetadata;
+
+        // Sort running apps first
+        if (appA.isRunning !== appB.isRunning) {
+          return appA.isRunning ? -1 : 1;
+        }
+
+        // If both are running or both are not running, sort alphabetically
+        return appA.name.localeCompare(appB.name);
+      });
+    }
+    return section.items;
+  }, [section]);
+
   return (
     <div className="flex flex-col">
-      {section.items.map((item, index) => {
+      {sortedItems.map((item, index) => {
         return (
           <div
             key={item.id || index}

@@ -29,6 +29,7 @@
     --destructive-foreground: 0 0% 100%; /* White text */
     --ring: 220 60% 40%; /* Balanced focus ring */
     --radius: 0.5rem;
+    --transparent: 0 0% 0% 0;
   }
 
   .dark {
@@ -51,6 +52,7 @@
     --destructive: 0 63% 31%; /* Red for destructive actions */
     --destructive-foreground: 0 0% 95%; /* Light text */
     --ring: 220 13% 40%; /* Border for focus rings */
+    --transparent: 0 0% 0% 0;
   }
 }
 
@@ -69,11 +71,11 @@
 }
 
 ::-webkit-scrollbar {
-  width: 12px; /* Made thicker */
+  width: 8px; /* Made thicker */
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: hsl(var(--transparent));
   border-radius: 6px; /* Adjusted to match thicker width */
 }
 
@@ -89,5 +91,5 @@
 /* For Firefox */
 * {
   scrollbar-width: auto; /* Changed from thin to auto for thicker scrollbar */
-  scrollbar-color: hsl(var(--border)) hsl(var(--background));
+  scrollbar-color: hsl(var(--border)) hsl(var(--transparent));
 }
