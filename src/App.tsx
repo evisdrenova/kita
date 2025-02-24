@@ -239,7 +239,7 @@ export default function App() {
           <h1>Running Applications</h1>
           <ul>
             {runningApps.map((app) => (
-              <li>
+              <li key={app.name}>
                 <Button
                   key={app.path}
                   onClick={async () =>
@@ -249,7 +249,14 @@ export default function App() {
                     )
                   }
                 >
-                  {app.name}
+                  <div className="flex flex-row items-center">
+                    <img
+                      src={app.icon}
+                      alt={`${app.name} icon`}
+                      className="w-8 h-8"
+                    />
+                    {app.name}
+                  </div>
                 </Button>
               </li>
               // <li key={app.path}>{app.name}</li>

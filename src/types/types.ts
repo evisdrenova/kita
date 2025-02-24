@@ -17,7 +17,7 @@ export interface AppMetadata extends BaseMetadata {
   isRunning: boolean;
   memoryUsage?: number;
   cpuUsage?: number;
-  iconDataUrl?: string;
+  icon?: string;
 }
 
 export interface SemanticMetadata extends BaseMetadata {
