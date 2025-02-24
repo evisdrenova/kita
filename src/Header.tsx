@@ -22,6 +22,7 @@ export default function Header(props: HeaderProps) {
           placeholder="Type a command or search..."
           value={searchQuery}
           ref={inputRef}
+          autoFocus
           onChange={(e) => handleSearch(e.target.value)}
           className="text-xs placeholder:pl-2 border-0 focus-visible:outline-hidden focus-visible:ring-0 shadow-none"
         />
