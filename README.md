@@ -1,5 +1,7 @@
 # Kita
 
+A modern take on the Mac Spotlight.
+
 Fast and intelligent search running locally on your mac.
 
 (Kita means "found" in Japanese)
@@ -32,3 +34,5 @@ Fast and intelligent search running locally on your mac.
 4. Storage Layer
    - SQLite: Persistent storage for metadata and embeddings
    - File System: Raw file storage and access
+
+// fix the launch or switch app function and figure out why things aren't rendering on the fe

@@ -229,6 +229,8 @@ export default function App() {
     fetchRunningApps();
   }, []);
 
+  console.log("running", runningApps);
+
   return (
     <main className="container">
       <div className="h-screen flex flex-col overflow-hidden">
@@ -237,7 +239,20 @@ export default function App() {
           <h1>Running Applications</h1>
           <ul>
             {runningApps.map((app) => (
-              <li key={app.path}>{app.name}</li>
+              <li>
+                <Button
+                  key={app.path}
+                  onClick={async () =>
+                    await invoke<AppMetadata[]>(
+                      "launch_or_switch_to_application",
+                      { app: app }
+                    )
+                  }
+                >
+                  {app.name}
+                </Button>
+              </li>
+              // <li key={app.path}>{app.name}</li>
             ))}
           </ul>
         </div>
@@ -303,22 +318,4 @@ export default function App() {
       </div>
     </main>
   );
-}
-
-{
-  /* <form
-className="row"
-onSubmit={(e) => {
-  e.preventDefault();
-  greet();
-}}
->
-<input
-  id="greet-input"
-  onChange={(e) => setName(e.currentTarget.value)}
-  placeholder="Enter a name..."
-/>
-<button type="submit">Greet</button>
-</form>
-<p>{greetMsg}</p> */
 }

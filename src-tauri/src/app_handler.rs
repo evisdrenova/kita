@@ -1,20 +1,18 @@
-// use std::ffi::CStr; 
-// use std::mem;
 use libproc::libproc::proc_pid;
 use libproc::processes;
-use serde::Serialize;   
+use serde::{Serialize, Deserialize};   
 use std::path::Path;
 use std::fs;
 use std::path::PathBuf;
 use std::env;
+use std::process::{Command};
 
-
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AppMetadata {
     name: String,
     path: String,
-    is_running: bool,  // false for installed-but-not-running apps
-    pid: Option<u32>   // None for non-running apps
+    is_running: bool, 
+    pid: Option<u32>  
 }
 
 const APPLICATIONS_DIR: &str = "/Applications";
@@ -137,3 +135,83 @@ pub fn get_all_apps() -> Result<Vec<AppMetadata>, String> {
     Ok(all_apps)
 }
 
+
+// launches a selected app or switches to it if it's already running
+pub async fn launch_or_switch_to_app(app: AppMetadata) -> Result<(), String> {
+
+    // let mut cmd = Command::new(app.path);
+
+    // let child = cmd.spawn()
+    // .map_err(|e| format!("Failed to start application: {}", e))?;
+
+    // let pid = child.id();
+
+    // println!("Started application with PID: {}", pid);
+
+    
+    let status = Command::new("open")
+    .arg(&app.path)
+    .spawn()
+    .map_err(|e| format!("Failed to launch application: {}", e))?;
+
+    println!("Launching application: {}", app.path);
+
+    Ok(())
+
+
+    // unsafe {
+    //     if app.is_running {
+    //         // Switch to running app using NSRunningApplication
+    //         if let Some(pid) = app.pid {
+    //             let cls = Class::get("NSRunningApplication")
+    //                 .ok_or("Failed to get NSRunningApplication class")?;
+
+    //             // Explicitly define the selector
+    //             let sel_running_app = sel!(runningApplicationWithProcessIdentifier:);
+    //             let ns_app: *mut Object = msg_send![cls, sel_running_app, pid as i32];
+                
+    //             if ns_app.is_null() {
+    //                 return Err(format!("No application found with PID {}", pid));
+    //             }
+
+    //             // Explicitly define the activate selector
+    //             let sel_activate = sel!(activateWithOptions:);
+    //             let _: () = msg_send![ns_app, sel_activate, 3]; // NSApplicationActivateAllWindows | NSApplicationActivateIgnoringOtherApps
+                
+    //             Ok(())
+    //         } else {
+    //             Err("PID not provided for running app".to_string())
+    //         }
+    //     } else {
+    //         // Launch new app using NSWorkspace
+    //         let cls = Class::get("NSWorkspace")
+    //             .ok_or("Failed to get NSWorkspace class")?;
+
+    //         // Get sharedWorkspace instance
+    //         let workspace: *mut Object = msg_send![cls, sharedWorkspace];
+            
+    //         if workspace.is_null() {
+    //             return Err("Failed to get shared NSWorkspace".to_string());
+    //         }
+
+    //         // Convert app.path to NSString
+    //         let path_nsstring: *mut Object = msg_send![class!(NSString), stringWithUTF8String: app.path.as_ptr() as *const i8];
+            
+    //         if path_nsstring.is_null() {
+    //             return Err(format!("Failed to create NSString from path: {}", app.path));
+    //         }
+
+    //         // Launch the application
+    //         let success: bool = msg_send![workspace, launchApplicationAtPath: path_nsstring
+    //             options: 0  // Default launch options
+    //             configuration: std::ptr::null_mut()  // No configuration
+    //             error: std::ptr::null_mut()];  // Ignore error pointer for simplicity
+
+    //         if success {
+    //             Ok(())
+    //         } else {
+    //             Err(format!("Failed to launch app at path: {}", app.path))
+    //         }
+    //     }
+    // }
+}
