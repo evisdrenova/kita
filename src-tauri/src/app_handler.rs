@@ -12,21 +12,16 @@ use std::path::PathBuf;
 use std::env;
 use std::process::Command;
 use objc::{msg_send, sel, sel_impl, class};
-use objc::runtime::{Object, Class};
-use core_graphics::geometry::CGSize;
-// use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use objc::runtime::Object;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use rayon::prelude::*;
 use std::time::Instant;
 use base64::prelude::*;
-use cocoa::base::{id, nil, NO, YES};
-use cocoa::foundation::{NSAutoreleasePool,NSData, NSSize, NSString, NSRect};
-use objc2_app_kit::NSBitmapImageFileType;
+use cocoa::base::{id, nil};
+use cocoa::foundation::{NSAutoreleasePool, NSSize};
 use objc2_app_kit::NSPNGFileType;
-// use cocoa::appkit::{NSWorkspace, NSImage, NSBitmapImageFileType, NSBitmapImageRep};
-// use once_cell::sync::Lazy;
 
 // used to cache the app icons so that we don't have to load them every time
 lazy_static! {
@@ -284,7 +279,7 @@ pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
                 }
 
                 // Resize the image to 64x64
-                let size = NSSize::new(64.0, 64.0);
+                let size = NSSize::new(32.0, 32.0);
                 let _: () = msg_send![ns_image, setSize:size];
                 
                 // Convert to PNG representation - first get the TIFF representation
