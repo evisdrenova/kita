@@ -206,6 +206,20 @@ pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
     }
     println!("Cache check took: {:?}", cache_start.elapsed());
 
+    // Handle known problematic apps with hardcoded paths
+    match app_path {
+        path if path.contains("/System/Applications/Calendar.app") => {
+            return get_app_icon_fallback(app_path, app_name);
+        },
+        path if path.contains("/System/Applications/Photo Booth.app") => {
+            return get_app_icon_fallback(app_path, app_name);
+        },
+        path if path.contains("/System/Applications/System Settings.app") => {
+            return get_app_icon_fallback(app_path, app_name);
+        },
+        _ => {}
+    }
+
     // Look for icon at standard locations
     let icon_search = Instant::now();
     let potential_icon_paths = vec![
@@ -213,6 +227,7 @@ pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
         format!("{}/Contents/Resources/AppIcon.icns", app_path),
         format!("{}/Contents/Resources/Icon.icns", app_path),
         format!("{}/Contents/Resources/electron.icns", app_path),
+        // Add more potential paths
     ];
 
     let mut icon_path = None;
@@ -267,7 +282,7 @@ pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
                 let ns_data: id = msg_send![class!(NSData), dataWithBytes:icon_data.as_ptr() length:icon_data.len()];
                 if ns_data.is_null() {
                     println!("Failed to create NSData from icon data");
-                    return None;
+                    return get_app_icon_fallback(app_path, app_name);
                 }
                 
                 // Create an NSImage from the NSData
@@ -275,10 +290,10 @@ pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
                 let ns_image: id = msg_send![ns_image, initWithData:ns_data];
                 if ns_image.is_null() {
                     println!("Failed to create NSImage from NSData");
-                    return None;
+                    return get_app_icon_fallback(app_path, app_name);
                 }
 
-                // Resize the image to 64x64
+                // Resize the image to 32x32 for better performance
                 let size = NSSize::new(32.0, 32.0);
                 let _: () = msg_send![ns_image, setSize:size];
                 
@@ -286,7 +301,7 @@ pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
                 let tiff_data: id = msg_send![ns_image, TIFFRepresentation];
                 if tiff_data.is_null() {
                     println!("Failed to get TIFF representation");
-                    return None;
+                    return get_app_icon_fallback(app_path, app_name);
                 }
                 
                 // Then create the bitmap representation from the TIFF data
@@ -294,7 +309,7 @@ pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
                 
                 if bitmap_rep.is_null() {
                     println!("Failed to create bitmap representation");
-                    return None;
+                    return get_app_icon_fallback(app_path, app_name);
                 }
                 
                 let properties: id = msg_send![class!(NSDictionary), dictionary];
@@ -302,7 +317,7 @@ pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
                 
                 if png_data.is_null() {
                     println!("Failed to create PNG data");
-                    return None;
+                    return get_app_icon_fallback(app_path, app_name);
                 }
                 
                 // Get raw bytes from NSData for base64 encoding
@@ -332,62 +347,49 @@ pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
         }
     }
 
-    // Fallback to legacy method if no icon found
-    println!("No .icns file found, falling back to legacy method for {}", app_path);
-    let fallback_start = Instant::now();
-    let result = get_app_icon_legacy(app_path);
-    println!("Fallback method took: {:?}", fallback_start.elapsed());
-    
-    // Cache the result
-    if let Some(ref icon_data) = result {
-        if let Ok(mut cache) = ICON_CACHE.lock() {
-            cache.insert(app_path.to_string(), Some(icon_data.clone()));
-        }
-    }
-    
-    println!("Total icon processing took: {:?}", total_start.elapsed());
-    result
+    // Use our fast fallback if we couldn't find or process an icon
+    println!("No .icns file found, using fast fallback for {}", app_path);
+    get_app_icon_fallback(app_path, app_name)
 }
 
 
-// Legacy fallback method (using the previous QuickLook implementation)
-pub fn get_app_icon_legacy(app_path: &str) -> Option<String> {
-    unsafe {
-        let pool = NSAutoreleasePool::new(nil);
-        
-        let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
-        
-        let path_str: id = msg_send![class!(NSString), 
-            stringWithUTF8String: app_path.as_ptr()];
-        
-        let icon: id = msg_send![workspace, iconForFile: path_str];
-        
-        if icon.is_null() {
-            pool.drain();
-            return None;
-        }
-
-        let size = NSSize::new(64.0, 64.0);
-        let _: () = msg_send![icon, setSize: size];
-        
-        let tiff_data: id = msg_send![icon, TIFFRepresentation];
-        
-        if tiff_data.is_null() {
-            pool.drain();
-            return None;
-        }
-
-        let length: usize = msg_send![tiff_data, length];
-        let bytes: *const u8 = msg_send![tiff_data, bytes];
-        let icon_data = std::slice::from_raw_parts(bytes, length);
-
-        let base64_result = format!("data:image/png;base64,{}", 
-        BASE64_STANDARD.encode(icon_data));
-
-        pool.drain();
-        
-        Some(base64_result)
+// Improved fallback method that replaces the slow NSWorkspace approach
+pub fn get_app_icon_fallback(app_path: &str, app_name: &str) -> Option<String> {
+    let fallback_start = Instant::now();
+    
+    // Extract the first letter of the app name for our letter-based icon
+    let first_letter = app_name.chars().next()
+                              .unwrap_or('A')
+                              .to_uppercase().next()
+                              .unwrap_or('A');
+    
+    // Generate a color based on the app name for visual differentiation
+    let hash = app_name.bytes().fold(0u32, |acc, b| acc.wrapping_add(b as u32));
+    let hue = hash % 360;
+    
+    // Create a simple colored SVG with the first letter
+    // This is extremely fast compared to the NSWorkspace approach
+    let svg = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+            <rect x="0" y="0" width="64" height="64" rx="12" fill="hsl({}, 70%, 60%)"/>
+            <text x="32" y="42" font-family="Arial" font-size="32" font-weight="bold" 
+                  text-anchor="middle" fill="white">{}</text>
+        </svg>"#,
+        hue, first_letter
+    );
+    
+    let base64_svg = format!(
+        "data:image/svg+xml;base64,{}",
+        BASE64_STANDARD.encode(svg.as_bytes())
+    );
+    
+    // Cache the result
+    if let Ok(mut cache) = ICON_CACHE.lock() {
+        cache.insert(app_path.to_string(), Some(base64_svg.clone()));
     }
+    
+    println!("Fallback method took: {:?}", fallback_start.elapsed());
+    Some(base64_svg)
 }
 
 // Update process_icons_in_parallel to use the new method
