@@ -28,7 +28,7 @@ lazy_static! {
 }
 
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppMetadata {
     name: String,
     path: String,
