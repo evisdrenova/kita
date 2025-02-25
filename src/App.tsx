@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import "./globals.css";
 import { Button } from "@/src/components/ui/button";
@@ -15,9 +15,9 @@ import Header from "./Header";
 import { toast } from "sonner";
 
 export default function App() {
-  const [runningApps, setRunningApps] = useState<AppMetadata[]>([]);
-
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [allApps, setAllApps] = useState<AppMetadata[]>([]);
+
   const [selectedCategories, setSelectedCategories] = useState<
     Set<SearchCategory>
   >(new Set(searchCategories));
@@ -69,40 +69,6 @@ export default function App() {
   //   const interval = setInterval(fetchRecents, 60000);
   //   return () => clearInterval(interval);
   // }, []);
-
-  const handleSearch = async (query: string) => {
-    setSearchQuery(query);
-
-    // Start monitoring resources when the user is typing a search
-    if (query.trim()) {
-      if (!isSearchActive) {
-        setIsSearchActive(true);
-        // window.electron.startResourceMonitoring();
-      }
-    } else {
-      setSearchSections([]);
-      if (isSearchActive) {
-        setIsSearchActive(false);
-        // window.electron.stopResourceMonitoring();
-      }
-    }
-
-    // Rest of your existing search logic
-    if (!query.trim()) {
-      setSearchSections([]);
-      return;
-    }
-
-    try {
-      // const sections = await window.electron.searchFilesAndEmbeddings(query);
-      const sections: SearchSection[] = [];
-      setSearchSections(sections);
-      setSelectedSection(0);
-      setSelectedItem(0);
-    } catch (error) {
-      toast.error("Error searching:");
-    }
-  };
 
   // useEffect(() => {
   //   return () => {
@@ -213,32 +179,38 @@ export default function App() {
   //   });
   // }, [searchSections]);
 
+  // Gets all of the apps
   useEffect(() => {
-    const fetchRunningApps = async () => {
+    const fetchAllApps = async () => {
       try {
-        const start = performance.now();
         const apps = await invoke<AppMetadata[]>("get_all_applications");
-        const end = performance.now();
-        console.log(`Call took ${end - start}ms`);
-        setRunningApps(apps);
+        setAllApps(apps);
       } catch (error) {
-        console.error("Failed to fetch running apps:", error);
+        console.error("Failed to fetch apps:", error);
       }
     };
 
-    fetchRunningApps();
+    fetchAllApps();
   }, []);
 
-  console.log("running", runningApps);
+  // Filter apps on client side when search query changes
+  const filteredApps = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return allApps;
+    }
+
+    const query = searchQuery.toLowerCase();
+    return allApps.filter((app) => app.name.toLowerCase().includes(query));
+  }, [searchQuery, allApps]);
 
   return (
     <main className="container">
       <div className="h-screen flex flex-col overflow-hidden">
-        <Header handleSearch={handleSearch} searchQuery={searchQuery} />
+        <Header setSearchQuery={setSearchQuery} searchQuery={searchQuery} />
         <div className="overflow-auto">
           <h1>Running Applications</h1>
           <ul>
-            {runningApps.map((app) => (
+            {filteredApps.map((app) => (
               <li key={app.name}>
                 <Button
                   key={app.path}

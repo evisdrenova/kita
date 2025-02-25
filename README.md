@@ -35,4 +35,4 @@ Fast and intelligent search running locally on your mac.
    - SQLite: Persistent storage for metadata and embeddings
    - File System: Raw file storage and access
 
-// fix the launch or switch app function and figure out why things aren't rendering on the fe
+// optimize the get_app_icon to be faster, the icon conversion is taking way too long

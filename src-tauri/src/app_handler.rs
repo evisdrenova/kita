@@ -5,7 +5,7 @@
 
 use libproc::libproc::proc_pid;
 use libproc::processes;
-use serde::{Serialize, Deserialize};   
+use serde::{Serialize, Deserialize};  
 use std::path::Path;
 use std::fs;
 use std::path::PathBuf;
@@ -17,7 +17,6 @@ use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use rayon::prelude::*;
-use std::time::Instant;
 use base64::prelude::*;
 use cocoa::base::{id, nil};
 use cocoa::foundation::{NSAutoreleasePool, NSSize};
@@ -91,7 +90,6 @@ pub fn get_installed_apps() ->  Result<Vec<AppMetadata>, String> {
     
         Ok(installed_apps)
     }
-
 
 // gets list of running apps and returns a vector of RunningApp or an error string
 pub fn get_running_apps() -> Result<Vec<AppMetadata>, String> {
@@ -190,23 +188,62 @@ unsafe fn try_switch_to_pid(pid: u32) -> Result<(), String> {
     Ok(())
 }
 
+// returns the running apps and installed apps
+pub fn get_all_apps() -> Result<Vec<AppMetadata>, String> {
+    let mut running_apps = get_running_apps()?;
 
-// ITS DFINITELY THE APP ICON THING THAT iS SLOWING THINGS DOWN!!!!!
+    let mut installed_apps = get_installed_apps()?;
 
-pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
-    let total_start = Instant::now();
+    // de-dupe
+    installed_apps.retain(|installed| {
+        !running_apps.iter().any(|running| running.name == installed.name)
+    });
     
+    running_apps.extend(installed_apps);
+    
+    process_icons_in_parallel(&mut running_apps);
+    
+    running_apps.sort_by(|a, b| a.name.cmp(&b.name));
+
+    Ok(running_apps)
+}
+
+// runs function to get app icons in parallel
+pub fn process_icons_in_parallel(apps: &mut Vec<AppMetadata>) {
+    // get paths for parallelization
+    let paths_and_names: Vec<(String, String)> = apps
+        .iter()
+        .map(|app| (app.path.clone(), app.name.clone()))
+        .collect();
+    
+    // Process icons in parallel and collect results
+    let icons: Vec<_> = paths_and_names
+        .par_iter()
+        .map(|(path, name)| {
+            let icon = get_app_icon(path, name);
+            icon
+        })
+        .collect();
+    
+    // Assign the icons back to the apps
+    for (i, icon) in icons.into_iter().enumerate() {
+        if i < apps.len() {
+            apps[i].icon = icon;
+        }
+    }
+}
+
+// gets the app icon
+// TODO: spend more time optimizing this later, icon convresion still taking like 10ms
+pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
     // Check cache first
-    let cache_start = Instant::now();
     if let Ok(cache) = ICON_CACHE.lock() {
         if let Some(cached_icon) = cache.get(app_path) {
-            println!("Cache hit for {}: {:?}", app_path, cache_start.elapsed());
             return cached_icon.clone();
         }
     }
-    println!("Cache check took: {:?}", cache_start.elapsed());
 
-    // Handle known problematic apps with hardcoded paths
+    // Handle known problematic apps with hardcoded paths and return svg
     match app_path {
         path if path.contains("/System/Applications/Calendar.app") => {
             return get_app_icon_fallback(app_path, app_name);
@@ -220,14 +257,12 @@ pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
         _ => {}
     }
 
-    // Look for icon at standard locations
-    let icon_search = Instant::now();
+    // common icon path names
     let potential_icon_paths = vec![
         format!("{}/Contents/Resources/{}.icns", app_path, app_name),
         format!("{}/Contents/Resources/AppIcon.icns", app_path),
         format!("{}/Contents/Resources/Icon.icns", app_path),
         format!("{}/Contents/Resources/electron.icns", app_path),
-        // Add more potential paths
     ];
 
     let mut icon_path = None;
@@ -242,8 +277,8 @@ pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
     if icon_path.is_none() {
         let info_plist_path = format!("{}/Contents/Info.plist", app_path);
         if let Ok(info_plist_content) = fs::read_to_string(&info_plist_path) {
-            // Very simple approach to extract CFBundleIconFile
-            if let Some(icon_file_start) = info_plist_content.find("<key>CFBundleIconFile</key>") {
+            // CFBundleIconName is the name of the icon
+            if let Some(icon_file_start) = info_plist_content.find("<key>CFBundleIconName</key>") {
                 if let Some(string_start) = info_plist_content[icon_file_start..].find("<string>") {
                     if let Some(string_end) = info_plist_content[icon_file_start + string_start..].find("</string>") {
                         let start_pos = icon_file_start + string_start + "<string>".len();
@@ -263,18 +298,10 @@ pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
             }
         }
     }
-    println!("Icon search took: {:?}", icon_search.elapsed());
 
     // Read and process the icon file if found
     if let Some(path) = icon_path {
-        let read_start = Instant::now();
         if let Ok(icon_data) = fs::read(&path) {
-            println!("Icon file read took: {:?}", read_start.elapsed());
-            
-            let conversion_start = Instant::now();
-            
-            // We need to extract a PNG from the ICNS
-            // For simplicity, we'll use a Tauri-compatible approach for NSImage
             unsafe {
                 let pool = NSAutoreleasePool::new(nil);
                 
@@ -330,16 +357,10 @@ pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
                 
                 pool.drain();
                 
-                println!("Icon conversion took: {:?}", conversion_start.elapsed());
                 
-                // Cache the result
-                let cache_write_start = Instant::now();
                 if let Ok(mut cache) = ICON_CACHE.lock() {
                     cache.insert(app_path.to_string(), Some(base64_result.clone()));
                 }
-                println!("Cache write took: {:?}", cache_write_start.elapsed());
-                
-                println!("Total icon processing took: {:?}", total_start.elapsed());
                 return Some(base64_result);
             }
         } else {
@@ -352,11 +373,8 @@ pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
     get_app_icon_fallback(app_path, app_name)
 }
 
-
 // Improved fallback method that replaces the slow NSWorkspace approach
 pub fn get_app_icon_fallback(app_path: &str, app_name: &str) -> Option<String> {
-    let fallback_start = Instant::now();
-    
     // Extract the first letter of the app name for our letter-based icon
     let first_letter = app_name.chars().next()
                               .unwrap_or('A')
@@ -368,7 +386,6 @@ pub fn get_app_icon_fallback(app_path: &str, app_name: &str) -> Option<String> {
     let hue = hash % 360;
     
     // Create a simple colored SVG with the first letter
-    // This is extremely fast compared to the NSWorkspace approach
     let svg = format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
             <rect x="0" y="0" width="64" height="64" rx="12" fill="hsl({}, 70%, 60%)"/>
@@ -388,71 +405,6 @@ pub fn get_app_icon_fallback(app_path: &str, app_name: &str) -> Option<String> {
         cache.insert(app_path.to_string(), Some(base64_svg.clone()));
     }
     
-    println!("Fallback method took: {:?}", fallback_start.elapsed());
     Some(base64_svg)
 }
 
-// Update process_icons_in_parallel to use the new method
-pub fn process_icons_in_parallel(apps: &mut Vec<AppMetadata>) {
-    let icons_start = Instant::now();
-    
-    // Extract paths for parallel processing
-    let paths_and_names: Vec<(String, String)> = apps
-        .iter()
-        .map(|app| (app.path.clone(), app.name.clone()))
-        .collect();
-    
-    // Process icons in parallel and collect results
-    let icons: Vec<_> = paths_and_names
-        .par_iter()
-        .map(|(path, name)| {
-            let single_icon_start = Instant::now();
-            let icon = get_app_icon(path, name); // Use the new ICNS-based method
-            println!("Icon for {} took: {:?}", name, single_icon_start.elapsed());
-            icon
-        })
-        .collect();
-    
-    // Assign the icons back to the apps
-    for (i, icon) in icons.into_iter().enumerate() {
-        if i < apps.len() {
-            apps[i].icon = icon;
-        }
-    }
-    
-    println!("Total icon processing took: {:?}", icons_start.elapsed());
-}
-
-// Keep the get_all_apps function as is since it already uses process_icons_in_parallel
-pub fn get_all_apps() -> Result<Vec<AppMetadata>, String> {
-    let total_start = Instant::now();
-
-    let apps_start = Instant::now();
-    let running_apps = get_running_apps()?;
-    println!("Getting running apps took: {:?}", apps_start.elapsed());
-
-    let installed_start = Instant::now();
-    let mut installed_apps = get_installed_apps()?;
-    println!("Getting installed apps took: {:?}", installed_start.elapsed());
-
-    let dedup_start = Instant::now();
-    // Deduplicate before processing icons to reduce workload
-    installed_apps.retain(|installed| {
-        !running_apps.iter().any(|running| running.name == installed.name)
-    });
-    println!("Deduplication took: {:?}", dedup_start.elapsed());
-    
-    // Combine apps before processing icons
-    let mut all_apps = running_apps;
-    all_apps.extend(installed_apps);
-    
-    // Process all icons in parallel using the new ICNS-based method
-    process_icons_in_parallel(&mut all_apps);
-    
-    let sort_start = Instant::now();
-    all_apps.sort_by(|a, b| a.name.cmp(&b.name));
-    println!("Sorting took: {:?}", sort_start.elapsed());
-
-    println!("Total get_all_apps process took: {:?}", total_start.elapsed());
-    Ok(all_apps)
-}
