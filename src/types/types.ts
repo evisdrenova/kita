@@ -14,7 +14,7 @@ export interface FileMetadata extends BaseMetadata {
 
 export interface AppMetadata extends BaseMetadata {
   type: SearchSectionType.Apps;
-  isRunning: boolean;
+  pid: number;
   memoryUsage?: number;
   cpuUsage?: number;
   icon?: string;

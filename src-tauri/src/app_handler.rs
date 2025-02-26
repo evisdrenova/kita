@@ -70,7 +70,10 @@ pub fn get_installed_apps() ->  Result<Vec<AppMetadata>, String> {
                     // Skip helper apps
                     if !app_name.contains("Helper") && 
                        !app_name.contains("Agent") && 
-                       !app_name.ends_with("Assistant") 
+                       !app_name.ends_with("Assistant") &&
+                       !app_name.starts_with("com.") && 
+                       !app_name.starts_with("plugin_") && 
+                       !app_name.starts_with(".") 
                     {
                         installed_apps.push(AppMetadata {
                             name: app_name,
@@ -120,7 +123,8 @@ pub fn get_running_apps() -> Result<Vec<AppMetadata>, String> {
                                !app_name.contains("Agent") && 
                                !app_name.ends_with("Assistant") && 
                                !app_name.starts_with("com.") && 
-                               !app_name.starts_with("plugin_") {
+                               !app_name.starts_with("plugin_") && 
+                               !app_name.starts_with(".") {
 
                                 desktop_apps.push(AppMetadata {
                                     name: app_name,

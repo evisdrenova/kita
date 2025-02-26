@@ -190,6 +190,7 @@ export default function App() {
     const fetchAllApps = async () => {
       try {
         const apps = await invoke<SearchSection[]>("get_search_data");
+
         setSearchSections(apps);
       } catch (error) {
         console.error("Failed to fetch apps:", error);
@@ -325,8 +326,8 @@ function SearchResults(props: SearchResultsProps) {
         const appB = b as AppMetadata;
 
         // Sort running apps first
-        if (appA.isRunning !== appB.isRunning) {
-          return appA.isRunning ? -1 : 1;
+        if (appA.pid !== appB.pid) {
+          return appA.pid ? -1 : 1;
         }
 
         // If both are running or both are not running, sort alphabetically
@@ -401,13 +402,13 @@ function AppRow(props: AppRowProps) {
             <Package className="h-4 w-4" />
           )}
           <span className="text-sm text-primary-foreground">{app?.name}</span>
-          {app?.isRunning && (
-            <div className="relative">
-              <div className="absolute inset-0 w-2 h-2 bg-green-500/30 rounded-full animate-ping" />
-              <div className="relative w-2 h-2 bg-green-500 rounded-full shadow-lg shadow-green-500/50" />
+          {app?.pid && (
+            <div className="relative flex items-center justify-center">
+              <div className="absolute w-2 h-2 bg-green-500/30 rounded-full animate-ping" />
+              <div className="relative w-[6px] h-[6px] bg-green-500 rounded-full shadow-lg shadow-green-500/50" />
             </div>
           )}
-          {app?.isRunning && (
+          {app?.pid && (
             <span className="text-xs text-gray-500 ml-2">
               {app.memoryUsage !== undefined ? (
                 <div className="flex flex-row items-center gap-1">
@@ -419,7 +420,7 @@ function AppRow(props: AppRowProps) {
               )}
             </span>
           )}
-          {app?.isRunning && app?.cpuUsage !== undefined && (
+          {app?.pid && app?.cpuUsage !== undefined && (
             <span className="text-xs text-gray-500 ml-2">
               <div className="flex flex-row items-center gap-1">
                 <Cpu className="w-3 h-3" />
