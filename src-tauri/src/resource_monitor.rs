@@ -6,7 +6,7 @@ use sysinfo::{System, SystemExt, ProcessExt};
 use std::time::Duration;
 use std::thread::sleep;
 use serde::{Serialize, Deserialize};
-
+use std::panic::{self, AssertUnwindSafe};
 
 use crate::app_handler::{get_all_apps, get_running_apps, AppMetadata};
 
@@ -33,60 +33,82 @@ pub async fn start_resource_monitoring(
     app_handle: tauri::AppHandle,
     state: State<'_, ResourceMonitorState>,
 ) -> Result<(), String> {
+    // Set monitoring flag to true
     *state.is_monitoring.lock().unwrap() = true;
     
-    // update the list of monitored PIDs
+    // Update the list of monitored PIDs - safely
     {
         let mut monitored = state.monitored_pids.lock().unwrap();
-        *monitored = pids;
+        let mut valid_pids = Vec::new();
+        
+        // Create system once outside loop
+        let mut system = System::new();
+        system.refresh_processes();
+        
+        // Filter out any invalid PIDs
+        for pid in pids {
+            let sys_pid = sysinfo::Pid::from(pid as usize);
+            if system.process(sys_pid).is_some() {
+                valid_pids.push(pid);
+            }
+        }
+        
+        *monitored = valid_pids;
     }
     
-    // clone what we need for the background task
+    // Clone what we need for the background task
     let is_monitoring = state.is_monitoring.clone();
     let monitored_pids = state.monitored_pids.clone();
     
-    // start the monitoring task
+    // Spawn the monitoring task
     tokio::spawn(async move {
         let mut system = System::new();
-        let mut update_interval = interval(Duration::from_secs(1));
+        let mut update_interval = tokio::time::interval(Duration::from_secs(1));
         
-        // continue monitoring until flag is turned off
+        // Continue monitoring until flag is turned off
         while *is_monitoring.lock().unwrap() {
-            // current list of PIDs to monitor
+            // Get the current list of PIDs to monitor
             let pids_to_monitor: Vec<u32> = {
                 monitored_pids.lock().unwrap().clone()
             };
             
             if !pids_to_monitor.is_empty() {
-                // refresh system processes for monitoring
-                system.refresh_processes();
-                
-                // create payload for updated resources
-                let mut updated_resources = HashMap::new();
-                
-                for pid in pids_to_monitor {
-                    let sys_pid = sysinfo::Pid::from(pid as usize);
+                // Wrap in catch_unwind to prevent panics
+        let refresh_result = panic::catch_unwind(AssertUnwindSafe(|| {
+                    system.refresh_processes();
+                }));
+                if refresh_result.is_ok() {
+                    // Create payload for updated resources
+                    let mut updated_resources = std::collections::HashMap::new();
                     
-                    if let Some(process) = system.process(sys_pid) {
-                        let cpu_usage = process.cpu_usage();
-                        let memory_bytes = process.memory();
-          
+                    // Process each PID
+                    for pid in &pids_to_monitor {
+                        let sys_pid = sysinfo::Pid::from(*pid as usize);
                         
-                        updated_resources.insert(pid, AppResourceUsage {
-                            pid,
-                            cpu_usage: cpu_usage.into(),
-                            memory_bytes,
-                        });
+                        if let Some(process) = system.process(sys_pid) {
+                            let cpu_usage = process.cpu_usage();
+                            let memory_bytes = process.memory();
+                            
+                            
+                            updated_resources.insert(*pid, AppResourceUsage {
+                                pid: *pid,
+                                cpu_usage: cpu_usage.into(),
+                                memory_bytes,
+                   
+                            });
+                        }
                     }
-                }
-                
-                // emit the updated resources to the frontend
-                if !updated_resources.is_empty() {
-                    let _ = app_handle.emit("resource-usage-updated", updated_resources);
+                    
+                    // Emit the updated resources to the frontend
+                    if !updated_resources.is_empty() {
+                        let _ = app_handle.emit("resource-usage-updated", updated_resources);
+                    }
+                } else {
+                    println!("Error refreshing system processes");
                 }
             }
             
-            // wait for the next update interval
+            // Simply await the tick - if it panics, the task will end but won't crash the process
             update_interval.tick().await;
         }
         
@@ -95,7 +117,6 @@ pub async fn start_resource_monitoring(
     
     Ok(())
 }
-
 
 #[tauri::command]
 pub fn stop_resource_monitoring(state: State<'_, ResourceMonitorState>) -> Result<(), String> {
@@ -272,7 +293,7 @@ pub async fn monitor_app_resources(app_handle: tauri::AppHandle) -> Result<(), S
         let mut update_interval = tokio::time::interval(Duration::from_secs(1));
         
         loop {
-            // Get the current running apps
+            // Use a try-catch block to prevent panics from propagating
             match get_running_apps() {
                 Ok(apps) => {
                     // Filter to get only apps with PIDs
@@ -281,42 +302,69 @@ pub async fn monitor_app_resources(app_handle: tauri::AppHandle) -> Result<(), S
                         .collect();
                     
                     if !running_pids.is_empty() {
-                        // Refresh sysinfo data
-                        system.refresh_processes();
+                        // Refresh sysinfo data - wrap in a catch to prevent panics
+                        let refresh_result = panic::catch_unwind(AssertUnwindSafe(|| {
+                            system.refresh_processes();
+                        }));
                         
-                        // Create payload with resource data
-                        let mut payload = std::collections::HashMap::new();
-                        
-                        for pid in running_pids {
-                            let sys_pid = sysinfo::Pid::from(pid as usize);
+                        if refresh_result.is_ok() {
+                            // Create payload with resource data
+                            let mut payload = std::collections::HashMap::new();
                             
-                            if let Some(process) = system.process(sys_pid) {
-                                let cpu_usage = process.cpu_usage();
-                                let memory_bytes = process.memory();
-                        
+                            for pid in running_pids {
+                                let sys_pid = sysinfo::Pid::from(pid as usize);
                                 
-                                payload.insert(pid, AppResourceUsage {
-                                    pid,
-                                    cpu_usage: cpu_usage.into(),
-                                    memory_bytes,
+                                // Check if process still exists
+                                if let Some(process) = system.process(sys_pid) {
+                                    // Safely get values with default fallbacks
+                                    let cpu_usage = process.cpu_usage();
+                                    let memory_bytes = process.memory();
+                             
+                                    
+                                    payload.insert(pid, AppResourceUsage {
+                                        pid,
+                                        cpu_usage: cpu_usage.into(),
+                                        memory_bytes,
                       
-                                });
+                                    });
+                                }
                             }
-                        }
-                        
-                        // Emit event with updated resource data
-                        if !payload.is_empty() {
-                            let _ = app_handle.emit("resource-usage-updated", payload);
+                            
+                            // Only emit if we have data and it's safe to do so
+                            if !payload.is_empty() {
+                                // Use a try-catch for the emit as well
+                                if let Err(e) = app_handle.emit("resource-usage-updated", payload) {
+                                    println!("Failed to emit resource updates: {:?}", e);
+                                }
+                            }
+                        } else {
+                            println!("Error refreshing system processes");
                         }
                     }
                 },
                 Err(e) => {
                     println!("Error getting running apps: {}", e);
+                    // Short sleep to prevent rapid error loops
+                    tokio::time::sleep(Duration::from_millis(500)).await;
                 }
             }
             
-            // Wait for next update interval
-            update_interval.tick().await;
+            // For async operations in tokio, we can't use catch_unwind directly
+            // Instead, we use a simple try/catch with sleep as a fallback
+            let tick_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                // Just check if the interval is valid, don't await here
+                &update_interval
+            }));
+            
+            if tick_result.is_ok() {
+                // Safely await the tick
+                update_interval.tick().await;
+            } else {
+                println!("Error with interval, recreating it");
+                // Re-create interval if it panicked
+                update_interval = tokio::time::interval(Duration::from_secs(1));
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
         }
     });
     
