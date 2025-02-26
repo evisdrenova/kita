@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager, State};
-use tokio::sync::mpsc;
+use tauri::{Emitter, Manager, State};
 use tokio::time::interval;
-use sysinfo::{System, SystemExt, Process, ProcessExt, PidExt};
+use sysinfo::{System, SystemExt, ProcessExt};
 use std::time::Duration;
 use std::thread::sleep;
 use serde::{Serialize, Deserialize};

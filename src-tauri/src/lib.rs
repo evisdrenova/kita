@@ -1,10 +1,8 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-
 mod app_handler;
 mod resource_monitor;
 
 use app_handler::{get_all_apps, launch_or_switch_to_app, AppMetadata};
-use resource_monitor::{AppResourceUsage, get_all_apps_with_usage};
+use resource_monitor::get_all_apps_with_usage;
 use serde::{Serialize, Deserialize};
 use tauri::Manager;
 
