@@ -35,6 +35,7 @@ import {
   MemoryStick,
   Music,
   Package,
+  Search,
 } from "lucide-react";
 
 import { FaRegFilePdf } from "react-icons/fa";
@@ -185,10 +186,10 @@ export default function App() {
   // sort sections with apps first
   const sortedSections = useMemo(() => {
     return [...searchSections].sort((a, b) => {
-      if (a.type === SearchSectionType.Apps) return -1;
-      if (b.type === SearchSectionType.Apps) return 1;
-      if (a.type === SearchSectionType.Files) return -1;
-      if (b.type === SearchSectionType.Files) return 1;
+      if (a.type_ === SearchSectionType.Apps) return -1;
+      if (b.type_ === SearchSectionType.Apps) return 1;
+      if (a.type_ === SearchSectionType.Files) return -1;
+      if (b.type_ === SearchSectionType.Files) return 1;
       return 0;
     });
   }, [searchSections]);
@@ -217,42 +218,32 @@ export default function App() {
   //   return allApps.filter((app) => app.name.toLowerCase().includes(query));
   // }, [searchQuery, allApps]);
 
-  console.log("sorted", searchSections);
+  console.log("sorted sections", searchSections);
 
   return (
-    <main className="container">
-      <div className="h-screen flex flex-col overflow-hidden">
-        <Header setSearchQuery={setSearchQuery} searchQuery={searchQuery} />
-        {/* <div className="overflow-auto">
-          <h1>Running Applications</h1>
-          <ul>
-            {filteredApps.map((app) => (
-              <li key={app.name}>
-                <Button
-                  key={app.path}
-                  onClick={async () =>
-                    await invoke<AppMetadata[]>(
-                      "launch_or_switch_to_application",
-                      { app: app }
-                    )
-                  }
-                >
-                  <div className="flex flex-row items-center">
-                    <img
-                      src={app.icon}
-                      alt={`${app.name} icon`}
-                      className="w-8 h-8"
-                    />
-                    {app.name}
-                  </div>
-                </Button>
-              </li>
-              // <li key={app.path}>{app.name}</li>
-            ))}
-          </ul>
-        </div> */}
-        <div>
-          {sortedSections.map((section, sectionIndex) => (
+    <div className="h-screen flex flex-col overflow-hidden">
+      <Header setSearchQuery={setSearchQuery} searchQuery={searchQuery} />
+      <main className="flex-1 px-2 pt-4 overflow-auto scrollbar">
+        {searchQuery.trim() === "" ? (
+          recents.length > 0 ? (
+            <Recents
+              recents={recents}
+              handleResultSelect={handleResultSelect}
+            />
+          ) : (
+            // Show empty state if no recents
+            <div className="flex h-full items-center justify-center">
+              <EmptyState />
+            </div>
+          )
+        ) : searchSections.length === 0 ? (
+          // Show empty state if searching but no results
+          <div className="flex h-full items-center justify-center">
+            <EmptyState />
+          </div>
+        ) : (
+          // Show search results
+          sortedSections.map((section, sectionIndex) => (
             <div
               key={sectionIndex}
               className={`${sectionIndex > 0 ? "mt-6" : ""}`}
@@ -273,57 +264,13 @@ export default function App() {
                 updatedApps={updatedApps}
               />
             </div>
-          ))}
-        </div>
-
-        {/* <main className="flex-1 px-2 pt-4 overflow-auto scrollbar">
-          {searchQuery.trim() === "" ? (
-            recents.length > 0 ? (
-              <Recents
-                recents={recents}
-                handleResultSelect={handleResultSelect}
-              />
-            ) : (
-              // Show empty state if no recents
-              <div className="flex h-full items-center justify-center">
-                <EmptyState />
-              </div>
-            )
-          ) : searchSections.length === 0 ? (
-            // Show empty state if searching but no results
-            <div className="flex h-full items-center justify-center">
-              <EmptyState />
-            </div>
-          ) : (
-            // Show search results
-            sortedSections.map((section, sectionIndex) => (
-              <div
-                key={sectionIndex}
-                className={`${sectionIndex > 0 ? "mt-6" : ""}`}
-              >
-                <h2 className="text-xs font-semibold text-muted-foreground mb-2">
-                  {section.title}
-                </h2>
-                <SearchResults
-                  section={section}
-                  selectedItem={
-                    sectionIndex === selectedSection ? selectedItem : -1
-                  }
-                  onSelect={(item, index) => {
-                    setSelectedSection(sectionIndex);
-                    setSelectedItem(index);
-                    handleResultSelect(item, section.type);
-                  }}
-                  updatedApps={updatedApps}
-                />
-              </div>
-            ))
-          )}
-        </main> */}
-        <div className="sticky bottom-0">
-          <Footer setIsSettingsOpen={setIsSettingsOpen} />
-        </div>
-        {/* <FolderSettings
+          ))
+        )}
+      </main>
+      <div className="sticky bottom-0">
+        <Footer setIsSettingsOpen={setIsSettingsOpen} />
+      </div>
+      {/* <FolderSettings
           selectedCategories={selectedCategories}
           toggleCategory={toggleCategory}
           searchCategories={searchCategories}
@@ -335,8 +282,7 @@ export default function App() {
           setIsSettingsOpen={setIsSettingsOpen}
           setIndexingProgress={setIndexingProgress}
         /> */}
-      </div>
-    </main>
+    </div>
   );
 }
 
@@ -371,7 +317,7 @@ function SearchResults(props: SearchResultsProps) {
   };
 
   const sortedItems = useMemo(() => {
-    if (section.type === SearchSectionType.Apps) {
+    if (section.type_ === SearchSectionType.Apps) {
       return [...section.items].sort((a, b) => {
         const appA = a as AppMetadata;
         const appB = b as AppMetadata;
@@ -388,6 +334,9 @@ function SearchResults(props: SearchResultsProps) {
     return section.items;
   }, [section]);
 
+  console.log("section", section);
+  console.log("sortedItems", sortedItems);
+
   return (
     <div className="flex flex-col">
       {sortedItems.map((item, index) => {
@@ -400,30 +349,84 @@ function SearchResults(props: SearchResultsProps) {
             onClick={() => onSelect(item, index)}
           >
             {(() => {
-              switch (section.type) {
+              switch (section.type_) {
                 case SearchSectionType.Apps:
                   return <AppRow app={getUpdatedApp(item as AppMetadata)} />;
-                case SearchSectionType.Files:
-                  return (
-                    <FileRow
-                      file={item as FileMetadata}
-                      handleCopy={handleCopy}
-                      copiedId={copiedId}
-                    />
-                  );
-                case SearchSectionType.Semantic:
-                  return (
-                    <SemanticRow
-                      file={item as SemanticMetadata}
-                      handleCopy={handleCopy}
-                      copiedId={copiedId}
-                    />
-                  );
+                // case SearchSectionType.Files:
+                //   return (
+                //     <FileRow
+                //       file={item as FileMetadata}
+                //       handleCopy={handleCopy}
+                //       copiedId={copiedId}
+                //     />
+                //   );
+                // case SearchSectionType.Semantic:
+                //   return (
+                //     <SemanticRow
+                //       file={item as SemanticMetadata}
+                //       handleCopy={handleCopy}
+                //       copiedId={copiedId}
+                //     />
+                //   );
               }
             })()}
           </div>
         );
       })}
+    </div>
+  );
+}
+
+interface AppRowProps {
+  app: Extract<SearchItem, { type: SearchSectionType.Apps }>;
+}
+
+function AppRow(props: AppRowProps) {
+  const { app } = props;
+
+  console.log("the apps", app);
+  return (
+    <div className="flex items-center gap-2 min-w-0 flex-1">
+      <div className="flex flex-col min-w-0 flex-1">
+        <div className="flex flex-row items-center gap-1">
+          {app?.icon ? (
+            <img
+              src={app.icon}
+              className="w-4 h-4 object-contain"
+              alt={app.name}
+            />
+          ) : (
+            <Package className="h-4 w-4" />
+          )}
+          <span className="text-sm text-primary-foreground">{app?.name}</span>
+          {app?.isRunning && (
+            <div className="relative">
+              <div className="absolute inset-0 w-2 h-2 bg-green-500/30 rounded-full animate-ping" />
+              <div className="relative w-2 h-2 bg-green-500 rounded-full shadow-lg shadow-green-500/50" />
+            </div>
+          )}
+          {app?.isRunning && (
+            <span className="text-xs text-gray-500 ml-2">
+              {app.memoryUsage !== undefined ? (
+                <div className="flex flex-row items-center gap-1">
+                  <MemoryStick className="w-3 h-3" />
+                  {app.memoryUsage.toFixed(1)} MB
+                </div>
+              ) : (
+                "—"
+              )}
+            </span>
+          )}
+          {app?.isRunning && app?.cpuUsage !== undefined && (
+            <span className="text-xs text-gray-500 ml-2">
+              <div className="flex flex-row items-center gap-1">
+                <Cpu className="w-3 h-3" />
+                {app.cpuUsage.toFixed(1)}% CPU
+              </div>
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -470,59 +473,6 @@ function FileRow(props: FileRowProps) {
         <span className="text-xs text-muted-foreground whitespace-nowrap">
           {FormatFileSize(file.size)}
         </span>
-      </div>
-    </div>
-  );
-}
-
-interface AppRowProps {
-  app: Extract<SearchItem, { type: SearchSectionType.Apps }>;
-}
-
-function AppRow(props: AppRowProps) {
-  const { app } = props;
-
-  return (
-    <div className="flex items-center gap-2 min-w-0 flex-1">
-      <div className="flex flex-col min-w-0 flex-1">
-        <div className="flex flex-row items-center gap-1">
-          {app?.icon ? (
-            <img
-              src={app.icon}
-              className="w-4 h-4 object-contain"
-              alt={app.name}
-            />
-          ) : (
-            <Package className="h-4 w-4" />
-          )}
-          <span className="text-sm text-primary-foreground">{app?.name}</span>
-          {app?.isRunning && (
-            <div className="relative">
-              <div className="absolute inset-0 w-2 h-2 bg-green-500/30 rounded-full animate-ping" />
-              <div className="relative w-2 h-2 bg-green-500 rounded-full shadow-lg shadow-green-500/50" />
-            </div>
-          )}
-          {app?.isRunning && (
-            <span className="text-xs text-gray-500 ml-2">
-              {app.memoryUsage !== undefined ? (
-                <div className="flex flex-row items-center gap-1">
-                  <MemoryStick className="w-3 h-3" />
-                  {app.memoryUsage.toFixed(1)} MB
-                </div>
-              ) : (
-                "—"
-              )}
-            </span>
-          )}
-          {app?.isRunning && app?.cpuUsage !== undefined && (
-            <span className="text-xs text-gray-500 ml-2">
-              <div className="flex flex-row items-center gap-1">
-                <Cpu className="w-3 h-3" />
-                {app.cpuUsage.toFixed(1)}% CPU
-              </div>
-            </span>
-          )}
-        </div>
       </div>
     </div>
   );
@@ -577,6 +527,66 @@ function SemanticRow(props: SemanticRowProps) {
           }
         </div>
       </div>
+    </div>
+  );
+}
+
+interface RecentsProps {
+  recents: FileMetadata[];
+  handleResultSelect: (
+    item: SearchItem,
+    type: SearchSectionType
+  ) => Promise<void>;
+}
+
+function Recents(props: RecentsProps) {
+  const { recents, handleResultSelect } = props;
+
+  return (
+    <div>
+      <h2 className="text-xs font-semibold text-muted-foreground mb-2">
+        Recent Files
+      </h2>
+      <div className="flex flex-col">
+        {recents.map((file, index) => (
+          <div
+            key={index}
+            className="flex items-center cursor-pointer hover:bg-muted p-2 rounded-md group"
+            onClick={() => handleResultSelect(file, SearchSectionType.Files)}
+          >
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <div className="flex flex-col min-w-0 flex-1">
+                <div className="flex flex-row items-center gap-1">
+                  {getFileIcon(file.path)}
+                  <span className="text-sm">{file.name}</span>
+                </div>
+                <div className="flex items-center gap-2 min-w-0 h-0 group-hover:h-auto overflow-hidden transition-all duration-200">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-5 flex-1">
+                    {truncatePath(file.path)}
+                  </span>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">
+                    {getCategoryFromExtension(file.extension)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center p-8 space-y-2 text-primary-foreground/40 rounded-xl">
+      <div className="bg-gray-200 dark:bg-muted rounded-full p-4">
+        <Search className="text-primary-foreground/80" />
+      </div>
+      <h2 className="mb-2 text-xs font-semibold text-primary-foreground">
+        No files found
+      </h2>
+      <p>Try searching for something else</p>
     </div>
   );
 }

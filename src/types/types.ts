@@ -36,7 +36,7 @@ export enum SearchSectionType {
 }
 
 export interface SearchSection {
-  type: SearchSectionType;
+  type_: SearchSectionType;
   title: string;
   items: SearchItem[];
 }

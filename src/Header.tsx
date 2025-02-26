@@ -25,7 +25,7 @@ export default function Header(props: HeaderProps) {
           onChange={(e) => setSearchQuery(e.target.value)}
           className="text-xs placeholder:pl-2 border-0 focus-visible:outline-hidden focus-visible:ring-0 shadow-none"
         />
-        <CommandShortcut className="mr-4 border border-border px-1 py-[2px] rounded-lg text-[10px] bg-gray-200 dark:bg-zinc-950 text-primary-foreground/80">
+        <CommandShortcut className="mr-4 border border-border px-1 py-[2px] rounded-lg text-xs bg-gray-200 dark:bg-zinc-950 text-primary-foreground/80">
           ⌘+space
         </CommandShortcut>
       </div>
