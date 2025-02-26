@@ -15,8 +15,7 @@ use crate::app_handler::{get_all_apps, get_running_apps, AppMetadata};
 pub struct AppResourceUsage {
     pub pid: u32,
     pub cpu_usage: f64,        // CPU percentage (0-100)
-    pub memory_bytes: u64,     // Memory usage in bytes
-    pub memory_mb: f64,        // Memory usage in MB (for convenience)
+    pub memory_bytes: u64,     // Memory usage in bytes 
 }
 
 // resource monitoring state
@@ -34,63 +33,60 @@ pub async fn start_resource_monitoring(
     app_handle: tauri::AppHandle,
     state: State<'_, ResourceMonitorState>,
 ) -> Result<(), String> {
-    // Set monitoring flag to true
     *state.is_monitoring.lock().unwrap() = true;
     
-    // Update the list of monitored PIDs
+    // update the list of monitored PIDs
     {
         let mut monitored = state.monitored_pids.lock().unwrap();
         *monitored = pids;
     }
     
-    // Clone what we need for the background task
+    // clone what we need for the background task
     let is_monitoring = state.is_monitoring.clone();
     let monitored_pids = state.monitored_pids.clone();
     
-    // Spawn the monitoring task
+    // start the monitoring task
     tokio::spawn(async move {
         let mut system = System::new();
         let mut update_interval = interval(Duration::from_secs(1));
         
-        // Continue monitoring until flag is turned off
+        // continue monitoring until flag is turned off
         while *is_monitoring.lock().unwrap() {
-            // Get the current list of PIDs to monitor
+            // current list of PIDs to monitor
             let pids_to_monitor: Vec<u32> = {
                 monitored_pids.lock().unwrap().clone()
             };
             
             if !pids_to_monitor.is_empty() {
-                // Refresh system processes for monitoring
+                // refresh system processes for monitoring
                 system.refresh_processes();
                 
-                // Create payload for updated resources
+                // create payload for updated resources
                 let mut updated_resources = HashMap::new();
                 
-                // Process each PID
                 for pid in pids_to_monitor {
                     let sys_pid = sysinfo::Pid::from(pid as usize);
                     
                     if let Some(process) = system.process(sys_pid) {
                         let cpu_usage = process.cpu_usage();
                         let memory_bytes = process.memory();
-                        let memory_mb = memory_bytes as f64 / (1024.0 * 1024.0);
+          
                         
                         updated_resources.insert(pid, AppResourceUsage {
                             pid,
                             cpu_usage: cpu_usage.into(),
                             memory_bytes,
-                            memory_mb,
                         });
                     }
                 }
                 
-                // Emit the updated resources to the frontend
+                // emit the updated resources to the frontend
                 if !updated_resources.is_empty() {
                     let _ = app_handle.emit("resource-usage-updated", updated_resources);
                 }
             }
             
-            // Wait for the next update interval
+            // wait for the next update interval
             update_interval.tick().await;
         }
         
@@ -112,10 +108,10 @@ pub fn get_resource_data(pids: Vec<u32>) -> Result<HashMap<u32, AppResourceUsage
     let mut system = System::new();
     system.refresh_processes();
     
-    // Small delay for CPU measurement
+    // small delay for CPU measurement
     sleep(Duration::from_millis(100));
     
-    // Refresh again to get the CPU usage delta
+    // refresh again to get the CPU usage delta
     system.refresh_processes();
     
     let mut result = HashMap::new();
@@ -126,13 +122,11 @@ pub fn get_resource_data(pids: Vec<u32>) -> Result<HashMap<u32, AppResourceUsage
         if let Some(process) = system.process(sys_pid) {
             let cpu_usage = process.cpu_usage();
             let memory_bytes = process.memory();
-            let memory_mb = memory_bytes as f64 / (1024.0 * 1024.0);
             
             result.insert(pid, AppResourceUsage {
                 pid,
                 cpu_usage: cpu_usage.into(),
                 memory_bytes,
-                memory_mb,
             });
         }
     }
@@ -142,7 +136,7 @@ pub fn get_resource_data(pids: Vec<u32>) -> Result<HashMap<u32, AppResourceUsage
 
 #[tauri::command]
 pub async fn get_apps_with_live_resources(app_handle: tauri::AppHandle) -> Result<(), String> {
-    // Spawn a background task to get all apps and monitor their resources
+    // start a background task to get all apps and monitor their resources
     tokio::spawn(async move {
         let mut system = System::new();
         let mut update_interval = interval(Duration::from_secs(1));
@@ -161,13 +155,11 @@ pub async fn get_apps_with_live_resources(app_handle: tauri::AppHandle) -> Resul
                             if let Some(process) = system.process(sys_pid) {
                                 let cpu_usage = process.cpu_usage();
                                 let memory_bytes = process.memory();
-                                let memory_mb = memory_bytes as f64 / (1024.0 * 1024.0);
                                 
                                 app.resource_usage = Some(AppResourceUsage {
                                     pid,
                                     cpu_usage: cpu_usage.into(),
                                     memory_bytes,
-                                    memory_mb,
                                 });
                             }
                         }
@@ -222,13 +214,12 @@ pub fn get_process_resource_usage(pid: u32) -> Result<AppResourceUsage, String> 
     if let Some(process) = system.process(sys_pid) {
         let cpu_usage = process.cpu_usage();
         let memory_bytes = process.memory();
-        let memory_mb = memory_bytes as f64 / (1024.0 * 1024.0);
-        
+
         Ok(AppResourceUsage {
             pid,
             cpu_usage: cpu_usage.into(),
             memory_bytes,
-            memory_mb,
+
         })
     } else {
         Err(format!("Process with PID {} disappeared during measurement", pid))
@@ -257,13 +248,13 @@ pub fn get_all_apps_with_usage() -> Result<Vec<AppMetadata>, String> {
             if let Some(process) = system.process(sys_pid) {
                 let cpu_usage = process.cpu_usage();
                 let memory_bytes = process.memory();
-                let memory_mb = memory_bytes as f64 / (1024.0 * 1024.0);
+               
                 
                 app.resource_usage = Some(AppResourceUsage {
                     pid,
                     cpu_usage: cpu_usage.into(),
                     memory_bytes,
-                    memory_mb,
+      
                 });
             }
         }
@@ -302,13 +293,13 @@ pub async fn monitor_app_resources(app_handle: tauri::AppHandle) -> Result<(), S
                             if let Some(process) = system.process(sys_pid) {
                                 let cpu_usage = process.cpu_usage();
                                 let memory_bytes = process.memory();
-                                let memory_mb = memory_bytes as f64 / (1024.0 * 1024.0);
+                        
                                 
                                 payload.insert(pid, AppResourceUsage {
                                     pid,
                                     cpu_usage: cpu_usage.into(),
                                     memory_bytes,
-                                    memory_mb,
+                      
                                 });
                             }
                         }

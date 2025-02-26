@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import "./globals.css";
 import Footer from "./Footer";
 import {
   AppMetadata,
+  AppResourceUsage,
   FileMetadata,
   IndexingProgress,
   searchCategories,
@@ -54,6 +56,114 @@ export default function App() {
   const [selectedItem, setSelectedItem] = useState<number>(0);
   const [recents, setRecents] = useState<FileMetadata[]>([]);
   const [isSearchActive, setIsSearchActive] = useState(false);
+  const [resourceData, setResourceData] = useState<
+    Record<number, { cpu_usage: number; memory_mb: number }>
+  >({}); // this is {pid:{cpu, memory}}
+
+  // Set up listener for resource usage updates
+  useEffect(() => {
+    let unlistenResource: UnlistenFn;
+    let unlistenAppUpdate: UnlistenFn;
+    let unlistenAppLaunch: UnlistenFn;
+
+    const setupListeners = async () => {
+      // Listen for resource usage updates
+      unlistenResource = await listen("resource-usage-updated", (event) => {
+        const updates = event.payload as Record<
+          number,
+          { cpu_usage: number; memory_mb: number }
+        >;
+        setResourceData((prev) => ({ ...prev, ...updates }));
+
+        // Also update the app sections with the new resource data
+        setSearchSections((prev) => {
+          return prev.map((section) => {
+            if (section.type_ === SearchSectionType.Apps) {
+              const updatedItems = section.items.map((item) => {
+                const app = item as AppMetadata;
+                if (app.pid && updates[app.pid]) {
+                  // Create a proper SearchItem (AppMetadata) with updated resource usage
+                  return {
+                    ...app,
+                    resource_usage: {
+                      pid: app.pid, // Make sure pid is included
+                      cpu_usage: updates[app.pid].cpu_usage,
+                      memory_mb: updates[app.pid].memory_mb,
+                      memory_bytes: updates[app.pid].memory_mb * 1024 * 1024, // Convert MB to bytes
+                    },
+                  } as AppMetadata as SearchItem; // Explicit cast to maintain type safety
+                }
+                return item;
+              });
+
+              return { ...section, items: updatedItems };
+            }
+            return section;
+          });
+        });
+      });
+
+      // Listen for apps with resources updates
+      unlistenAppUpdate = await listen(
+        "apps-with-resources-updated",
+        (event) => {
+          const updatedApps = event.payload as AppMetadata[];
+
+          setSearchSections((prev) => {
+            return prev.map((section) => {
+              if (section.type_ === SearchSectionType.Apps) {
+                return {
+                  ...section,
+                  items: updatedApps.map((app) => app as SearchItem),
+                };
+              }
+              return section;
+            });
+          });
+        }
+      );
+
+      // Listen for app activation/launch events
+      unlistenAppLaunch = await listen("app-launched", (event) => {
+        const launchedApp = event.payload as AppMetadata;
+
+        // Update the app in the search sections
+        setSearchSections((prev) => {
+          return prev.map((section) => {
+            if (section.type_ === SearchSectionType.Apps) {
+              const updatedItems = section.items.map((item) => {
+                const app = item as AppMetadata;
+                if (app.path === launchedApp.path) {
+                  return launchedApp;
+                }
+                return app;
+              });
+
+              return { ...section, items: updatedItems };
+            }
+            return section;
+          });
+        });
+      });
+
+      // Start resource monitoring for all running apps
+      await startResourceMonitoring();
+    };
+
+    setupListeners();
+
+    // Clean up listeners on unmount
+    return () => {
+      if (unlistenResource) unlistenResource();
+      if (unlistenAppUpdate) unlistenAppUpdate();
+      if (unlistenAppLaunch) unlistenAppLaunch();
+
+      // Stop resource monitoring
+      invoke("stop_resource_monitoring").catch((err) => {
+        console.error("Failed to stop resource monitoring:", err);
+      });
+    };
+  }, []);
 
   // useEffect(() => {
   //   const handleProgress = (_: any, progress: IndexingProgress) => {
@@ -182,19 +292,60 @@ export default function App() {
       });
   }
 
+  const startResourceMonitoring = async () => {
+    try {
+      // Get all running apps with their PIDs
+      const apps = await invoke<AppMetadata[]>("get_apps_with_resources");
+
+      // Extract PIDs of running apps
+      const runningPids = apps
+        .filter((app) => app.pid !== undefined && app.pid !== null)
+        .map((app) => app.pid as number);
+
+      if (runningPids.length > 0) {
+        // Start continuous monitoring of these PIDs
+        await invoke("start_resource_monitoring", { pids: runningPids });
+
+        // Also start the live resource updates stream
+        await invoke("get_apps_with_live_resources");
+
+        setIsSearchActive(true);
+      }
+    } catch (error) {
+      console.error("Failed to start resource monitoring:", error);
+    }
+  };
+
   // Gets all of the apps
   useEffect(() => {
     const fetchAllApps = async () => {
       try {
+        // Try to get apps with resource usage directly
         const apps = await invoke<SearchSection[]>("get_search_data");
-
         setSearchSections(apps);
+
+        // If we have apps with PIDs, start monitoring them
+        const hasRunningApps = apps.some(
+          (section) =>
+            section.type_ === SearchSectionType.Apps &&
+            section.items.some(
+              (item) => (item as AppMetadata).pid !== undefined
+            )
+        );
+
+        if (hasRunningApps) {
+          startResourceMonitoring();
+        }
       } catch (error) {
         console.error("Failed to fetch apps:", error);
       }
     };
 
     fetchAllApps();
+
+    // Refresh apps every 10 seconds to catch newly launched apps
+    const interval = setInterval(fetchAllApps, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   // filters results based on what the user searches for
@@ -264,6 +415,7 @@ export default function App() {
                   handleResultSelect(item);
                 }}
                 searchQuery={searchQuery}
+                resourceData={resourceData}
               />
             </div>
           ))
@@ -293,10 +445,17 @@ interface SearchResultsProps {
   selectedItem: number;
   onSelect: (item: SearchItem, index: number) => void;
   searchQuery: string;
+  resourceData?: Record<number, { cpu_usage: number; memory_mb: number }>;
 }
 
 function SearchResults(props: SearchResultsProps) {
-  const { section, selectedItem, onSelect, searchQuery } = props;
+  const {
+    section,
+    selectedItem,
+    onSelect,
+    searchQuery,
+    resourceData = {},
+  } = props;
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
   const handleCopy = async (path: string, id: number) => {
@@ -309,11 +468,23 @@ function SearchResults(props: SearchResultsProps) {
     }
   };
 
+  // Apply real-time resource data to the app
   const getUpdatedApp = (app: AppMetadata): AppMetadata => {
-    const updated = section.items.find(
-      (u) => u.name.toLowerCase() === app.name.toLowerCase()
-    );
-    return updated ? { ...app, memoryUsage: 23, cpuUsage: 23 } : app;
+    // Use resource data from real-time updates if available
+    if (app.pid && resourceData[app.pid]) {
+      return {
+        ...app,
+        resource_usage: {
+          pid: app.pid,
+          cpu_usage: resourceData[app.pid].cpu_usage,
+          memory_mb: resourceData[app.pid].memory_mb,
+          memory_bytes: resourceData[app.pid].memory_mb * 1024 * 1024,
+        },
+      };
+    }
+
+    // Otherwise use the resource data that came with the app (if any)
+    return app;
   };
 
   const sortedItems = useMemo(() => {
@@ -332,7 +503,7 @@ function SearchResults(props: SearchResultsProps) {
       });
     }
     return section.items;
-  }, [section]);
+  }, [section, resourceData]); // Include resourceData in dependencies
 
   // console.log("section", section);
   // console.log("sortedItems", sortedItems);
@@ -380,11 +551,15 @@ function SearchResults(props: SearchResultsProps) {
 }
 
 interface AppRowProps {
-  app: Extract<SearchItem, { type: SearchSectionType.Apps }>;
+  app: AppMetadata;
 }
 
 function AppRow(props: AppRowProps) {
   const { app } = props;
+
+  const memoryUsage = app.resource_usage?.memory_mb;
+  const cpuUsage = app.resource_usage?.cpu_usage;
+
   return (
     <div className="flex items-center gap-2 min-w-0 flex-1">
       <div className="flex flex-col min-w-0 flex-1">
@@ -405,23 +580,23 @@ function AppRow(props: AppRowProps) {
               <div className="relative w-[6px] h-[6px] bg-green-500 rounded-full shadow-lg shadow-green-500/50" />
             </div>
           )}
-          {app?.pid && (
+          {app?.pid && memoryUsage !== undefined && (
             <span className="text-xs text-gray-500 ml-2">
-              {app.memoryUsage !== undefined ? (
-                <div className="flex flex-row items-center gap-1">
-                  <MemoryStick className="w-3 h-3" />
-                  {app.memoryUsage.toFixed(1)} MB
-                </div>
-              ) : (
-                "—"
-              )}
+              <div className="flex flex-row items-center gap-1">
+                <MemoryStick className="w-3 h-3" />
+                {typeof memoryUsage === "number"
+                  ? memoryUsage.toFixed(1)
+                  : memoryUsage}{" "}
+                MB
+              </div>
             </span>
           )}
-          {app?.pid && app?.cpuUsage !== undefined && (
+          {app?.pid && cpuUsage !== undefined && (
             <span className="text-xs text-gray-500 ml-2">
               <div className="flex flex-row items-center gap-1">
                 <Cpu className="w-3 h-3" />
-                {app.cpuUsage.toFixed(1)}% CPU
+                {typeof cpuUsage === "number" ? cpuUsage.toFixed(1) : cpuUsage}%
+                CPU
               </div>
             </span>
           )}

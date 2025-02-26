@@ -15,8 +15,7 @@ export interface FileMetadata extends BaseMetadata {
 export interface AppMetadata extends BaseMetadata {
   type: SearchSectionType.Apps;
   pid: number;
-  memoryUsage?: number;
-  cpuUsage?: number;
+  resource_usage?: AppResourceUsage;
   icon?: string;
 }
 
@@ -25,6 +24,13 @@ export interface SemanticMetadata extends BaseMetadata {
   extension: string;
   distance: number;
   content?: string;
+}
+
+export interface AppResourceUsage {
+  pid: number;
+  cpu_usage: number;
+  memory_bytes: number;
+  memory_mb: number;
 }
 
 export type SearchItem = FileMetadata | AppMetadata | SemanticMetadata;
