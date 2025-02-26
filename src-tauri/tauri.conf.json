@@ -13,11 +13,9 @@
     "windows": [
       {
         "title": "kita",
-        "width": 800,
+        "width": 600,
         "height": 600,
-
         "transparent": true,
-
         "resizable": true
       }
     ],
@@ -28,12 +26,6 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ]
+    "icon": ["icons/kita_icon_margin.icns", "icons/kita_margin.png"]
   }
 }

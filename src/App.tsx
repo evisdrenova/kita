@@ -42,8 +42,6 @@ import { FaRegFilePdf } from "react-icons/fa";
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [allApps, setAllApps] = useState<AppMetadata[]>([]);
-
   const [selectedCategories, setSelectedCategories] = useState<
     Set<SearchCategory>
   >(new Set(searchCategories));
@@ -54,7 +52,6 @@ export default function App() {
   const [searchSections, setSearchSections] = useState<SearchSection[]>([]);
   const [selectedSection, setSelectedSection] = useState<number>(0);
   const [selectedItem, setSelectedItem] = useState<number>(0);
-  const [updatedApps, setUpdatedApps] = useState<AppMetadata[]>([]);
   const [recents, setRecents] = useState<FileMetadata[]>([]);
   const [isSearchActive, setIsSearchActive] = useState(false);
 
