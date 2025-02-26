@@ -122,7 +122,7 @@ export default function App() {
   //     console.error("Error indexing paths:", error);
   //     setIsIndexing(false);
   //     setIndexingProgress(null);
-  //     toast.error("Error indexing selected paths");
+  //     toast.error("Errr indexing selected paths");
   //   }
   // };
 

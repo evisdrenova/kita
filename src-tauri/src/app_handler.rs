@@ -5,7 +5,8 @@
 
 use libproc::libproc::proc_pid;
 use libproc::processes;
-use serde::{Serialize, Deserialize};  
+use serde::{Serialize, Deserialize};
+use tauri::Emitter;  
 use std::path::Path;
 use std::fs;
 use std::path::PathBuf;
@@ -22,6 +23,8 @@ use cocoa::base::{id, nil};
 use cocoa::foundation::{NSAutoreleasePool, NSSize};
 use objc2_app_kit::NSPNGFileType;
 
+use crate::resource_monitor::AppResourceUsage;
+
 // used to cache the app icons so that we don't have to load them every time
 lazy_static! {
     static ref ICON_CACHE: Mutex<HashMap<String, Option<String>>> = Mutex::new(HashMap::new());
@@ -30,10 +33,11 @@ lazy_static! {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppMetadata {
-    name: String,
-    path: String,
-    pid: Option<u32> ,
-    icon: Option<String>  // Base64 encoded icon data 
+        name: String,
+        path: String,
+    pub pid: Option<u32> ,
+        icon: Option<String>,  // Base64 encoded icon data 
+    pub resource_usage: Option<AppResourceUsage>,
 }
 
 const APPLICATIONS_DIR: &str = "/Applications";
@@ -80,6 +84,7 @@ pub fn get_installed_apps() ->  Result<Vec<AppMetadata>, String> {
                             path: path.to_string_lossy().into_owned(),
                             pid: None,
                             icon: None, 
+                            resource_usage: None,
                         });
                     }
                 }
@@ -131,6 +136,7 @@ pub fn get_running_apps() -> Result<Vec<AppMetadata>, String> {
                                     path: bundle_path,
                                     pid: Some(pid),
                                     icon: None,
+                                    resource_usage: None,
                                 });
                             }
                         }
@@ -147,14 +153,31 @@ pub fn get_running_apps() -> Result<Vec<AppMetadata>, String> {
 }
 
 // launches a selected app or switches to it if it's already running
-pub async fn launch_or_switch_to_app(app: AppMetadata) -> Result<(), String> {
+pub async fn launch_or_switch_to_app(app: AppMetadata, app_handle: tauri::AppHandle) -> Result<(), String> {
     // try to switch if we have a PID
     // if we have a PID then we know the app is running
     if let Some(pid) = app.pid {
         match unsafe {
             try_switch_to_pid(pid)
         } {
-            Ok(()) => return Ok(()), // Successfully switched
+            Ok(()) => {
+                // Successfully switched, send an update with fresh resource data
+                tokio::spawn(async move {
+                    // Wait a moment for the app to be fully active
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                    
+                    if let Ok(usage) = crate::resource_monitor::get_process_resource_usage(pid) {
+                        // Create updated app with fresh resource data
+                        let mut updated_app = app.clone();
+                        updated_app.resource_usage = Some(usage);
+                        
+                        // Emit to frontend
+                        let _ = app_handle.emit("app-activated", updated_app);
+                    }
+                });
+                
+                return Ok(());
+            },
             Err(_) => {
                 // PID is outdated, fall back to launching via path
                 println!("PID {} is outdated, attempting to launch via path", pid);
@@ -170,6 +193,28 @@ pub async fn launch_or_switch_to_app(app: AppMetadata) -> Result<(), String> {
         .arg(&app.path)
         .status()
         .map_err(|e| format!("Failed to launch application: {}", e))?;
+    
+    // For newly launched apps, we'll need to wait a bit and then check for the new process
+    tokio::spawn(async move {
+        // Wait for the app to start
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        
+        // Try to find the newly launched app in running apps
+        if let Ok(running_apps) = crate::app_handler::get_running_apps() {
+            if let Some(running_app) = running_apps.iter().find(|a| a.path == app.path) {
+                if let Some(pid) = running_app.pid {
+                    if let Ok(usage) = crate::resource_monitor::get_process_resource_usage(pid) {
+                        // Create updated app with fresh resource data
+                        let mut updated_app = running_app.clone();
+                        updated_app.resource_usage = Some(usage);
+                        
+                        // Emit to frontend
+                        let _ = app_handle.emit("app-launched", updated_app);
+                    }
+                }
+            }
+        }
+    });
     
     Ok(())
 }

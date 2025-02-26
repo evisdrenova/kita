@@ -36,3 +36,4 @@ Fast and intelligent search running locally on your mac.
    - File System: Raw file storage and access
 
 // optimize the get_app_icon to be faster, the icon conversion is taking way too long
+// i might be able to use the sysinfo crate to replace all of the libproc functions - investigate further
