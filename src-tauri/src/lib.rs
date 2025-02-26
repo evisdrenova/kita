@@ -36,7 +36,7 @@ async fn launch_or_switch_to_application(app: AppMetadata, app_handle: tauri::Ap
 }
 
 #[tauri::command]
-fn get_search_data() -> Result<Vec<SearchSection>, String> {
+fn get_apps_data() -> Result<Vec<SearchSection>, String> {
     let mut sections = Vec::new();
 
     // Try to get apps with resource usage first
@@ -75,7 +75,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            get_search_data,
+            get_apps_data,
             launch_or_switch_to_application,
             get_apps_with_resources,
             resource_monitor::start_resource_monitoring,

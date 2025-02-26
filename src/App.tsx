@@ -57,160 +57,8 @@ export default function App() {
   const [recents, setRecents] = useState<FileMetadata[]>([]);
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [resourceData, setResourceData] = useState<
-    Record<number, { cpu_usage: number; memory_mb: number }>
-  >({}); // this is {pid:{cpu, memory}}
-
-  // Set up listener for resource usage updates
-  useEffect(() => {
-    let unlistenResource: UnlistenFn;
-    let unlistenAppUpdate: UnlistenFn;
-    let unlistenAppLaunch: UnlistenFn;
-
-    const setupListeners = async () => {
-      // Listen for resource usage updates
-      unlistenResource = await listen("resource-usage-updated", (event) => {
-        const updates = event.payload as Record<
-          number,
-          { cpu_usage: number; memory_mb: number }
-        >;
-        setResourceData((prev) => ({ ...prev, ...updates }));
-
-        // Also update the app sections with the new resource data
-        setSearchSections((prev) => {
-          return prev.map((section) => {
-            if (section.type_ === SearchSectionType.Apps) {
-              const updatedItems = section.items.map((item) => {
-                const app = item as AppMetadata;
-                if (app.pid && updates[app.pid]) {
-                  // Create a proper SearchItem (AppMetadata) with updated resource usage
-                  return {
-                    ...app,
-                    resource_usage: {
-                      pid: app.pid, // Make sure pid is included
-                      cpu_usage: updates[app.pid].cpu_usage,
-                      memory_mb: updates[app.pid].memory_mb,
-                      memory_bytes: updates[app.pid].memory_mb * 1024 * 1024, // Convert MB to bytes
-                    },
-                  } as AppMetadata as SearchItem; // Explicit cast to maintain type safety
-                }
-                return item;
-              });
-
-              return { ...section, items: updatedItems };
-            }
-            return section;
-          });
-        });
-      });
-
-      // Listen for apps with resources updates
-      unlistenAppUpdate = await listen(
-        "apps-with-resources-updated",
-        (event) => {
-          const updatedApps = event.payload as AppMetadata[];
-
-          setSearchSections((prev) => {
-            return prev.map((section) => {
-              if (section.type_ === SearchSectionType.Apps) {
-                return {
-                  ...section,
-                  items: updatedApps.map((app) => app as SearchItem),
-                };
-              }
-              return section;
-            });
-          });
-        }
-      );
-
-      // Listen for app activation/launch events
-      unlistenAppLaunch = await listen("app-launched", (event) => {
-        const launchedApp = event.payload as AppMetadata;
-
-        // Update the app in the search sections
-        setSearchSections((prev) => {
-          return prev.map((section) => {
-            if (section.type_ === SearchSectionType.Apps) {
-              const updatedItems = section.items.map((item) => {
-                const app = item as AppMetadata;
-                if (app.path === launchedApp.path) {
-                  return launchedApp;
-                }
-                return app;
-              });
-
-              return { ...section, items: updatedItems };
-            }
-            return section;
-          });
-        });
-      });
-
-      // Start resource monitoring for all running apps
-      await startResourceMonitoring();
-    };
-
-    setupListeners();
-
-    // Clean up listeners on unmount
-    return () => {
-      if (unlistenResource) unlistenResource();
-      if (unlistenAppUpdate) unlistenAppUpdate();
-      if (unlistenAppLaunch) unlistenAppLaunch();
-
-      // Stop resource monitoring
-      invoke("stop_resource_monitoring").catch((err) => {
-        console.error("Failed to stop resource monitoring:", err);
-      });
-    };
-  }, []);
-
-  // useEffect(() => {
-  //   const handleProgress = (_: any, progress: IndexingProgress) => {
-  //     setIndexingProgress(progress);
-  //   };
-
-  //   window.electron.onIndexingProgress(handleProgress);
-  //   return () => {
-  //     window.electron.removeIndexingProgress(handleProgress);
-  //   };
-  // }, []);
-
-  // useEffect(() => {
-  //   const handler = (event: any, apps: AppMetadata[]) => {
-  //     setUpdatedApps(apps);
-  //   };
-
-  //   window.electron.onResourceUsageUpdated(handler);
-  //   return () => {
-  //     window.electron.removeResourceUsageUpdated(handler);
-  //   };
-  // }, []);
-
-  // // retrieves the recents
-  // useEffect(() => {
-  //   const fetchRecents = async () => {
-  //     try {
-  //       const recentFiles = await window.electron.getRecents();
-  //       setRecents(recentFiles);
-  //     } catch (error) {
-  //       console.error("Error fetching recents:", error);
-  //     }
-  //   };
-  //   fetchRecents();
-
-  //   const interval = setInterval(fetchRecents, 60000);
-  //   return () => clearInterval(interval);
-  // }, []);
-
-  // useEffect(() => {
-  //   return () => {
-  //     // Stop resource monitoring when component unmounts
-  //     if (isSearchActive) {
-  //       window.electron.stopResourceMonitoring();
-  //     }
-  //   };
-  // }, [isSearchActive]);
+    Record<number, { cpu_usage: number; memory_bytes: number }>
+  >({});
 
   // const handleSelectPaths = async () => {
   //   try {
@@ -236,17 +84,17 @@ export default function App() {
   //   }
   // };
 
-  // const toggleCategory = (category: SearchCategory) => {
-  //   setSelectedCategories((prev) => {
-  //     const newSet = new Set(prev);
-  //     if (newSet.has(category)) {
-  //       newSet.delete(category);
-  //     } else {
-  //       newSet.add(category);
-  //     }
-  //     return newSet;
-  //   });
-  // };
+  const toggleCategory = (category: SearchCategory) => {
+    setSelectedCategories((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(category)) {
+        newSet.delete(category);
+      } else {
+        newSet.add(category);
+      }
+      return newSet;
+    });
+  };
 
   // handles key up and down acions
   useEffect(() => {
@@ -292,60 +140,118 @@ export default function App() {
       });
   }
 
-  const startResourceMonitoring = async () => {
-    try {
-      // Get all running apps with their PIDs
-      const apps = await invoke<AppMetadata[]>("get_apps_with_resources");
-
-      // Extract PIDs of running apps
-      const runningPids = apps
-        .filter((app) => app.pid !== undefined && app.pid !== null)
-        .map((app) => app.pid as number);
-
-      if (runningPids.length > 0) {
-        // Start continuous monitoring of these PIDs
-        await invoke("start_resource_monitoring", { pids: runningPids });
-
-        // Also start the live resource updates stream
-        await invoke("get_apps_with_live_resources");
-
-        setIsSearchActive(true);
-      }
-    } catch (error) {
-      console.error("Failed to start resource monitoring:", error);
-    }
-  };
-
-  // Gets all of the apps
   useEffect(() => {
-    const fetchAllApps = async () => {
+    let unlistenResource: UnlistenFn;
+    let unlistenAppUpdate: UnlistenFn;
+    let refreshInterval: NodeJS.Timeout;
+
+    const setupMonitoring = async () => {
       try {
-        // Try to get apps with resource usage directly
-        const apps = await invoke<SearchSection[]>("get_search_data");
+        // 1. Initial fetch of apps with resource data
+        const apps = await invoke<SearchSection[]>("get_apps_data");
         setSearchSections(apps);
 
-        // If we have apps with PIDs, start monitoring them
-        const hasRunningApps = apps.some(
-          (section) =>
-            section.type_ === SearchSectionType.Apps &&
-            section.items.some(
-              (item) => (item as AppMetadata).pid !== undefined
-            )
+        // 2. Set up event listeners for updates
+        unlistenResource = await listen("resource-usage-updated", (event) => {
+          const updates = event.payload as Record<
+            number,
+            {
+              cpu_usage: number;
+              memory_bytes: number;
+              memory_mb: number;
+            }
+          >;
+
+          // Update resource data state
+          setResourceData((prev) => ({ ...prev, ...updates }));
+
+          // Update search sections with new resource data
+          setSearchSections((prev) => {
+            return prev.map((section) => {
+              if (section.type_ === SearchSectionType.Apps) {
+                const updatedItems = section.items.map((item) => {
+                  const app = item as AppMetadata;
+                  if (app.pid && updates[app.pid]) {
+                    return {
+                      ...app,
+                      resource_usage: {
+                        pid: app.pid,
+                        cpu_usage: updates[app.pid].cpu_usage,
+                        memory_bytes: updates[app.pid].memory_bytes,
+                        memory_mb: updates[app.pid].memory_mb,
+                      },
+                    } as AppMetadata as SearchItem;
+                  }
+                  return item;
+                });
+                return { ...section, items: updatedItems };
+              }
+              return section;
+            });
+          });
+        });
+
+        unlistenAppUpdate = await listen(
+          "apps-with-resources-updated",
+          (event) => {
+            const updatedApps = event.payload as AppMetadata[];
+            setSearchSections((prev) => {
+              return prev.map((section) => {
+                if (section.type_ === SearchSectionType.Apps) {
+                  return {
+                    ...section,
+                    items: updatedApps.map((app) => app as SearchItem),
+                  };
+                }
+                return section;
+              });
+            });
+          }
         );
 
-        if (hasRunningApps) {
-          startResourceMonitoring();
+        // 3. Start resource monitoring
+        const runningPids = apps.flatMap((section) =>
+          section.type_ === SearchSectionType.Apps
+            ? (section.items
+                .map((item) => (item as AppMetadata).pid)
+                .filter(Boolean) as number[])
+            : []
+        );
+
+        if (runningPids.length > 0) {
+          // Start continuous monitoring of these PIDs
+          await invoke("start_resource_monitoring", { pids: runningPids });
+
+          // Start live resource updates stream
+          await invoke("get_apps_with_live_resources");
+
+          setIsSearchActive(true);
         }
+
+        // 4. Set up refresh interval (less frequent than before - every 30 seconds)
+        refreshInterval = setInterval(async () => {
+          // Only refresh the list of apps to catch newly launched ones
+          const refreshedApps = await invoke<SearchSection[]>("get_apps_data");
+          setSearchSections(refreshedApps);
+        }, 30000);
       } catch (error) {
-        console.error("Failed to fetch apps:", error);
+        console.error("Failed to set up resource monitoring:", error);
       }
     };
 
-    fetchAllApps();
+    setupMonitoring();
 
-    // Refresh apps every 10 seconds to catch newly launched apps
-    const interval = setInterval(fetchAllApps, 10000);
-    return () => clearInterval(interval);
+    // Clean up everything on unmount
+    return () => {
+      if (unlistenResource) unlistenResource();
+      if (unlistenAppUpdate) unlistenAppUpdate();
+      if (refreshInterval) clearInterval(refreshInterval);
+
+      // Stop resource monitoring
+      invoke("stop_resource_monitoring").catch((err) => {
+        console.error("Failed to stop resource monitoring:", err);
+      });
+    };
   }, []);
 
   // filters results based on what the user searches for
@@ -377,7 +283,7 @@ export default function App() {
     <div className="h-screen flex flex-col overflow-hidden">
       <Header setSearchQuery={setSearchQuery} searchQuery={searchQuery} />
       <main className="flex-1 px-2 pt-4 overflow-auto scrollbar">
-        {searchQuery.trim() === "" ? (
+        {/* {searchQuery.trim() === "" ? (
           recents.length > 0 ? (
             <Recents
               recents={recents}
@@ -394,8 +300,8 @@ export default function App() {
           <div className="flex h-full items-center justify-center">
             <EmptyState />
           </div>
-        ) : (
-          // Show search results
+        ) : ( */}
+        {
           filteredResults.map((section, sectionIndex) => (
             <div
               key={sectionIndex}
@@ -419,7 +325,8 @@ export default function App() {
               />
             </div>
           ))
-        )}
+          // )}
+        }
       </main>
       <div className="sticky bottom-0">
         <Footer setIsSettingsOpen={setIsSettingsOpen} />
@@ -445,7 +352,7 @@ interface SearchResultsProps {
   selectedItem: number;
   onSelect: (item: SearchItem, index: number) => void;
   searchQuery: string;
-  resourceData?: Record<number, { cpu_usage: number; memory_mb: number }>;
+  resourceData?: Record<number, { cpu_usage: number; memory_bytes: number }>;
 }
 
 function SearchResults(props: SearchResultsProps) {
@@ -477,8 +384,7 @@ function SearchResults(props: SearchResultsProps) {
         resource_usage: {
           pid: app.pid,
           cpu_usage: resourceData[app.pid].cpu_usage,
-          memory_mb: resourceData[app.pid].memory_mb,
-          memory_bytes: resourceData[app.pid].memory_mb * 1024 * 1024,
+          memory_bytes: resourceData[app.pid].memory_bytes,
         },
       };
     }
@@ -503,10 +409,7 @@ function SearchResults(props: SearchResultsProps) {
       });
     }
     return section.items;
-  }, [section, resourceData]); // Include resourceData in dependencies
-
-  // console.log("section", section);
-  // console.log("sortedItems", sortedItems);
+  }, [section, resourceData]);
 
   return (
     <div className="flex flex-col">
@@ -557,13 +460,13 @@ interface AppRowProps {
 function AppRow(props: AppRowProps) {
   const { app } = props;
 
-  const memoryUsage = app.resource_usage?.memory_mb;
+  const memoryUsage = app.resource_usage?.memory_bytes;
   const cpuUsage = app.resource_usage?.cpu_usage;
 
   return (
     <div className="flex items-center gap-2 min-w-0 flex-1">
       <div className="flex flex-col min-w-0 flex-1">
-        <div className="flex flex-row items-center gap-1">
+        <div className="flex flex-row items-center gap-2">
           {app?.icon ? (
             <img
               src={app.icon}
@@ -585,9 +488,8 @@ function AppRow(props: AppRowProps) {
               <div className="flex flex-row items-center gap-1">
                 <MemoryStick className="w-3 h-3" />
                 {typeof memoryUsage === "number"
-                  ? memoryUsage.toFixed(1)
+                  ? FormatFileSize(memoryUsage)
                   : memoryUsage}{" "}
-                MB
               </div>
             </span>
           )}

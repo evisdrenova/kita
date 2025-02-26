@@ -30,7 +30,6 @@ export interface AppResourceUsage {
   pid: number;
   cpu_usage: number;
   memory_bytes: number;
-  memory_mb: number;
 }
 
 export type SearchItem = FileMetadata | AppMetadata | SemanticMetadata;
