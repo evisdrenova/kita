@@ -141,58 +141,49 @@ export default function App() {
   //   });
   // };
 
-  // useEffect(() => {
-  //   const handleKeyDown = (e: KeyboardEvent) => {
-  //     if (searchSections.length === 0) return;
+  // handles key up and down acions
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (searchSections.length === 0) return;
 
-  //     if (e.key === "ArrowDown") {
-  //       e.preventDefault();
-  //       const currentSection = searchSections[selectedSection];
-  //       if (selectedItem < currentSection.items.length - 1) {
-  //         setSelectedItem(selectedItem + 1);
-  //       } else if (selectedSection < searchSections.length - 1) {
-  //         setSelectedSection(selectedSection + 1);
-  //         setSelectedItem(0);
-  //       }
-  //     } else if (e.key === "ArrowUp") {
-  //       e.preventDefault();
-  //       if (selectedItem > 0) {
-  //         setSelectedItem(selectedItem - 1);
-  //       } else if (selectedSection > 0) {
-  //         setSelectedSection(selectedSection - 1);
-  //         setSelectedItem(searchSections[selectedSection - 1].items.length - 1);
-  //       }
-  //     } else if (e.key === "Enter") {
-  //       e.preventDefault();
-  //       const section = searchSections[selectedSection];
-  //       const item = section?.items[selectedItem];
-  //       if (item) {
-  //         handleResultSelect(item, section.type);
-  //       }
-  //     }
-  //   };
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const currentSection = searchSections[selectedSection];
+        if (selectedItem < currentSection.items.length - 1) {
+          setSelectedItem(selectedItem + 1);
+        } else if (selectedSection < searchSections.length - 1) {
+          setSelectedSection(selectedSection + 1);
+          setSelectedItem(0);
+        }
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (selectedItem > 0) {
+          setSelectedItem(selectedItem - 1);
+        } else if (selectedSection > 0) {
+          setSelectedSection(selectedSection - 1);
+          setSelectedItem(searchSections[selectedSection - 1].items.length - 1);
+        }
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        const section = searchSections[selectedSection];
+        const item = section?.items[selectedItem];
+        if (item) {
+          handleResultSelect(item);
+        }
+      }
+    };
 
-  //   document.addEventListener("keydown", handleKeyDown);
-  //   return () => document.removeEventListener("keydown", handleKeyDown);
-  // }, [searchSections, selectedSection, selectedItem]);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [searchSections, selectedSection, selectedItem]);
 
+  // handles switching to the file or app
   async function handleResultSelect(app: SearchItem) {
     async () =>
       await invoke<AppMetadata[]>("launch_or_switch_to_application", {
         app: app,
       });
   }
-
-  // sort sections with apps first
-  const sortedSections = useMemo(() => {
-    return [...searchSections].sort((a, b) => {
-      if (a.type_ === SearchSectionType.Apps) return -1;
-      if (b.type_ === SearchSectionType.Apps) return 1;
-      if (a.type_ === SearchSectionType.Files) return -1;
-      if (b.type_ === SearchSectionType.Files) return 1;
-      return 0;
-    });
-  }, [searchSections]);
 
   // Gets all of the apps
   useEffect(() => {
@@ -208,17 +199,30 @@ export default function App() {
     fetchAllApps();
   }, []);
 
-  // Filter apps on client side when search query changes
-  // const filteredApps = useMemo(() => {
-  //   if (!searchQuery.trim()) {
-  //     return allApps;
-  //   }
+  // filters results based on what the user searches for
+  const filteredResults = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return searchSections;
+    }
 
-  //   const query = searchQuery.toLowerCase();
-  //   return allApps.filter((app) => app.name.toLowerCase().includes(query));
-  // }, [searchQuery, allApps]);
+    const query = searchQuery.toLowerCase();
+    const filteredSections = searchSections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((item) =>
+          item.name.toLowerCase().includes(query)
+        ),
+      }))
+      .filter((section) => section.items.length > 0);
 
-  console.log("sorted sections", searchSections);
+    return [...filteredSections].sort((a, b) => {
+      if (a.type_ === SearchSectionType.Apps) return -1;
+      if (b.type_ === SearchSectionType.Apps) return 1;
+      if (a.type_ === SearchSectionType.Files) return -1;
+      if (b.type_ === SearchSectionType.Files) return 1;
+      return 0;
+    });
+  }, [searchQuery, searchSections]);
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
@@ -236,14 +240,14 @@ export default function App() {
               <EmptyState />
             </div>
           )
-        ) : searchSections.length === 0 ? (
+        ) : filteredResults.length === 0 ? (
           // Show empty state if searching but no results
           <div className="flex h-full items-center justify-center">
             <EmptyState />
           </div>
         ) : (
           // Show search results
-          sortedSections.map((section, sectionIndex) => (
+          filteredResults.map((section, sectionIndex) => (
             <div
               key={sectionIndex}
               className={`${sectionIndex > 0 ? "mt-6" : ""}`}
@@ -261,7 +265,7 @@ export default function App() {
                   setSelectedItem(index);
                   handleResultSelect(item);
                 }}
-                updatedApps={updatedApps}
+                searchQuery={searchQuery}
               />
             </div>
           ))
@@ -290,11 +294,11 @@ interface SearchResultsProps {
   section: SearchSection;
   selectedItem: number;
   onSelect: (item: SearchItem, index: number) => void;
-  updatedApps: AppMetadata[];
+  searchQuery: string;
 }
 
 function SearchResults(props: SearchResultsProps) {
-  const { section, selectedItem, onSelect, updatedApps } = props;
+  const { section, selectedItem, onSelect, searchQuery } = props;
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
   const handleCopy = async (path: string, id: number) => {
@@ -308,12 +312,10 @@ function SearchResults(props: SearchResultsProps) {
   };
 
   const getUpdatedApp = (app: AppMetadata): AppMetadata => {
-    const updated = updatedApps.find(
+    const updated = section.items.find(
       (u) => u.name.toLowerCase() === app.name.toLowerCase()
     );
-    return updated
-      ? { ...app, memoryUsage: updated.memoryUsage, cpuUsage: updated.cpuUsage }
-      : app;
+    return updated ? { ...app, memoryUsage: 23, cpuUsage: 23 } : app;
   };
 
   const sortedItems = useMemo(() => {
@@ -334,45 +336,47 @@ function SearchResults(props: SearchResultsProps) {
     return section.items;
   }, [section]);
 
-  console.log("section", section);
-  console.log("sortedItems", sortedItems);
+  // console.log("section", section);
+  // console.log("sortedItems", sortedItems);
 
   return (
     <div className="flex flex-col">
-      {sortedItems.map((item, index) => {
-        return (
-          <div
-            key={item.id || index}
-            className={`flex items-center justify-between cursor-pointer hover:bg-muted p-2 rounded-md group ${
-              selectedItem === index ? "bg-muted" : ""
-            }`}
-            onClick={() => onSelect(item, index)}
-          >
-            {(() => {
-              switch (section.type_) {
-                case SearchSectionType.Apps:
-                  return <AppRow app={getUpdatedApp(item as AppMetadata)} />;
-                // case SearchSectionType.Files:
-                //   return (
-                //     <FileRow
-                //       file={item as FileMetadata}
-                //       handleCopy={handleCopy}
-                //       copiedId={copiedId}
-                //     />
-                //   );
-                // case SearchSectionType.Semantic:
-                //   return (
-                //     <SemanticRow
-                //       file={item as SemanticMetadata}
-                //       handleCopy={handleCopy}
-                //       copiedId={copiedId}
-                //     />
-                //   );
-              }
-            })()}
-          </div>
-        );
-      })}
+      {sortedItems
+        .filter((app) => app.name.toLowerCase().includes(searchQuery))
+        .map((item, index) => {
+          return (
+            <div
+              key={item.id || index}
+              className={`flex items-center justify-between cursor-pointer hover:bg-muted p-2 rounded-md group ${
+                selectedItem === index ? "bg-muted" : ""
+              }`}
+              onClick={() => onSelect(item, index)}
+            >
+              {(() => {
+                switch (section.type_) {
+                  case SearchSectionType.Apps:
+                    return <AppRow app={getUpdatedApp(item as AppMetadata)} />;
+                  // case SearchSectionType.Files:
+                  //   return (
+                  //     <FileRow
+                  //       file={item as FileMetadata}
+                  //       handleCopy={handleCopy}
+                  //       copiedId={copiedId}
+                  //     />
+                  //   );
+                  // case SearchSectionType.Semantic:
+                  //   return (
+                  //     <SemanticRow
+                  //       file={item as SemanticMetadata}
+                  //       handleCopy={handleCopy}
+                  //       copiedId={copiedId}
+                  //     />
+                  //   );
+                }
+              })()}
+            </div>
+          );
+        })}
     </div>
   );
 }
@@ -383,8 +387,6 @@ interface AppRowProps {
 
 function AppRow(props: AppRowProps) {
   const { app } = props;
-
-  console.log("the apps", app);
   return (
     <div className="flex items-center gap-2 min-w-0 flex-1">
       <div className="flex flex-col min-w-0 flex-1">
