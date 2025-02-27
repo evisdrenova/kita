@@ -456,7 +456,6 @@ function SearchResults(props: SearchResultsProps) {
 interface AppRowProps {
   app: AppMetadata;
 }
-
 function AppRow(props: AppRowProps) {
   const { app } = props;
 
@@ -464,45 +463,52 @@ function AppRow(props: AppRowProps) {
   const cpuUsage = app.resource_usage?.cpu_usage;
 
   return (
-    <div className="flex items-center gap-2 min-w-0 flex-1">
-      <div className="flex flex-col min-w-0 flex-1">
-        <div className="flex flex-row items-center gap-2">
-          {app?.icon ? (
-            <img
-              src={app.icon}
-              className="w-4 h-4 object-contain"
-              alt={app.name}
-            />
-          ) : (
-            <Package className="h-4 w-4" />
-          )}
-          <span className="text-sm text-primary-foreground">{app?.name}</span>
-          {app?.pid && (
-            <div className="relative flex items-center justify-center">
-              <div className="absolute w-2 h-2 bg-green-500/30 rounded-full animate-ping" />
-              <div className="relative w-[6px] h-[6px] bg-green-500 rounded-full shadow-lg shadow-green-500/50" />
+    <div className="flex items-center w-full gap-2">
+      <div className="flex items-center flex-grow min-w-0 mr-2">
+        {app?.icon ? (
+          <img
+            src={app.icon}
+            className="w-4 h-4 object-contain mr-2"
+            alt={app.name}
+          />
+        ) : (
+          <Package className="h-4 w-4 mr-2" />
+        )}
+        <span className="text-sm text-primary-foreground truncate">
+          {app?.name}
+        </span>
+        {app?.pid && (
+          <div className="relative flex items-center justify-center ml-2">
+            <div className="absolute w-2 h-2 bg-green-500/30 rounded-full animate-ping" />
+            <div className="relative w-[6px] h-[6px] bg-green-500 rounded-full shadow-lg shadow-green-500/50" />
+          </div>
+        )}
+      </div>
+      <div className="w-28 flex-shrink-0 text-right">
+        {app?.pid && memoryUsage !== undefined ? (
+          <span className="text-xs text-gray-500">
+            <div className="flex flex-row items-center justify-end gap-1">
+              <MemoryStick className="w-3 h-3" />
+              {typeof memoryUsage === "number"
+                ? FormatFileSize(memoryUsage)
+                : memoryUsage}
             </div>
-          )}
-          {app?.pid && memoryUsage !== undefined && (
-            <span className="text-xs text-gray-500 ml-2">
-              <div className="flex flex-row items-center gap-1">
-                <MemoryStick className="w-3 h-3" />
-                {typeof memoryUsage === "number"
-                  ? FormatFileSize(memoryUsage)
-                  : memoryUsage}{" "}
-              </div>
-            </span>
-          )}
-          {app?.pid && cpuUsage !== undefined && (
-            <span className="text-xs text-gray-500 ml-2">
-              <div className="flex flex-row items-center gap-1">
-                <Cpu className="w-3 h-3" />
-                {typeof cpuUsage === "number" ? cpuUsage.toFixed(1) : cpuUsage}%
-                CPU
-              </div>
-            </span>
-          )}
-        </div>
+          </span>
+        ) : (
+          <div></div>
+        )}
+      </div>
+      <div className="w-24 flex-shrink-0 text-right">
+        {app?.pid && cpuUsage !== undefined ? (
+          <span className="text-xs text-gray-500">
+            <div className="flex flex-row items-center justify-end gap-1">
+              <Cpu className="w-3 h-3" />
+              {typeof cpuUsage === "number" ? cpuUsage.toFixed(1) : cpuUsage}%
+            </div>
+          </span>
+        ) : (
+          <div></div>
+        )}
       </div>
     </div>
   );
