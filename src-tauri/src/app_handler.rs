@@ -457,3 +457,62 @@ pub fn get_app_icon_fallback(app_path: &str, app_name: &str) -> Option<String> {
     Some(base64_svg)
 }
 
+#[tauri::command]
+pub async fn force_quit_application(pid: u32) -> Result<(), String> {
+    // On macOS, you can use the "kill" command to force quit apps
+    match std::process::Command::new("kill")
+        .args(["-9", &pid.to_string()])
+        .status()
+    {
+        Ok(status) => {
+            if status.success() {
+                Ok(())
+            } else {
+                Err(format!("Failed to force quit application. Exit code: {:?}", status.code()))
+            }
+        },
+        Err(e) => Err(format!("Failed to execute kill command: {}", e)),
+    }
+}
+
+#[tauri::command]
+pub async fn restart_application(app: AppMetadata, app_handle: tauri::AppHandle) -> Result<(), String> {
+    // Step 1: Force quit if it's running
+    if let Some(pid) = app.pid {
+        // Try to force quit
+        let _ = force_quit_application(pid).await;
+        
+        // Wait a moment for the app to fully quit
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    }
+    
+    // Step 2: Launch the app
+    Command::new("open")
+        .arg(&app.path)
+        .status()
+        .map_err(|e| format!("Failed to launch application: {}", e))?;
+    
+    // Step 3: Update the frontend after restarting
+    tokio::spawn(async move {
+        // Wait a bit for the app to start
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        
+        // Try to find the newly launched app
+        if let Ok(apps) = get_running_apps() {
+            if let Some(new_app) = apps.iter().find(|a| a.path == app.path) {
+                if let Some(new_pid) = new_app.pid {
+                    if let Ok(usage) = crate::resource_monitor::get_process_resource_usage(new_pid) {
+                        // Create updated app with resource data
+                        let mut updated_app = new_app.clone();
+                        updated_app.resource_usage = Some(usage);
+                        
+                        // Emit to frontend
+                        let _ = app_handle.emit("app-restarted", updated_app);
+                    }
+                }
+            }
+        }
+    });
+    
+    Ok(())
+}

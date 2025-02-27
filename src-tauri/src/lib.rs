@@ -1,7 +1,7 @@
 mod app_handler;
 mod resource_monitor;
 
-use app_handler::{get_all_apps, launch_or_switch_to_app, AppMetadata};
+use app_handler::{get_all_apps, launch_or_switch_to_app, force_quit_application, restart_application, AppMetadata};
 use resource_monitor::get_all_apps_with_usage;
 use serde::{Serialize, Deserialize};
 use tauri::Manager;
@@ -82,7 +82,9 @@ pub fn run() {
             resource_monitor::stop_resource_monitoring,
             resource_monitor::get_resource_data,
             resource_monitor::monitor_app_resources,
-            resource_monitor::get_apps_with_live_resources
+            resource_monitor::get_apps_with_live_resources,
+            app_handler::force_quit_application,
+            app_handler::restart_application,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

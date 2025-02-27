@@ -34,10 +34,13 @@ import {
   FileText,
   Film,
   Image,
+  Loader2,
   MemoryStick,
   Music,
   Package,
+  RefreshCw,
   Search,
+  X,
 } from "lucide-react";
 
 import { FaRegFilePdf } from "react-icons/fa";
@@ -145,6 +148,7 @@ export default function App() {
   useEffect(() => {
     let unlistenResource: UnlistenFn;
     let unlistenAppUpdate: UnlistenFn;
+    let unlistenAppRestart: UnlistenFn;
     let refreshInterval: NodeJS.Timeout;
 
     const setupMonitoring = async () => {
@@ -209,6 +213,27 @@ export default function App() {
           }
         );
 
+        unlistenAppRestart = await listen("app-restarted", (event) => {
+          const restartedApp = event.payload as AppMetadata;
+
+          setSearchSections((prev) => {
+            return prev.map((section) => {
+              if (section.type_ === SearchSectionType.Apps) {
+                const updatedItems = section.items.map((item) => {
+                  const app = item as AppMetadata;
+                  if (app.path === restartedApp.path) {
+                    return restartedApp as SearchItem;
+                  }
+                  return item;
+                });
+
+                return { ...section, items: updatedItems };
+              }
+              return section;
+            });
+          });
+        });
+
         // 3. Start resource monitoring
         const runningPids = apps.flatMap((section) =>
           section.type_ === SearchSectionType.Apps
@@ -245,6 +270,7 @@ export default function App() {
     return () => {
       if (unlistenResource) unlistenResource();
       if (unlistenAppUpdate) unlistenAppUpdate();
+      if (unlistenAppRestart) unlistenAppRestart();
       if (refreshInterval) clearInterval(refreshInterval);
 
       // Stop resource monitoring
@@ -458,9 +484,46 @@ interface AppRowProps {
 }
 function AppRow(props: AppRowProps) {
   const { app } = props;
+  const [isLoading, setIsLoading] = useState<{
+    forceQuit: boolean;
+    restart: boolean;
+  }>({ forceQuit: false, restart: false });
 
   const memoryUsage = app.resource_usage?.memory_bytes;
   const cpuUsage = app.resource_usage?.cpu_usage;
+
+  // Function to force quit an app
+  const handleForceQuit = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent row click event
+    if (!app.pid) return;
+
+    try {
+      setIsLoading((prev) => ({ ...prev, forceQuit: true }));
+      await invoke("force_quit_application", { pid: app.pid });
+      toast.success(`Force quit ${app.name}`);
+    } catch (error) {
+      console.error("Failed to force quit app:", error);
+      toast.error(`Failed to force quit ${app.name}`);
+    } finally {
+      setIsLoading((prev) => ({ ...prev, forceQuit: false }));
+    }
+  };
+
+  // Function to restart an app
+  const handleRestart = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent row click event
+
+    try {
+      setIsLoading((prev) => ({ ...prev, restart: true }));
+      await invoke("restart_application", { app });
+      toast.success(`Restarting ${app.name}`);
+    } catch (error) {
+      console.error("Failed to restart app:", error);
+      toast.error(`Failed to restart ${app.name}`);
+    } finally {
+      setIsLoading((prev) => ({ ...prev, restart: false }));
+    }
+  };
 
   return (
     <div className="flex items-center w-full gap-2">
@@ -498,7 +561,7 @@ function AppRow(props: AppRowProps) {
           <div></div>
         )}
       </div>
-      <div className="w-24 flex-shrink-0 text-right">
+      <div className="w-24 flex-shrink-0 text-right ">
         {app?.pid && cpuUsage !== undefined ? (
           <span className="text-xs text-gray-500">
             <div className="flex flex-row items-center justify-end gap-1">
@@ -508,6 +571,37 @@ function AppRow(props: AppRowProps) {
           </span>
         ) : (
           <div></div>
+        )}
+      </div>
+      <div className="flex-shrink-0 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {app.pid && (
+          <>
+            <button
+              onClick={handleForceQuit}
+              disabled={isLoading.forceQuit}
+              className="p-1 rounded-sm hover:bg-red-500/10 text-red-500 hover:text-red-600 transition-colors"
+              title="Force quit"
+            >
+              {isLoading.forceQuit ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <X className="h-3 w-3" />
+              )}
+            </button>
+
+            <button
+              onClick={handleRestart}
+              disabled={isLoading.restart}
+              className="p-1 rounded-sm hover:bg-blue-500/10 text-blue-500 hover:text-blue-600 transition-colors"
+              title="Restart application"
+            >
+              {isLoading.restart ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3" />
+              )}
+            </button>
+          </>
         )}
       </div>
     </div>
