@@ -38,3 +38,4 @@ Fast and intelligent search running locally on your mac.
 // optimize the get_app_icon to be faster, the icon conversion is taking way too long
 // i might be able to use the sysinfo crate to replace all of the libproc functions - investigate further
 // usage is finally coming up but it's slowing the UI down a ton with the mssages, either optimize the performance or just make it static and not update in real time, when we load the apps, just load the resource usage at the same time and display it
+// consolidate the usage functoins and handlers into a smaller set and streamline the performance

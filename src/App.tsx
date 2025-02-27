@@ -140,6 +140,8 @@ export default function App() {
       });
   }
 
+  console.log("searchSections", searchSections);
+
   useEffect(() => {
     let unlistenResource: UnlistenFn;
     let unlistenAppUpdate: UnlistenFn;
@@ -158,7 +160,6 @@ export default function App() {
             {
               cpu_usage: number;
               memory_bytes: number;
-              memory_mb: number;
             }
           >;
 
@@ -178,7 +179,6 @@ export default function App() {
                         pid: app.pid,
                         cpu_usage: updates[app.pid].cpu_usage,
                         memory_bytes: updates[app.pid].memory_bytes,
-                        memory_mb: updates[app.pid].memory_mb,
                       },
                     } as AppMetadata as SearchItem;
                   }
@@ -233,7 +233,7 @@ export default function App() {
           // Only refresh the list of apps to catch newly launched ones
           const refreshedApps = await invoke<SearchSection[]>("get_apps_data");
           setSearchSections(refreshedApps);
-        }, 30000);
+        }, 3000);
       } catch (error) {
         console.error("Failed to set up resource monitoring:", error);
       }
@@ -428,22 +428,22 @@ function SearchResults(props: SearchResultsProps) {
                 switch (section.type_) {
                   case SearchSectionType.Apps:
                     return <AppRow app={getUpdatedApp(item as AppMetadata)} />;
-                  // case SearchSectionType.Files:
-                  //   return (
-                  //     <FileRow
-                  //       file={item as FileMetadata}
-                  //       handleCopy={handleCopy}
-                  //       copiedId={copiedId}
-                  //     />
-                  //   );
-                  // case SearchSectionType.Semantic:
-                  //   return (
-                  //     <SemanticRow
-                  //       file={item as SemanticMetadata}
-                  //       handleCopy={handleCopy}
-                  //       copiedId={copiedId}
-                  //     />
-                  //   );
+                  case SearchSectionType.Files:
+                    return (
+                      <FileRow
+                        file={item as FileMetadata}
+                        handleCopy={handleCopy}
+                        copiedId={copiedId}
+                      />
+                    );
+                  case SearchSectionType.Semantic:
+                    return (
+                      <SemanticRow
+                        file={item as SemanticMetadata}
+                        handleCopy={handleCopy}
+                        copiedId={copiedId}
+                      />
+                    );
                 }
               })()}
             </div>
