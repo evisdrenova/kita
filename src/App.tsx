@@ -55,7 +55,7 @@ export default function App() {
     useState<IndexingProgress | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [searchSections, setSearchSections] = useState<SearchSection[]>([]);
-  const [selectedSection, setSelectedSection] = useState<number>(0);
+  const [selectedSection, setSelectedSection] = useState<number>();
   const [selectedItem, setSelectedItem] = useState<number>(0);
   const [recents, setRecents] = useState<FileMetadata[]>([]);
   const [isSearchActive, setIsSearchActive] = useState(false);
@@ -104,26 +104,49 @@ export default function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (searchSections.length === 0) return;
 
+      let currentSection = selectedSection;
+      if (currentSection === undefined) {
+        const appsIndex = searchSections.findIndex(
+          (sec) => sec.type_ === SearchSectionType.Apps
+        );
+        currentSection = appsIndex >= 0 ? appsIndex : 0;
+      }
+
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        const currentSection = searchSections[selectedSection];
-        if (selectedItem < currentSection.items.length - 1) {
+
+        if (selectedSection === undefined) {
+          setSelectedSection(currentSection);
+          setSelectedItem(0);
+          return;
+        }
+
+        const section = searchSections[currentSection];
+        if (selectedItem < section.items.length - 1) {
           setSelectedItem(selectedItem + 1);
-        } else if (selectedSection < searchSections.length - 1) {
-          setSelectedSection(selectedSection + 1);
+        } else if (currentSection < searchSections.length - 1) {
+          setSelectedSection(currentSection + 1);
           setSelectedItem(0);
         }
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
+        if (selectedSection === undefined) {
+          return;
+        }
+
         if (selectedItem > 0) {
           setSelectedItem(selectedItem - 1);
-        } else if (selectedSection > 0) {
-          setSelectedSection(selectedSection - 1);
-          setSelectedItem(searchSections[selectedSection - 1].items.length - 1);
+        } else if (currentSection > 0) {
+          setSelectedSection(currentSection - 1);
+          setSelectedItem(searchSections[currentSection - 1].items.length - 1);
         }
       } else if (e.key === "Enter") {
         e.preventDefault();
-        const section = searchSections[selectedSection];
+        if (selectedSection === undefined) {
+          return;
+        }
+
+        const section = searchSections[currentSection];
         const item = section?.items[selectedItem];
         if (item) {
           handleResultSelect(item);
@@ -143,6 +166,7 @@ export default function App() {
       });
   }
 
+  // listens for resource events and app update events
   useEffect(() => {
     let unlistenUsage: UnlistenFn | undefined;
     let unlistenApps: UnlistenFn | undefined;
@@ -229,16 +253,45 @@ export default function App() {
       }))
       .filter((section) => section.items.length > 0);
 
+    // Sort the *sections* so that Apps always comes first, then Files, then others
     return [...filteredSections].sort((a, b) => {
-      if (a.type_ === SearchSectionType.Apps) return -1;
-      if (b.type_ === SearchSectionType.Apps) return 1;
-      if (a.type_ === SearchSectionType.Files) return -1;
-      if (b.type_ === SearchSectionType.Files) return 1;
+      if (
+        a.type_ === SearchSectionType.Apps &&
+        b.type_ !== SearchSectionType.Apps
+      ) {
+        return -1; // 'a' before 'b'
+      }
+      if (
+        b.type_ === SearchSectionType.Apps &&
+        a.type_ !== SearchSectionType.Apps
+      ) {
+        return 1; // 'b' before 'a'
+      }
+
+      if (
+        a.type_ === SearchSectionType.Files &&
+        b.type_ !== SearchSectionType.Files
+      ) {
+        return -1;
+      }
+      if (
+        b.type_ === SearchSectionType.Files &&
+        a.type_ !== SearchSectionType.Files
+      ) {
+        return 1;
+      }
       return 0;
     });
   }, [searchQuery, searchSections]);
 
-  console.log("resouced data", resourceData);
+  async function refreshApps() {
+    try {
+      const sections = await invoke<SearchSection[]>("get_apps_data");
+      setSearchSections(sections);
+    } catch (err) {
+      console.error("Failed to refresh apps:", err);
+    }
+  }
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
@@ -283,6 +336,7 @@ export default function App() {
                 }}
                 searchQuery={searchQuery}
                 resourceData={resourceData}
+                refreshApps={refreshApps}
               />
             </div>
           ))
@@ -314,6 +368,7 @@ interface SearchResultsProps {
   onSelect: (item: SearchItem, index: number) => void;
   searchQuery: string;
   resourceData?: Record<number, { cpu_usage: number; memory_bytes: number }>;
+  refreshApps: () => Promise<void>;
 }
 
 function SearchResults(props: SearchResultsProps) {
@@ -323,6 +378,7 @@ function SearchResults(props: SearchResultsProps) {
     onSelect,
     searchQuery,
     resourceData = {},
+    refreshApps,
   } = props;
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
@@ -338,7 +394,6 @@ function SearchResults(props: SearchResultsProps) {
 
   // Apply real-time resource data to the app
   const getUpdatedApp = (app: AppMetadata): AppMetadata => {
-    // Use resource data from real-time updates if available
     if (app.pid && resourceData[app.pid]) {
       return {
         ...app,
@@ -349,8 +404,6 @@ function SearchResults(props: SearchResultsProps) {
         },
       };
     }
-
-    // Otherwise use the resource data that came with the app (if any)
     return app;
   };
 
@@ -361,11 +414,8 @@ function SearchResults(props: SearchResultsProps) {
         const appB = b as AppMetadata;
 
         // Sort running apps first
-        if (appA.pid !== appB.pid) {
-          return appA.pid ? -1 : 1;
-        }
-
-        // If both are running or both are not running, sort alphabetically
+        if (appA.pid && !appB.pid) return -1;
+        if (!appA.pid && appB.pid) return 1;
         return appA.name.localeCompare(appB.name);
       });
     }
@@ -388,7 +438,12 @@ function SearchResults(props: SearchResultsProps) {
               {(() => {
                 switch (section.type_) {
                   case SearchSectionType.Apps:
-                    return <AppRow app={getUpdatedApp(item as AppMetadata)} />;
+                    return (
+                      <AppRow
+                        app={getUpdatedApp(item as AppMetadata)}
+                        refreshApps={refreshApps}
+                      />
+                    );
                   // case SearchSectionType.Files:
                   //   return (
                   //     <FileRow
@@ -416,47 +471,47 @@ function SearchResults(props: SearchResultsProps) {
 
 interface AppRowProps {
   app: AppMetadata;
+  refreshApps: () => Promise<void>;
 }
 function AppRow(props: AppRowProps) {
-  const { app } = props;
-  const [isLoading, setIsLoading] = useState<{
-    forceQuit: boolean;
-    restart: boolean;
-  }>({ forceQuit: false, restart: false });
+  const { app, refreshApps } = props;
+
+  const [isKilling, setIsKilling] = useState<boolean>(false);
+  const [isRestarting, setIsRestarting] = useState<boolean>(false);
 
   const memoryUsage = app.resource_usage?.memory_bytes;
   const cpuUsage = app.resource_usage?.cpu_usage;
 
-  // Function to force quit an app
   const handleForceQuit = async (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent row click event
+    e.stopPropagation();
     if (!app.pid) return;
-
+    console.log("killing");
     try {
-      setIsLoading((prev) => ({ ...prev, forceQuit: true }));
+      setIsKilling(true);
       await invoke("force_quit_application", { pid: app.pid });
       toast.success(`Force quit ${app.name}`);
+      await refreshApps();
     } catch (error) {
       console.error("Failed to force quit app:", error);
       toast.error(`Failed to force quit ${app.name}`);
     } finally {
-      setIsLoading((prev) => ({ ...prev, forceQuit: false }));
+      setIsKilling(false);
     }
   };
 
-  // Function to restart an app
   const handleRestart = async (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent row click event
-
+    e.stopPropagation();
+    console.log("restarting");
     try {
-      setIsLoading((prev) => ({ ...prev, restart: true }));
+      setIsRestarting(true);
       await invoke("restart_application", { app });
       toast.success(`Restarting ${app.name}`);
+      await refreshApps();
     } catch (error) {
       console.error("Failed to restart app:", error);
       toast.error(`Failed to restart ${app.name}`);
     } finally {
-      setIsLoading((prev) => ({ ...prev, restart: false }));
+      setIsRestarting(false);
     }
   };
 
@@ -513,11 +568,11 @@ function AppRow(props: AppRowProps) {
           <>
             <button
               onClick={handleForceQuit}
-              disabled={isLoading.forceQuit}
-              className="p-1 rounded-sm hover:bg-red-500/10 text-red-500 hover:text-red-600 transition-colors"
+              disabled={isKilling}
+              className="p-1 rounded-sm hover:bg-red-500/10 text-red-500 hover:text-red-600 transition-colors cursor-pointer"
               title="Force quit"
             >
-              {isLoading.forceQuit ? (
+              {isKilling ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
               ) : (
                 <X className="h-3 w-3" />
@@ -526,11 +581,11 @@ function AppRow(props: AppRowProps) {
 
             <button
               onClick={handleRestart}
-              disabled={isLoading.restart}
-              className="p-1 rounded-sm hover:bg-blue-500/10 text-blue-500 hover:text-blue-600 transition-colors"
+              disabled={isRestarting}
+              className="p-1 rounded-sm hover:bg-blue-500/10 text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
               title="Restart application"
             >
-              {isLoading.restart ? (
+              {isRestarting ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
               ) : (
                 <RefreshCw className="h-3 w-3" />

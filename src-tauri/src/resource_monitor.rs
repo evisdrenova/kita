@@ -422,10 +422,6 @@ pub async fn start_resource_monitoring(
     state: State<'_, ResourceMonitorState>,
 ) -> Result<(), String> {
     // Mark that we should be monitoring
-
-
-    println!("the pids: {:?}", pids);
-    
     {
         let mut flag = state.is_monitoring.lock().unwrap();
         *flag = true;
