@@ -31,6 +31,29 @@ lazy_static! {
 }
 
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SectionType {
+    Apps,
+    Files,
+    Semantic,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum SearchItem {
+    App(AppMetadata),
+    // File(FileMetadata),
+    // Semantic(SemanticResult), 
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SearchSection {
+    pub type_: SectionType,
+    pub title: String,
+    pub items: Vec<SearchItem>,
+} 
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppMetadata {
         name: String,
@@ -153,10 +176,8 @@ pub fn get_running_apps() -> Result<Vec<AppMetadata>, String> {
 }
 
 // launches a selected app or switches to it if it's already running
+#[tauri::command]
 pub async fn launch_or_switch_to_app(app: AppMetadata, app_handle: tauri::AppHandle) -> Result<(), String> {
-
-
-    println!("the app that we're trying to open: {:?}", app);
     // try to switch if we have a PID
     // if we have a PID then we know the app is running
     if let Some(pid) = app.pid {
@@ -260,7 +281,10 @@ pub fn get_combined_apps() -> Result<Vec<AppMetadata>, String> {
 }
 
 // returns the running apps and installed apps along with their app icons
-pub fn get_all_apps() -> Result<Vec<AppMetadata>, String> {
+#[tauri::command]
+pub fn get_apps_data() -> Result<Vec<SearchSection>, String> {
+
+    let mut sections = Vec::new();
 
     let mut comibined_apps: Vec<AppMetadata> = get_combined_apps()?;
     
@@ -268,7 +292,15 @@ pub fn get_all_apps() -> Result<Vec<AppMetadata>, String> {
     
     comibined_apps.sort_by(|a, b| a.name.cmp(&b.name));
 
-    Ok(comibined_apps)
+    let app_items: Vec<SearchItem> = comibined_apps.into_iter().map(|app| SearchItem::App(app)).collect();
+
+    sections.push(SearchSection {
+        type_: SectionType::Apps,
+        title: "Applications".to_string(),
+        items: app_items,
+    });
+
+    Ok(sections)
 }
 
 // runs function to get app icons in parallel
