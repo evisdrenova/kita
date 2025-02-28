@@ -87,17 +87,17 @@ export default function App() {
   //   }
   // };
 
-  const toggleCategory = (category: SearchCategory) => {
-    setSelectedCategories((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(category)) {
-        newSet.delete(category);
-      } else {
-        newSet.add(category);
-      }
-      return newSet;
-    });
-  };
+  // const toggleCategory = (category: SearchCategory) => {
+  //   setSelectedCategories((prev) => {
+  //     const newSet = new Set(prev);
+  //     if (newSet.has(category)) {
+  //       newSet.delete(category);
+  //     } else {
+  //       newSet.add(category);
+  //     }
+  //     return newSet;
+  //   });
+  // };
 
   // handles key up and down acions
   useEffect(() => {
@@ -145,135 +145,213 @@ export default function App() {
 
   console.log("searchSections", searchSections);
 
+  // useEffect(() => {
+  //   let unlistenResource: UnlistenFn;
+  //   let unlistenAppUpdate: UnlistenFn;
+  //   let unlistenAppRestart: UnlistenFn;
+  //   let refreshInterval: NodeJS.Timeout;
+
+  //   const setupMonitoring = async () => {
+  //     try {
+  //       // 1. Initial fetch of apps with resource data
+  //       const apps = await invoke<SearchSection[]>("get_apps_data");
+  //       setSearchSections(apps);
+
+  //       // 2. Set up event listeners for updates
+  //       unlistenResource = await listen("resource-usage-updated", (event) => {
+  //         const updates = event.payload as Record<
+  //           number,
+  //           {
+  //             cpu_usage: number;
+  //             memory_bytes: number;
+  //           }
+  //         >;
+
+  //         // Update resource data state
+  //         setResourceData((prev) => ({ ...prev, ...updates }));
+
+  //         // Update search sections with new resource data
+  //         setSearchSections((prev) => {
+  //           return prev.map((section) => {
+  //             if (section.type_ === SearchSectionType.Apps) {
+  //               const updatedItems = section.items.map((item) => {
+  //                 const app = item as AppMetadata;
+  //                 if (app.pid && updates[app.pid]) {
+  //                   return {
+  //                     ...app,
+  //                     resource_usage: {
+  //                       pid: app.pid,
+  //                       cpu_usage: updates[app.pid].cpu_usage,
+  //                       memory_bytes: updates[app.pid].memory_bytes,
+  //                     },
+  //                   } as AppMetadata as SearchItem;
+  //                 }
+  //                 return item;
+  //               });
+  //               return { ...section, items: updatedItems };
+  //             }
+  //             return section;
+  //           });
+  //         });
+  //       });
+
+  //       unlistenAppUpdate = await listen(
+  //         "apps-with-resources-updated",
+  //         (event) => {
+  //           const updatedApps = event.payload as AppMetadata[];
+  //           setSearchSections((prev) => {
+  //             return prev.map((section) => {
+  //               if (section.type_ === SearchSectionType.Apps) {
+  //                 return {
+  //                   ...section,
+  //                   items: updatedApps.map((app) => app as SearchItem),
+  //                 };
+  //               }
+  //               return section;
+  //             });
+  //           });
+  //         }
+  //       );
+
+  //       unlistenAppRestart = await listen("app-restarted", (event) => {
+  //         const restartedApp = event.payload as AppMetadata;
+
+  //         setSearchSections((prev) => {
+  //           return prev.map((section) => {
+  //             if (section.type_ === SearchSectionType.Apps) {
+  //               const updatedItems = section.items.map((item) => {
+  //                 const app = item as AppMetadata;
+  //                 if (app.path === restartedApp.path) {
+  //                   return restartedApp as SearchItem;
+  //                 }
+  //                 return item;
+  //               });
+
+  //               return { ...section, items: updatedItems };
+  //             }
+  //             return section;
+  //           });
+  //         });
+  //       });
+
+  //       // 3. Start resource monitoring
+  //       const runningPids = apps.flatMap((section) =>
+  //         section.type_ === SearchSectionType.Apps
+  //           ? (section.items
+  //               .map((item) => (item as AppMetadata).pid)
+  //               .filter(Boolean) as number[])
+  //           : []
+  //       );
+
+  //       if (runningPids.length > 0) {
+  //         // Start continuous monitoring of these PIDs
+  //         await invoke("start_resource_monitoring", { pids: runningPids });
+
+  //         // Start live resource updates stream
+  //         await invoke("get_apps_with_live_resources");
+
+  //         setIsSearchActive(true);
+  //       }
+
+  //       // 4. Set up refresh interval (less frequent than before - every 30 seconds)
+  //       refreshInterval = setInterval(async () => {
+  //         // Only refresh the list of apps to catch newly launched ones
+  //         const refreshedApps = await invoke<SearchSection[]>("get_apps_data");
+  //         setSearchSections(refreshedApps);
+  //       }, 3000);
+  //     } catch (error) {
+  //       console.error("Failed to set up resource monitoring:", error);
+  //     }
+  //   };
+
+  //   setupMonitoring();
+
+  //   // Clean up everything on unmount
+  //   return () => {
+  //     if (unlistenResource) unlistenResource();
+  //     if (unlistenAppUpdate) unlistenAppUpdate();
+  //     if (unlistenAppRestart) unlistenAppRestart();
+  //     if (refreshInterval) clearInterval(refreshInterval);
+
+  //     // Stop resource monitoring
+  //     invoke("stop_resource_monitoring").catch((err) => {
+  //       console.error("Failed to stop resource monitoring:", err);
+  //     });
+  //   };
+  // }, []);
+
+  /**
+   * useEffect for:
+   * 1. Fetching initial data
+   * 2. Starting monitoring (background tasks)
+   * 3. Listening to Tauri events for updates
+   */
   useEffect(() => {
-    let unlistenResource: UnlistenFn;
-    let unlistenAppUpdate: UnlistenFn;
-    let unlistenAppRestart: UnlistenFn;
-    let refreshInterval: NodeJS.Timeout;
+    let unlistenUsage: UnlistenFn | undefined;
+    let unlistenApps: UnlistenFn | undefined;
 
-    const setupMonitoring = async () => {
+    (async () => {
       try {
-        // 1. Initial fetch of apps with resource data
-        const apps = await invoke<SearchSection[]>("get_apps_data");
-        setSearchSections(apps);
+        // get initial list of apps
+        const initialSections = await invoke<SearchSection[]>("get_apps_data");
+        setSearchSections(initialSections);
 
-        // 2. Set up event listeners for updates
-        unlistenResource = await listen("resource-usage-updated", (event) => {
+        // 2) Start the background resource monitoring.
+        //    You can choose either your custom "monitor_app_resources" or
+        //    "get_apps_with_live_resources" or "start_resource_monitoring".
+        //    For a single approach, pick one. E.g.:
+        await invoke("start_resource_monitoring");
+
+        // 3) Listen for real-time usage updates
+        unlistenUsage = await listen("resource-usage-updated", (event) => {
           const updates = event.payload as Record<
             number,
-            {
-              cpu_usage: number;
-              memory_bytes: number;
-            }
+            { cpu_usage: number; memory_bytes: number }
           >;
 
           // Update resource data state
-          setResourceData((prev) => ({ ...prev, ...updates }));
+          setResourceData((prev) => {
+            const newState = { ...prev };
+            Object.entries(updates).forEach(([pidStr, usage]) => {
+              const pidNum = Number(pidStr);
+              newState[pidNum] = {
+                cpu_usage: usage.cpu_usage,
+                memory_bytes: usage.memory_bytes,
+              };
+            });
+            return newState;
+          });
+        });
 
-          // Update search sections with new resource data
+        // 4) Optionally listen for app updates (e.g., newly launched apps)
+        unlistenApps = await listen("apps-with-resources-updated", (event) => {
+          // The payload might be an array of updated AppMetadata objects
+          const updatedApps = event.payload as AppMetadata[];
+
+          // Rebuild your “Apps” search section with new data
           setSearchSections((prev) => {
             return prev.map((section) => {
               if (section.type_ === SearchSectionType.Apps) {
-                const updatedItems = section.items.map((item) => {
-                  const app = item as AppMetadata;
-                  if (app.pid && updates[app.pid]) {
-                    return {
-                      ...app,
-                      resource_usage: {
-                        pid: app.pid,
-                        cpu_usage: updates[app.pid].cpu_usage,
-                        memory_bytes: updates[app.pid].memory_bytes,
-                      },
-                    } as AppMetadata as SearchItem;
-                  }
-                  return item;
-                });
-                return { ...section, items: updatedItems };
+                return {
+                  ...section,
+                  items: updatedApps.map((app) => app as SearchItem),
+                };
               }
               return section;
             });
           });
         });
-
-        unlistenAppUpdate = await listen(
-          "apps-with-resources-updated",
-          (event) => {
-            const updatedApps = event.payload as AppMetadata[];
-            setSearchSections((prev) => {
-              return prev.map((section) => {
-                if (section.type_ === SearchSectionType.Apps) {
-                  return {
-                    ...section,
-                    items: updatedApps.map((app) => app as SearchItem),
-                  };
-                }
-                return section;
-              });
-            });
-          }
-        );
-
-        unlistenAppRestart = await listen("app-restarted", (event) => {
-          const restartedApp = event.payload as AppMetadata;
-
-          setSearchSections((prev) => {
-            return prev.map((section) => {
-              if (section.type_ === SearchSectionType.Apps) {
-                const updatedItems = section.items.map((item) => {
-                  const app = item as AppMetadata;
-                  if (app.path === restartedApp.path) {
-                    return restartedApp as SearchItem;
-                  }
-                  return item;
-                });
-
-                return { ...section, items: updatedItems };
-              }
-              return section;
-            });
-          });
-        });
-
-        // 3. Start resource monitoring
-        const runningPids = apps.flatMap((section) =>
-          section.type_ === SearchSectionType.Apps
-            ? (section.items
-                .map((item) => (item as AppMetadata).pid)
-                .filter(Boolean) as number[])
-            : []
-        );
-
-        if (runningPids.length > 0) {
-          // Start continuous monitoring of these PIDs
-          await invoke("start_resource_monitoring", { pids: runningPids });
-
-          // Start live resource updates stream
-          await invoke("get_apps_with_live_resources");
-
-          setIsSearchActive(true);
-        }
-
-        // 4. Set up refresh interval (less frequent than before - every 30 seconds)
-        refreshInterval = setInterval(async () => {
-          // Only refresh the list of apps to catch newly launched ones
-          const refreshedApps = await invoke<SearchSection[]>("get_apps_data");
-          setSearchSections(refreshedApps);
-        }, 3000);
-      } catch (error) {
-        console.error("Failed to set up resource monitoring:", error);
+      } catch (err) {
+        console.error("Failed to set up resource monitoring:", err);
       }
-    };
+    })();
 
-    setupMonitoring();
-
-    // Clean up everything on unmount
+    // Cleanup on unmount
     return () => {
-      if (unlistenResource) unlistenResource();
-      if (unlistenAppUpdate) unlistenAppUpdate();
-      if (unlistenAppRestart) unlistenAppRestart();
-      if (refreshInterval) clearInterval(refreshInterval);
+      if (unlistenUsage) unlistenUsage();
+      if (unlistenApps) unlistenApps();
 
-      // Stop resource monitoring
+      // Tell the backend to stop monitoring
       invoke("stop_resource_monitoring").catch((err) => {
         console.error("Failed to stop resource monitoring:", err);
       });
