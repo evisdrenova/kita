@@ -154,6 +154,9 @@ pub fn get_running_apps() -> Result<Vec<AppMetadata>, String> {
 
 // launches a selected app or switches to it if it's already running
 pub async fn launch_or_switch_to_app(app: AppMetadata, app_handle: tauri::AppHandle) -> Result<(), String> {
+
+
+    println!("the app that we're trying to open: {:?}", app);
     // try to switch if we have a PID
     // if we have a PID then we know the app is running
     if let Some(pid) = app.pid {

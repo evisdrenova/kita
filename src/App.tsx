@@ -5,7 +5,6 @@ import "./globals.css";
 import Footer from "./Footer";
 import {
   AppMetadata,
-  AppResourceUsage,
   FileMetadata,
   IndexingProgress,
   searchCategories,
@@ -41,10 +40,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-
 import { FaRegFilePdf } from "react-icons/fa";
-import { Button } from "./components/ui/button";
-import { toast } from "sonner";
 import { errorToast, successToast } from "./components/ui/toast";
 
 export default function App() {
@@ -162,10 +158,9 @@ export default function App() {
 
   // handles switching to the file or app
   async function handleResultSelect(app: SearchItem) {
-    async () =>
-      await invoke<AppMetadata[]>("launch_or_switch_to_application", {
-        app: app,
-      });
+    await invoke<AppMetadata[]>("launch_or_switch_to_application", {
+      app: app,
+    });
   }
 
   // listens for resource events and app update events

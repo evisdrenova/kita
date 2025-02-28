@@ -31,6 +31,7 @@ pub struct SearchSection {
 
 #[tauri::command]
 async fn launch_or_switch_to_application(app: AppMetadata, app_handle: tauri::AppHandle) -> Result<(), String> {
+    println!("the app: {:?}", app);
     // Pass the app_handle to allow for resource updates after launch
     launch_or_switch_to_app(app, app_handle).await
 }
@@ -60,7 +61,6 @@ fn get_apps_data() -> Result<Vec<SearchSection>, String> {
 
 #[tauri::command]
 fn get_apps_with_resources() -> Result<Vec<AppMetadata>, String> {
-    
     resource_monitor::get_all_apps_with_usage()
 }
 
