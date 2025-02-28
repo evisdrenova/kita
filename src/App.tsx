@@ -16,7 +16,6 @@ import {
   SemanticMetadata,
 } from "./types/types";
 import Header from "./Header";
-import { toast } from "sonner";
 import {
   FormatFileSize,
   getCategoryFromExtension,
@@ -44,6 +43,9 @@ import {
 } from "lucide-react";
 
 import { FaRegFilePdf } from "react-icons/fa";
+import { Button } from "./components/ui/button";
+import { toast } from "sonner";
+import { errorToast, successToast } from "./components/ui/toast";
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -83,7 +85,7 @@ export default function App() {
   //     console.error("Error indexing paths:", error);
   //     setIsIndexing(false);
   //     setIndexingProgress(null);
-  //     toast.error("Errr indexing selected paths");
+  //     errorToast("Errr indexing selected paths");
   //   }
   // };
 
@@ -388,7 +390,7 @@ function SearchResults(props: SearchResultsProps) {
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
     } catch (err) {
-      toast.error("Failed to copy path");
+      errorToast("Failed to copy path");
     }
   };
 
@@ -489,11 +491,10 @@ function AppRow(props: AppRowProps) {
     try {
       setIsKilling(true);
       await invoke("force_quit_application", { pid: app.pid });
-      toast.success(`Force quit ${app.name}`);
+      successToast(`Successfully quit: ${app.name}`);
       await refreshApps();
     } catch (error) {
-      console.error("Failed to force quit app:", error);
-      toast.error(`Failed to force quit ${app.name}`);
+      errorToast(`Failed to quit ${app.name}`);
     } finally {
       setIsKilling(false);
     }
@@ -505,11 +506,11 @@ function AppRow(props: AppRowProps) {
     try {
       setIsRestarting(true);
       await invoke("restart_application", { app });
-      toast.success(`Restarting ${app.name}`);
+      successToast(`Restarting ${app.name}`);
       await refreshApps();
     } catch (error) {
       console.error("Failed to restart app:", error);
-      toast.error(`Failed to restart ${app.name}`);
+      errorToast(`Failed to restart ${app.name}`);
     } finally {
       setIsRestarting(false);
     }

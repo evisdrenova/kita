@@ -127,3 +127,17 @@
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--border));
 }
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+[data-sonner-toast][data-styled="true"] {
+  padding-top: 4px;
+  padding-right: 4px;
+}
