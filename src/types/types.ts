@@ -5,7 +5,6 @@ interface BaseMetadata {
 }
 
 export interface FileMetadata extends BaseMetadata {
-  type: SearchSectionType.Files;
   extension: string;
   size: number;
   updated_at?: string;
@@ -13,14 +12,12 @@ export interface FileMetadata extends BaseMetadata {
 }
 
 export interface AppMetadata extends BaseMetadata {
-  type: SearchSectionType.Apps;
   pid: number;
   resource_usage?: AppResourceUsage;
   icon?: string;
 }
 
 export interface SemanticMetadata extends BaseMetadata {
-  type: SearchSectionType.Semantic;
   extension: string;
   distance: number;
   content?: string;

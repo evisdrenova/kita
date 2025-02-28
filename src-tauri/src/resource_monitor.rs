@@ -385,7 +385,7 @@ use tokio::time::interval;
 
 
 
-use crate::app_handler::{get_all_apps, get_running_apps, AppMetadata};
+use crate::app_handler::{get_all_apps, get_combined_apps, get_running_apps, AppMetadata};
 
 
 
@@ -422,6 +422,10 @@ pub async fn start_resource_monitoring(
     state: State<'_, ResourceMonitorState>,
 ) -> Result<(), String> {
     // Mark that we should be monitoring
+
+
+    println!("the pids: {:?}", pids);
+    
     {
         let mut flag = state.is_monitoring.lock().unwrap();
         *flag = true;

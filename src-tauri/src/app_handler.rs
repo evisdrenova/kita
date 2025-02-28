@@ -237,8 +237,10 @@ unsafe fn try_switch_to_pid(pid: u32) -> Result<(), String> {
     Ok(())
 }
 
-// returns the running apps and installed apps
-pub fn get_all_apps() -> Result<Vec<AppMetadata>, String> {
+
+// get the running and installed apps returned as Vec
+pub fn get_combined_apps() -> Result<Vec<AppMetadata>, String> {
+
     let mut running_apps = get_running_apps()?;
 
     let mut installed_apps = get_installed_apps()?;
@@ -249,12 +251,21 @@ pub fn get_all_apps() -> Result<Vec<AppMetadata>, String> {
     });
     
     running_apps.extend(installed_apps);
-    
-    process_icons_in_parallel(&mut running_apps);
-    
-    running_apps.sort_by(|a, b| a.name.cmp(&b.name));
 
     Ok(running_apps)
+
+}
+
+// returns the running apps and installed apps along with their app icons
+pub fn get_all_apps() -> Result<Vec<AppMetadata>, String> {
+
+    let mut comibined_apps: Vec<AppMetadata> = get_combined_apps()?;
+    
+    process_icons_in_parallel(&mut comibined_apps);
+    
+    comibined_apps.sort_by(|a, b| a.name.cmp(&b.name));
+
+    Ok(comibined_apps)
 }
 
 // runs function to get app icons in parallel

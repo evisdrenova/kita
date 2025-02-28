@@ -143,173 +143,35 @@ export default function App() {
       });
   }
 
-  console.log("searchSections", searchSections);
-
-  // useEffect(() => {
-  //   let unlistenResource: UnlistenFn;
-  //   let unlistenAppUpdate: UnlistenFn;
-  //   let unlistenAppRestart: UnlistenFn;
-  //   let refreshInterval: NodeJS.Timeout;
-
-  //   const setupMonitoring = async () => {
-  //     try {
-  //       // 1. Initial fetch of apps with resource data
-  //       const apps = await invoke<SearchSection[]>("get_apps_data");
-  //       setSearchSections(apps);
-
-  //       // 2. Set up event listeners for updates
-  //       unlistenResource = await listen("resource-usage-updated", (event) => {
-  //         const updates = event.payload as Record<
-  //           number,
-  //           {
-  //             cpu_usage: number;
-  //             memory_bytes: number;
-  //           }
-  //         >;
-
-  //         // Update resource data state
-  //         setResourceData((prev) => ({ ...prev, ...updates }));
-
-  //         // Update search sections with new resource data
-  //         setSearchSections((prev) => {
-  //           return prev.map((section) => {
-  //             if (section.type_ === SearchSectionType.Apps) {
-  //               const updatedItems = section.items.map((item) => {
-  //                 const app = item as AppMetadata;
-  //                 if (app.pid && updates[app.pid]) {
-  //                   return {
-  //                     ...app,
-  //                     resource_usage: {
-  //                       pid: app.pid,
-  //                       cpu_usage: updates[app.pid].cpu_usage,
-  //                       memory_bytes: updates[app.pid].memory_bytes,
-  //                     },
-  //                   } as AppMetadata as SearchItem;
-  //                 }
-  //                 return item;
-  //               });
-  //               return { ...section, items: updatedItems };
-  //             }
-  //             return section;
-  //           });
-  //         });
-  //       });
-
-  //       unlistenAppUpdate = await listen(
-  //         "apps-with-resources-updated",
-  //         (event) => {
-  //           const updatedApps = event.payload as AppMetadata[];
-  //           setSearchSections((prev) => {
-  //             return prev.map((section) => {
-  //               if (section.type_ === SearchSectionType.Apps) {
-  //                 return {
-  //                   ...section,
-  //                   items: updatedApps.map((app) => app as SearchItem),
-  //                 };
-  //               }
-  //               return section;
-  //             });
-  //           });
-  //         }
-  //       );
-
-  //       unlistenAppRestart = await listen("app-restarted", (event) => {
-  //         const restartedApp = event.payload as AppMetadata;
-
-  //         setSearchSections((prev) => {
-  //           return prev.map((section) => {
-  //             if (section.type_ === SearchSectionType.Apps) {
-  //               const updatedItems = section.items.map((item) => {
-  //                 const app = item as AppMetadata;
-  //                 if (app.path === restartedApp.path) {
-  //                   return restartedApp as SearchItem;
-  //                 }
-  //                 return item;
-  //               });
-
-  //               return { ...section, items: updatedItems };
-  //             }
-  //             return section;
-  //           });
-  //         });
-  //       });
-
-  //       // 3. Start resource monitoring
-  //       const runningPids = apps.flatMap((section) =>
-  //         section.type_ === SearchSectionType.Apps
-  //           ? (section.items
-  //               .map((item) => (item as AppMetadata).pid)
-  //               .filter(Boolean) as number[])
-  //           : []
-  //       );
-
-  //       if (runningPids.length > 0) {
-  //         // Start continuous monitoring of these PIDs
-  //         await invoke("start_resource_monitoring", { pids: runningPids });
-
-  //         // Start live resource updates stream
-  //         await invoke("get_apps_with_live_resources");
-
-  //         setIsSearchActive(true);
-  //       }
-
-  //       // 4. Set up refresh interval (less frequent than before - every 30 seconds)
-  //       refreshInterval = setInterval(async () => {
-  //         // Only refresh the list of apps to catch newly launched ones
-  //         const refreshedApps = await invoke<SearchSection[]>("get_apps_data");
-  //         setSearchSections(refreshedApps);
-  //       }, 3000);
-  //     } catch (error) {
-  //       console.error("Failed to set up resource monitoring:", error);
-  //     }
-  //   };
-
-  //   setupMonitoring();
-
-  //   // Clean up everything on unmount
-  //   return () => {
-  //     if (unlistenResource) unlistenResource();
-  //     if (unlistenAppUpdate) unlistenAppUpdate();
-  //     if (unlistenAppRestart) unlistenAppRestart();
-  //     if (refreshInterval) clearInterval(refreshInterval);
-
-  //     // Stop resource monitoring
-  //     invoke("stop_resource_monitoring").catch((err) => {
-  //       console.error("Failed to stop resource monitoring:", err);
-  //     });
-  //   };
-  // }, []);
-
-  /**
-   * useEffect for:
-   * 1. Fetching initial data
-   * 2. Starting monitoring (background tasks)
-   * 3. Listening to Tauri events for updates
-   */
   useEffect(() => {
     let unlistenUsage: UnlistenFn | undefined;
     let unlistenApps: UnlistenFn | undefined;
 
     (async () => {
       try {
-        // get initial list of apps
-        const initialSections = await invoke<SearchSection[]>("get_apps_data");
-        setSearchSections(initialSections);
+        const sections = await invoke<SearchSection[]>("get_apps_data");
+        setSearchSections(sections);
 
-        // 2) Start the background resource monitoring.
-        //    You can choose either your custom "monitor_app_resources" or
-        //    "get_apps_with_live_resources" or "start_resource_monitoring".
-        //    For a single approach, pick one. E.g.:
-        await invoke("start_resource_monitoring");
+        const appSection = sections.filter(
+          (sec) => sec.type_ === SearchSectionType.Apps
+        );
 
-        // 3) Listen for real-time usage updates
+        const allAppItems = appSection.flatMap(
+          (sec) => sec.items
+        ) as AppMetadata[];
+
+        const pids = allAppItems
+          .filter((app) => app.pid != null)
+          .map((app) => app.pid);
+
+        await invoke("start_resource_monitoring", { pids });
+
         unlistenUsage = await listen("resource-usage-updated", (event) => {
           const updates = event.payload as Record<
             number,
             { cpu_usage: number; memory_bytes: number }
           >;
 
-          // Update resource data state
           setResourceData((prev) => {
             const newState = { ...prev };
             Object.entries(updates).forEach(([pidStr, usage]) => {
@@ -323,12 +185,8 @@ export default function App() {
           });
         });
 
-        // 4) Optionally listen for app updates (e.g., newly launched apps)
         unlistenApps = await listen("apps-with-resources-updated", (event) => {
-          // The payload might be an array of updated AppMetadata objects
           const updatedApps = event.payload as AppMetadata[];
-
-          // Rebuild your “Apps” search section with new data
           setSearchSections((prev) => {
             return prev.map((section) => {
               if (section.type_ === SearchSectionType.Apps) {
@@ -346,19 +204,16 @@ export default function App() {
       }
     })();
 
-    // Cleanup on unmount
     return () => {
       if (unlistenUsage) unlistenUsage();
       if (unlistenApps) unlistenApps();
 
-      // Tell the backend to stop monitoring
       invoke("stop_resource_monitoring").catch((err) => {
         console.error("Failed to stop resource monitoring:", err);
       });
     };
   }, []);
 
-  // filters results based on what the user searches for
   const filteredResults = useMemo(() => {
     if (!searchQuery.trim()) {
       return searchSections;
@@ -382,6 +237,8 @@ export default function App() {
       return 0;
     });
   }, [searchQuery, searchSections]);
+
+  console.log("resouced data", resourceData);
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
@@ -532,22 +389,22 @@ function SearchResults(props: SearchResultsProps) {
                 switch (section.type_) {
                   case SearchSectionType.Apps:
                     return <AppRow app={getUpdatedApp(item as AppMetadata)} />;
-                  case SearchSectionType.Files:
-                    return (
-                      <FileRow
-                        file={item as FileMetadata}
-                        handleCopy={handleCopy}
-                        copiedId={copiedId}
-                      />
-                    );
-                  case SearchSectionType.Semantic:
-                    return (
-                      <SemanticRow
-                        file={item as SemanticMetadata}
-                        handleCopy={handleCopy}
-                        copiedId={copiedId}
-                      />
-                    );
+                  // case SearchSectionType.Files:
+                  //   return (
+                  //     <FileRow
+                  //       file={item as FileMetadata}
+                  //       handleCopy={handleCopy}
+                  //       copiedId={copiedId}
+                  //     />
+                  //   );
+                  // case SearchSectionType.Semantic:
+                  //   return (
+                  //     <SemanticRow
+                  //       file={item as SemanticMetadata}
+                  //       handleCopy={handleCopy}
+                  //       copiedId={copiedId}
+                  //     />
+                  //   );
                 }
               })()}
             </div>
@@ -686,105 +543,105 @@ function AppRow(props: AppRowProps) {
   );
 }
 
-interface FileRowProps {
-  file: Extract<SearchItem, { type: SearchSectionType.Files }>;
-  handleCopy: (path: string, id: number) => Promise<void>;
-  copiedId: number | null;
-}
+// interface FileRowProps {
+//   file: Extract<SearchItem, { type: SearchSectionType.Files }>;
+//   handleCopy: (path: string, id: number) => Promise<void>;
+//   copiedId: number | null;
+// }
 
-function FileRow(props: FileRowProps) {
-  const { file, handleCopy, copiedId } = props;
+// function FileRow(props: FileRowProps) {
+//   const { file, handleCopy, copiedId } = props;
 
-  return (
-    <div className="flex flex-col w-full flex-1 gap-3">
-      <div className="flex flex-row justify-between w-full items-center gap-1">
-        <div className="flex flex-row w-full items-center gap-1">
-          {getFileIcon(file.path)}
-          <span className="text-sm text-primary-foreground">{file.name}</span>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              // handleCopy(file.path, file.id);
-            }}
-            className={`opacity-0 group-hover:opacity-100 ml-2 p-1 hover:bg-background rounded transition-opacity duration-200 ${
-              copiedId === file.id ? "text-green-500" : "text-muted-foreground"
-            }`}
-          >
-            {copiedId === file.id ? (
-              <Check className="h-3 w-3" />
-            ) : (
-              <Copy className="h-3 w-3" />
-            )}
-          </button>
-        </div>
-        <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {getCategoryFromExtension(file.extension)}
-        </span>
-      </div>
-      <div className="flex justify-between items-center gap-2 w-full h-0">
-        <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-4 flex-1">
-          {truncatePath(file.path)}
-        </span>
-        <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {FormatFileSize(file.size)}
-        </span>
-      </div>
-    </div>
-  );
-}
+//   return (
+//     <div className="flex flex-col w-full flex-1 gap-3">
+//       <div className="flex flex-row justify-between w-full items-center gap-1">
+//         <div className="flex flex-row w-full items-center gap-1">
+//           {getFileIcon(file.path)}
+//           <span className="text-sm text-primary-foreground">{file.name}</span>
+//           <button
+//             onClick={(e) => {
+//               e.stopPropagation();
+//               // handleCopy(file.path, file.id);
+//             }}
+//             className={`opacity-0 group-hover:opacity-100 ml-2 p-1 hover:bg-background rounded transition-opacity duration-200 ${
+//               copiedId === file.id ? "text-green-500" : "text-muted-foreground"
+//             }`}
+//           >
+//             {copiedId === file.id ? (
+//               <Check className="h-3 w-3" />
+//             ) : (
+//               <Copy className="h-3 w-3" />
+//             )}
+//           </button>
+//         </div>
+//         <span className="text-xs text-muted-foreground whitespace-nowrap">
+//           {getCategoryFromExtension(file.extension)}
+//         </span>
+//       </div>
+//       <div className="flex justify-between items-center gap-2 w-full h-0">
+//         <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-4 flex-1">
+//           {truncatePath(file.path)}
+//         </span>
+//         <span className="text-xs text-muted-foreground whitespace-nowrap">
+//           {FormatFileSize(file.size)}
+//         </span>
+//       </div>
+//     </div>
+//   );
+// }
 
-interface SemanticRowProps {
-  file: Extract<SearchItem, { type: SearchSectionType.Semantic }>;
-  handleCopy: (path: string, id: number) => Promise<void>;
-  copiedId: number | null;
-}
+// interface SemanticRowProps {
+//   file: Extract<SearchItem, { type: SearchSectionType.Semantic }>;
+//   handleCopy: (path: string, id: number) => Promise<void>;
+//   copiedId: number | null;
+// }
 
-function SemanticRow(props: SemanticRowProps) {
-  const { file, handleCopy, copiedId } = props;
+// function SemanticRow(props: SemanticRowProps) {
+//   const { file, handleCopy, copiedId } = props;
 
-  return (
-    <div className="flex items-center gap-2 min-w-0 flex-1">
-      <div className="flex flex-col min-w-0 flex-1">
-        <div className="flex flex-row items-center gap-1">
-          {getFileIcon(file.path)}
-          <span className="text-sm text-primary-foreground">{file.name}</span>
-          <span className="pl-2">{Math.floor(file.distance * 100)}%</span>
-          {
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                // handleCopy(file.path, file.id);
-              }}
-              className={`opacity-0 group-hover:opacity-100 ml-2 p-1 hover:bg-background rounded transition-opacity duration-200 ${
-                copiedId === file.id
-                  ? "text-green-500"
-                  : "text-muted-foreground"
-              }`}
-            >
-              {copiedId === file.id ? (
-                <Check className="h-3 w-3" />
-              ) : (
-                <Copy className="h-3 w-3" />
-              )}
-            </button>
-          }
-        </div>
-        <div className="flex items-center gap-2 min-w-0 h-0 group-hover:h-auto overflow-hidden transition-all duration-200">
-          {
-            <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-5 flex-1">
-              {truncatePath(file.path)}
-            </span>
-          }
-          {
-            <span className="text-xs text-muted-foreground whitespace-nowrap">
-              {getCategoryFromExtension(file.extension)}
-            </span>
-          }
-        </div>
-      </div>
-    </div>
-  );
-}
+//   return (
+//     <div className="flex items-center gap-2 min-w-0 flex-1">
+//       <div className="flex flex-col min-w-0 flex-1">
+//         <div className="flex flex-row items-center gap-1">
+//           {getFileIcon(file.path)}
+//           <span className="text-sm text-primary-foreground">{file.name}</span>
+//           <span className="pl-2">{Math.floor(file.distance * 100)}%</span>
+//           {
+//             <button
+//               onClick={(e) => {
+//                 e.stopPropagation();
+//                 // handleCopy(file.path, file.id);
+//               }}
+//               className={`opacity-0 group-hover:opacity-100 ml-2 p-1 hover:bg-background rounded transition-opacity duration-200 ${
+//                 copiedId === file.id
+//                   ? "text-green-500"
+//                   : "text-muted-foreground"
+//               }`}
+//             >
+//               {copiedId === file.id ? (
+//                 <Check className="h-3 w-3" />
+//               ) : (
+//                 <Copy className="h-3 w-3" />
+//               )}
+//             </button>
+//           }
+//         </div>
+//         <div className="flex items-center gap-2 min-w-0 h-0 group-hover:h-auto overflow-hidden transition-all duration-200">
+//           {
+//             <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis pl-5 flex-1">
+//               {truncatePath(file.path)}
+//             </span>
+//           }
+//           {
+//             <span className="text-xs text-muted-foreground whitespace-nowrap">
+//               {getCategoryFromExtension(file.extension)}
+//             </span>
+//           }
+//         </div>
+//       </div>
+//     </div>
+//   );
+// }
 
 interface RecentsProps {
   recents: FileMetadata[];

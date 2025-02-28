@@ -60,6 +60,7 @@ fn get_apps_data() -> Result<Vec<SearchSection>, String> {
 
 #[tauri::command]
 fn get_apps_with_resources() -> Result<Vec<AppMetadata>, String> {
+    
     resource_monitor::get_all_apps_with_usage()
 }
 
