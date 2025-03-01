@@ -1,6 +1,7 @@
 mod app_handler;
 mod file_processor;
 mod resource_monitor;
+mod database_handler;
 
 use file_processor::FileProcessorState;
 use tauri::Manager;
@@ -13,6 +14,14 @@ pub fn run() {
             let window = app.get_webview_window("main").unwrap();
             window.open_devtools();
             window.close_devtools();
+            match database_handler::initialize_database(app.app_handle().clone()) {
+                Ok(()) => {
+                    println!("Database successfully initialized.")
+                }
+                Err(e) => {
+                    eprintln!("Failed to intiialize database: {e}")
+                }
+            }
             resource_monitor::init(app)?;
             Ok(())
         })

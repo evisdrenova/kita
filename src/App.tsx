@@ -181,28 +181,28 @@ export default function App() {
 
   const handleSelectPaths = async () => {
     try {
-      // Open Tauri's file dialog (replaces electron.selectPaths)
       const selected = await open({
-        multiple: true, // Allow selecting multiple items
-        directory: true, // Allow selecting directories
+        multiple: true,
+        directory: true,
         title: "Select Files or Folders to Index",
-        defaultPath: await appDataDir(), // Optional: start in app data directory
+        defaultPath: await appDataDir(),
       });
-      // If user canceled or didn't select anything
+
       if (!selected || (Array.isArray(selected) && !selected.length)) return;
 
-      // Convert to array if it's a single path
       const paths = Array.isArray(selected) ? selected : [selected];
 
       console.log("paths", paths);
 
-      // setIsIndexing(true);
-      // setIndexingProgress(null);
+      setIsIndexing(true);
+      setIndexingProgress(null);
 
-      // const path = await getDbPath();
+      const dbPath = await getDbPath();
+
+      console.log("paths", dbPath);
 
       // await invoke("init_file_processor", {
-      //   dbPath: path,
+      //   dbPath: dbPath,
       //   concurrency: 4,
       // });
 
