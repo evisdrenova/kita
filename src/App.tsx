@@ -194,6 +194,8 @@ export default function App() {
 
       console.log("paths", paths);
 
+      // /Users/evisdrenova/Library/Application Support/kita/kita-database.sqlite
+
       setIsIndexing(true);
       setIndexingProgress(null);
 

@@ -16,7 +16,7 @@ pub enum DbError {
 // handles creating the database
 #[tauri::command]
 pub fn initialize_database(app_handle: AppHandle) -> Result<(), DbError> {
-    let app_data_dir = app_handle.path().app_data_dir()?;
+    let app_data_dir = app_handle.path().app_data_dir().map_err(|_| DbError::NoAppDataDir)?;
     
     let mut db_path = app_data_dir;
     db_path.push("kita-database.sqlite");

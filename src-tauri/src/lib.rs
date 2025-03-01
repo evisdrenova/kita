@@ -19,7 +19,7 @@ pub fn run() {
                     println!("Database successfully initialized.")
                 }
                 Err(e) => {
-                    eprintln!("Failed to intiialize database: {e}")
+                    eprintln!("Failed to initialize database: {e}")
                 }
             }
             resource_monitor::init(app)?;
