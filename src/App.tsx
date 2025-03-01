@@ -42,10 +42,11 @@ import {
 } from "lucide-react";
 import { FaRegFilePdf } from "react-icons/fa";
 import { errorToast, successToast } from "./components/ui/toast";
-import FolderSettings from "./FolderSettings";
+import FolderSettings from "./Settings";
 import { open } from "@tauri-apps/plugin-dialog";
 import { appDataDir } from "@tauri-apps/api/path";
 import { join } from "@tauri-apps/api/path";
+import Settings from "./Settings";
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -432,7 +433,7 @@ export default function App() {
       <div className="sticky bottom-0">
         <Footer setIsSettingsOpen={setIsSettingsOpen} />
       </div>
-      <FolderSettings
+      <Settings
         selectedCategories={selectedCategories}
         toggleCategory={toggleCategory}
         searchCategories={searchCategories}
