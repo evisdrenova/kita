@@ -44,6 +44,8 @@ import { FaRegFilePdf } from "react-icons/fa";
 import { errorToast, successToast } from "./components/ui/toast";
 import FolderSettings from "./FolderSettings";
 import { open } from "@tauri-apps/plugin-dialog";
+import { appDataDir } from "@tauri-apps/api/path";
+import { join } from "@tauri-apps/api/path";
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -181,35 +183,44 @@ export default function App() {
     try {
       // Open Tauri's file dialog (replaces electron.selectPaths)
       const selected = await open({
-        multiple: true,
+        multiple: true, // Allow selecting multiple items
         directory: true, // Allow selecting directories
-        filters: [], // No filters for now, but you can add them if needed
+        title: "Select Files or Folders to Index",
+        defaultPath: await appDataDir(), // Optional: start in app data directory
       });
-
       // If user canceled or didn't select anything
       if (!selected || (Array.isArray(selected) && !selected.length)) return;
 
       // Convert to array if it's a single path
       const paths = Array.isArray(selected) ? selected : [selected];
 
-      setIsIndexing(true);
-      setIndexingProgress(null);
+      console.log("paths", paths);
 
-      // Set up event listener for progress updates
-      const unlistenProgress = await listen<IndexingProgress>(
-        "file-processing-progress",
-        (event) => {
-          setIndexingProgress(event.payload);
-        }
-      );
+      // setIsIndexing(true);
+      // setIndexingProgress(null);
 
-      // Call your Rust command to process the paths
-      await invoke("process_paths_tauri", { paths });
+      // const path = await getDbPath();
 
-      // Clean up listener and reset state
-      unlistenProgress();
-      setIsIndexing(false);
-      setIndexingProgress(null);
+      // await invoke("init_file_processor", {
+      //   dbPath: path,
+      //   concurrency: 4,
+      // });
+
+      // // Set up event listener for progress updates
+      // const unlistenProgress = await listen<IndexingProgress>(
+      //   "file-processing-progress",
+      //   (event) => {
+      //     setIndexingProgress(event.payload);
+      //   }
+      // );
+
+      // // Call your Rust command to process the paths
+      // await invoke("process_paths_tauri", { paths });
+
+      // // Clean up listener and reset state
+      // unlistenProgress();
+      // setIsIndexing(false);
+      // setIndexingProgress(null);
     } catch (error) {
       console.error("Error indexing paths:", error);
       setIsIndexing(false);
@@ -217,6 +228,28 @@ export default function App() {
       errorToast("Error indexing selected paths");
     }
   };
+
+  // async function startIndexing(paths: string[]) {
+  //   await invoke("init_file_processor", {
+  //     dbPath: "mydb.sqlite",
+  //     concurrency: 4,
+  //   });
+
+  //   const unlisten = await listen("file-processing-progress", (event) => {
+  //     console.log("Progress event:", event.payload);
+  //     // e.g. { total: 100, processed: 57, percentage: 57 }
+  //   });
+
+  //   try {
+  //     const result = await invoke("process_paths_tauri", { paths });
+  //     console.log("All done. Result:", result);
+  //   } catch (err) {
+  //     console.error("Failed to process paths:", err);
+  //   } finally {
+  //     unlisten();
+  //   }
+  // }
+
   // listens for resource events and app update events
   useEffect(() => {
     let unlistenUsage: UnlistenFn | undefined;
@@ -565,27 +598,6 @@ function AppRow(props: AppRowProps) {
     }
   };
 
-  async function startIndexing(paths: string[]) {
-    await invoke("init_file_processor", {
-      dbPath: "mydb.sqlite",
-      concurrency: 4,
-    });
-
-    const unlisten = await listen("file-processing-progress", (event) => {
-      console.log("Progress event:", event.payload);
-      // e.g. { total: 100, processed: 57, percentage: 57 }
-    });
-
-    try {
-      const result = await invoke("process_paths_tauri", { paths });
-      console.log("All done. Result:", result);
-    } catch (err) {
-      console.error("Failed to process paths:", err);
-    } finally {
-      unlisten();
-    }
-  }
-
   return (
     <div className="flex items-center w-full gap-2">
       <div className="flex items-center flex-grow min-w-0 mr-2">
@@ -905,4 +917,9 @@ function getFileIcon(filePath: string) {
   }
 
   return icon;
+}
+
+async function getDbPath() {
+  const appData = await appDataDir();
+  return await join(appData, "kita-database.sqlite");
 }

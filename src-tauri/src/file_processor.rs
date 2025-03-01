@@ -1,12 +1,12 @@
 use rusqlite::{params, Connection, Error as RusqliteError};
-use tauri::{AppHandle, Emitter};
-use std::sync::{Arc, Mutex};
-use tokio::sync::{Semaphore, Barrier};
-use tokio::task;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Sender};
-use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use tauri::{AppHandle, Emitter};
+use tokio::sync::{Barrier, Semaphore};
+use tokio::task;
 use walkdir::WalkDir;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,81 +64,81 @@ pub struct SemanticMetadata {
     pub distance: f64,
     pub content: Option<String>,
 }
-   #[derive(Debug, Clone, Serialize, Deserialize)]
-   pub struct ProcessingStatus {
-       pub total: usize,
-       pub processed: usize,
-       pub percentage: usize,
-   }
-   
-   #[derive(thiserror::Error, Debug)]
-   pub enum FileProcessorError {
-       #[error("IO error: {0}")]
-       Io(#[from] std::io::Error),
-   
-       #[error("Database error: {0}")]
-       Db(#[from] rusqlite::Error),
-   
-       #[error("Other error: {0}")]
-       Other(String),
-   }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessingStatus {
+    pub total: usize,
+    pub processed: usize,
+    pub percentage: usize,
+}
 
-   #[derive(Clone)]
-   pub struct FileProcessor {
-    pub db_path: PathBuf, // sqlite db path
+#[derive(thiserror::Error, Debug)]
+pub enum FileProcessorError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("Database error: {0}")]
+    Db(#[from] rusqlite::Error),
+
+    #[error("Other error: {0}")]
+    Other(String),
+}
+
+#[derive(Clone)]
+pub struct FileProcessor {
+    pub db_path: PathBuf,         // sqlite db path
     pub concurrency_limit: usize, // max concurrency limit
 }
 impl FileProcessor {
+    // gathers file metadata from the given path
+    // uses blocking  i/o, so we do spawn_blocking to run the file processing
 
-// gathers file metadata from the given path
-// uses blocking  i/o, so we do spawn_blocking to run the file processing
-
-async fn collect_all_files(&self, paths: &[String]) -> Result<Vec<FileMetadata>, FileProcessorError> {
-    let pvec = paths.to_vec();
-    let outer = task::spawn_blocking(move || {     
-        let mut all_files = Vec::new();
-        for path_str in pvec {
-            let path = Path::new(&path_str);
-            if path.is_dir() {
-                for entry in WalkDir::new(path) {
-                    let entry = match entry {
-                        Ok(e) => e,
-                        Err(e) => {
-                            eprintln!("Error walking dir: {e}");
-                            continue;
+    async fn collect_all_files(
+        &self,
+        paths: &[String],
+    ) -> Result<Vec<FileMetadata>, FileProcessorError> {
+        let pvec = paths.to_vec();
+        let outer = task::spawn_blocking(move || {
+            let mut all_files = Vec::new();
+            for path_str in pvec {
+                let path = Path::new(&path_str);
+                if path.is_dir() {
+                    for entry in WalkDir::new(path) {
+                        let entry = match entry {
+                            Ok(e) => e,
+                            Err(e) => {
+                                eprintln!("Error walking dir: {e}");
+                                continue;
+                            }
+                        };
+                        if entry.file_type().is_file() {
+                            let _ = process_file(entry.path(), &mut all_files);
                         }
-                    };
-                    if entry.file_type().is_file() {
-                        let _ = process_file(entry.path(), &mut all_files);
                     }
+                } else {
+                    let _ = process_file(path, &mut all_files);
                 }
-            } else {
-                let _ = process_file(path, &mut all_files);
-            
             }
-        }
-        Ok::<_, FileProcessorError>(all_files)
-    })
-    .await
-    .map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?;
+            Ok::<_, FileProcessorError>(all_files)
+        })
+        .await
+        .map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?;
 
-    // Step 2: now 'outer' is Result<Vec<FileMetadata>, FileProcessorError>. 
-    //         We unwrap the inner result with '?'.
-    let files: Vec<FileMetadata> = outer?;
+        // Step 2: now 'outer' is Result<Vec<FileMetadata>, FileProcessorError>.
+        //         We unwrap the inner result with '?'.
+        let files: Vec<FileMetadata> = outer?;
 
-    // Finally return the vector
-    Ok(files)
-}
+        // Finally return the vector
+        Ok(files)
+    }
 
-
-/// Process a single file: do DB writes, text extraction, embedding, etc.
+    /// Process a single file: do DB writes, text extraction, embedding, etc.
     /// We'll do this in a blocking task because rusqlite is blocking.
     async fn process_one_file(&self, file: FileMetadata) -> Result<(), FileProcessorError> {
         let handle = task::spawn_blocking({
             let db_path = self.db_path.clone();
             move || -> Result<(), FileProcessorError> {
                 let conn = Connection::open(db_path)?;
-    
+
                 // Example table creation
                 conn.execute_batch(
                     r#"
@@ -155,7 +155,7 @@ async fn collect_all_files(&self, paths: &[String]) -> Result<Vec<FileMetadata>,
                     );
                     "#,
                 )?;
-    
+
                 // Insert or update
                 conn.execute(
                     r#"
@@ -164,12 +164,14 @@ async fn collect_all_files(&self, paths: &[String]) -> Result<Vec<FileMetadata>,
                     "#,
                     params![file.base.path, file.base.name, file.extension, file.size],
                 )?;
-    
+
                 Ok(())
             }
         });
-        
-        handle.await.map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?
+
+        handle
+            .await
+            .map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?
     }
 
     /// Main async method to process all the given paths:
@@ -184,14 +186,14 @@ async fn collect_all_files(&self, paths: &[String]) -> Result<Vec<FileMetadata>,
         // 1) gather all files
         let files = self.collect_all_files(&paths).await?;
         let total = files.len();
-    
+
         // concurrency
         let sem = Arc::new(Semaphore::new(self.concurrency_limit));
         let processed = Arc::new(AtomicUsize::new(0));
-    
+
         // channel for collecting errors
         let (err_tx, mut err_rx) = tokio::sync::mpsc::unbounded_channel();
-    
+
         // spawn tasks
         let mut handles = Vec::with_capacity(total);
         for file in files {
@@ -200,7 +202,7 @@ async fn collect_all_files(&self, paths: &[String]) -> Result<Vec<FileMetadata>,
             let err_sender = err_tx.clone();
             let this = self.clone();
             let progress_fn = on_progress.clone(); // Clone the progress function for each task
-    
+
             let handle = tokio::spawn(async move {
                 let _permit = permit.acquire().await.unwrap(); // concurrency gate
                 if let Err(e) = this.process_one_file(file).await {
@@ -221,16 +223,16 @@ async fn collect_all_files(&self, paths: &[String]) -> Result<Vec<FileMetadata>,
             handles.push(handle);
         }
         drop(err_tx);
-    
+
         // wait for all tasks
         futures::future::join_all(handles).await;
-    
+
         // gather errors
         let mut errors = Vec::new();
         while let Ok(e) = err_rx.try_recv() {
             errors.push(format!("{:?}", e));
         }
-    
+
         let success = errors.is_empty();
         let result = serde_json::json!({
             "success": success,
@@ -239,10 +241,12 @@ async fn collect_all_files(&self, paths: &[String]) -> Result<Vec<FileMetadata>,
         });
         Ok(result)
     }
-
 }
 
-pub fn process_file(path: &Path, all_files: &mut Vec<FileMetadata>) -> Result<(), FileProcessorError> {
+pub fn process_file(
+    path: &Path,
+    all_files: &mut Vec<FileMetadata>,
+) -> Result<(), FileProcessorError> {
     let meta = std::fs::metadata(path)?;
     let size = meta.len() as i64;
     let ext = path
@@ -269,18 +273,14 @@ pub fn process_file(path: &Path, all_files: &mut Vec<FileMetadata>) -> Result<()
     Ok(())
 }
 
-
-
-
-
 #[derive(Default)]
 pub struct FileProcessorState(Mutex<Option<FileProcessor>>);
 
 #[tauri::command]
 pub async fn init_file_processor(
-    db_path: String, 
-    concurrency: usize, 
-    state: tauri::State<'_, FileProcessorState>
+    db_path: String,
+    concurrency: usize,
+    state: tauri::State<'_, FileProcessorState>,
 ) -> Result<(), String> {
     let mut processor_guard = state.0.lock().map_err(|e| e.to_string())?;
     *processor_guard = Some(FileProcessor {
@@ -303,13 +303,13 @@ pub async fn process_paths_tauri(
             Some(p) => p.clone(),
             None => return Err("File processor not initialized".to_string()),
         }
-    }; // MutexGuard is dropped here
-    
+    };
+
     // Create a progress handler that emits Tauri event
     let progress_handler = move |status: ProcessingStatus| {
         let _ = app_handle.emit("file-processing-progress", &status);
     };
-    
+
     processor
         .process_paths(paths, progress_handler)
         .await

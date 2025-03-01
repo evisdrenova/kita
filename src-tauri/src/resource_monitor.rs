@@ -1,14 +1,13 @@
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
     thread::sleep,
     time::Duration,
 };
-use serde::{Deserialize, Serialize};
 use sysinfo::{ProcessExt, System, SystemExt};
-use tauri::{Manager, State, Emitter};
+use tauri::{Emitter, Manager, State};
 use tokio::time::interval;
-
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppResourceUsage {
@@ -20,7 +19,7 @@ pub struct AppResourceUsage {
 /// Holds the shared state for resource monitoring.
 #[derive(Default)]
 pub struct ResourceMonitorState {
-    /// List of user-requested PIDs to monitor. 
+    /// List of user-requested PIDs to monitor.
     monitored_pids: Arc<Mutex<Vec<u32>>>,
 
     /// Single boolean flag indicating if monitoring is active.
@@ -97,11 +96,14 @@ pub async fn start_resource_monitoring(
             for pid in &pids_to_monitor {
                 let sys_pid = sysinfo::Pid::from(*pid as usize);
                 if let Some(process) = system.process(sys_pid) {
-                    usage_map.insert(*pid, AppResourceUsage {
-                        pid: *pid,
-                        cpu_usage: process.cpu_usage() as f64,
-                        memory_bytes: process.memory(),
-                    });
+                    usage_map.insert(
+                        *pid,
+                        AppResourceUsage {
+                            pid: *pid,
+                            cpu_usage: process.cpu_usage() as f64,
+                            memory_bytes: process.memory(),
+                        },
+                    );
                 }
             }
 
@@ -145,7 +147,6 @@ pub fn get_process_resource_usage(pid: u32) -> Result<AppResourceUsage, String> 
     }
 }
 
-
 // // ====================================
 // // On-demand retrieval of resource data
 // // ====================================
@@ -185,7 +186,7 @@ pub fn get_process_resource_usage(pid: u32) -> Result<AppResourceUsage, String> 
 // // ====================================
 
 // /// Example continuous app monitor that retrieves all apps and adds resource usage,
-// /// then emits “apps-with-resources-updated”. If you want to unify it with the 
+// /// then emits “apps-with-resources-updated”. If you want to unify it with the
 // /// existing “start_resource_monitoring,” you can. Currently, it spawns a separate loop.
 // #[tauri::command]
 // pub async fn get_apps_with_live_resources(app_handle: tauri::AppHandle) -> Result<(), String> {

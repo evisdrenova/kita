@@ -1,11 +1,12 @@
 import { Folder, Loader2 } from "lucide-react";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "./components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "./components/ui/dialog";
 import { Button } from "./components/ui/button";
 import { Checkbox } from "./components/ui/checkbox";
 import { useEffect } from "react";
@@ -41,7 +42,6 @@ export default function FolderSettings(props: FolderSettingsProps) {
 
   useEffect(() => {
     if (indexingProgress?.percentage === 100) {
-      // Add a small delay to show the 100% state briefly
       const timer = setTimeout(() => {
         setIsIndexing(false);
         setIndexingProgress(null);
@@ -52,19 +52,16 @@ export default function FolderSettings(props: FolderSettingsProps) {
   }, [indexingProgress?.percentage]);
 
   return (
-    <Sheet open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-      <SheetContent
-        side="right"
-        className="w-[400px] sm:w-[540px] border-l border-border"
-      >
-        <SheetHeader>
-          <SheetTitle className="justify-start flex">
+    <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+      <DialogContent className="">
+        <DialogHeader>
+          <DialogTitle className="justify-start flex">
             Files & Folders
-          </SheetTitle>
-          <SheetDescription className="justify-start flex">
+          </DialogTitle>
+          <DialogDescription className="justify-start flex">
             Select files and folders to include in search results.
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
         <div className="mt-6 space-y-4">
           <Button
             variant="outline"
@@ -105,7 +102,7 @@ export default function FolderSettings(props: FolderSettingsProps) {
             </div>
           ))}
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }

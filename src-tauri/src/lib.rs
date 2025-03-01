@@ -1,6 +1,6 @@
 mod app_handler;
-mod resource_monitor;
 mod file_processor;
+mod resource_monitor;
 
 use file_processor::FileProcessorState;
 use tauri::Manager;
@@ -8,6 +8,7 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
             window.open_devtools();
@@ -22,7 +23,7 @@ pub fn run() {
             app_handler::force_quit_application,
             app_handler::restart_application,
             app_handler::launch_or_switch_to_app,
-                  resource_monitor::start_resource_monitoring,
+            resource_monitor::start_resource_monitoring,
             resource_monitor::stop_resource_monitoring,
             file_processor::init_file_processor,
             file_processor::process_paths_tauri,

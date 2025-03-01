@@ -1,4 +1,11 @@
-import { ArrowDown, ArrowUp, CornerDownLeft, Folder } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  CornerDownLeft,
+  Folder,
+  Settings,
+  Settings2,
+} from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { ThemeToggle } from "./ThemeProvider";
 import { RxSlash } from "react-icons/rx";
@@ -36,15 +43,15 @@ export default function Footer(props: FooterProps) {
         </div>
       </div>
       <div className="flex flex-row items-center gap-2">
+        <ThemeToggle />
         <Button
           variant="titleBar"
           onClick={() => setIsSettingsOpen(true)}
           size="sm"
           className="group flex flex-row items-center gap-1 z-10"
         >
-          <Folder className="h-4 w-4" />
+          <Settings2 className="h-4 w-4" />
         </Button>
-        <ThemeToggle />
       </div>
     </div>
   );
