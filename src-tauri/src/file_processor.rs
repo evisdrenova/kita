@@ -1,4 +1,5 @@
 use rusqlite::{params, Connection, Error as RusqliteError};
+use tauri::{AppHandle, Emitter};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{Semaphore, Barrier};
 use tokio::task;
@@ -84,7 +85,7 @@ pub struct SemanticMetadata {
 
    #[derive(Clone)]
    pub struct FileProcessor {
-    pub db_path: PathBuf, // sqllite db path
+    pub db_path: PathBuf, // sqlite db path
     pub concurrency_limit: usize, // max concurrency limit
 }
 impl FileProcessor {
@@ -133,11 +134,11 @@ async fn collect_all_files(&self, paths: &[String]) -> Result<Vec<FileMetadata>,
 /// Process a single file: do DB writes, text extraction, embedding, etc.
     /// We'll do this in a blocking task because rusqlite is blocking.
     async fn process_one_file(&self, file: FileMetadata) -> Result<(), FileProcessorError> {
-        task::spawn_blocking({
+        let handle = task::spawn_blocking({
             let db_path = self.db_path.clone();
             move || -> Result<(), FileProcessorError> {
                 let conn = Connection::open(db_path)?;
-
+    
                 // Example table creation
                 conn.execute_batch(
                     r#"
@@ -154,9 +155,8 @@ async fn collect_all_files(&self, paths: &[String]) -> Result<Vec<FileMetadata>,
                     );
                     "#,
                 )?;
-
+    
                 // Insert or update
-                // For brevity, we skip advanced embedding or text extraction
                 conn.execute(
                     r#"
                     INSERT OR IGNORE INTO files (path, name, extension, size, created_at, updated_at)
@@ -164,14 +164,12 @@ async fn collect_all_files(&self, paths: &[String]) -> Result<Vec<FileMetadata>,
                     "#,
                     params![file.base.path, file.base.name, file.extension, file.size],
                 )?;
-
-                // If needed: do advanced logic (embedding, text extraction)...
-
+    
                 Ok(())
             }
-        })
-        .await.map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?;
-        Ok(())
+        });
+        
+        handle.await.map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?
     }
 
     /// Main async method to process all the given paths:
@@ -181,19 +179,19 @@ async fn collect_all_files(&self, paths: &[String]) -> Result<Vec<FileMetadata>,
     pub async fn process_paths(
         &self,
         paths: Vec<String>,
-        on_progress: impl Fn(ProcessingStatus) + Send + Sync + Clone + Copy+ 'static,
+        on_progress: impl Fn(ProcessingStatus) + Send + Sync + Clone + 'static,
     ) -> Result<serde_json::Value, FileProcessorError> {
         // 1) gather all files
         let files = self.collect_all_files(&paths).await?;
         let total = files.len();
-
+    
         // concurrency
         let sem = Arc::new(Semaphore::new(self.concurrency_limit));
         let processed = Arc::new(AtomicUsize::new(0));
-
+    
         // channel for collecting errors
         let (err_tx, mut err_rx) = tokio::sync::mpsc::unbounded_channel();
-
+    
         // spawn tasks
         let mut handles = Vec::with_capacity(total);
         for file in files {
@@ -201,7 +199,8 @@ async fn collect_all_files(&self, paths: &[String]) -> Result<Vec<FileMetadata>,
             let pc = processed.clone();
             let err_sender = err_tx.clone();
             let this = self.clone();
-
+            let progress_fn = on_progress.clone(); // Clone the progress function for each task
+    
             let handle = tokio::spawn(async move {
                 let _permit = permit.acquire().await.unwrap(); // concurrency gate
                 if let Err(e) = this.process_one_file(file).await {
@@ -216,22 +215,22 @@ async fn collect_all_files(&self, paths: &[String]) -> Result<Vec<FileMetadata>,
                         processed: done,
                         percentage,
                     };
-                    on_progress(status);
+                    progress_fn(status); // Use the cloned function here
                 }
             });
             handles.push(handle);
         }
         drop(err_tx);
-
+    
         // wait for all tasks
         futures::future::join_all(handles).await;
-
+    
         // gather errors
         let mut errors = Vec::new();
         while let Ok(e) = err_rx.try_recv() {
             errors.push(format!("{:?}", e));
         }
-
+    
         let success = errors.is_empty();
         let result = serde_json::json!({
             "success": success,
@@ -274,44 +273,45 @@ pub fn process_file(path: &Path, all_files: &mut Vec<FileMetadata>) -> Result<()
 
 
 
-// #[derive(Default)]
-// pub struct FileProcessorState {
-//     processor: Option<FileProcessor>,
-// }
+#[derive(Default)]
+pub struct FileProcessorState(Mutex<Option<FileProcessor>>);
 
-// #[tauri::command]
-// async fn init_file_processor(db_path: String, concurrency: usize, state: State<'_, FileProcessorState>) -> Result<(), String> {
-//     let mut st = state.0.lock().map_err(|_| "Lock error")?;
-//     st.processor = Some(FileProcessor {
-//         db_path: db_path.into(),
-//         concurrency_limit: concurrency,
-//     });
-//     Ok(())
-// }
+#[tauri::command]
+pub async fn init_file_processor(
+    db_path: String, 
+    concurrency: usize, 
+    state: tauri::State<'_, FileProcessorState>
+) -> Result<(), String> {
+    let mut processor_guard = state.0.lock().map_err(|e| e.to_string())?;
+    *processor_guard = Some(FileProcessor {
+        db_path: PathBuf::from(db_path),
+        concurrency_limit: concurrency,
+    });
+    Ok(())
+}
 
-// #[tauri::command]
-// async fn process_paths_tauri(
-//     paths: Vec<String>,
-//     state: State<'_, FileProcessorState>,
-//     app_handle: AppHandle,
-// ) -> Result<serde_json::Value, String> {
-//     // retrieve the processor
-//     let p = {
-//         let st = state.0.lock().map_err(|_| "Lock error")?;
-//         match &st.processor {
-//             Some(proc) => proc.clone(),
-//             None => return Err("FileProcessor not initialized".to_string()),
-//         }
-//     };
-
-//     // We'll define a closure that emits progress events to the front end
-//     let progress_callback = move |status: ProcessingStatus| {
-//         let _ = app_handle.emit_all("file-processing-progress", &status);
-//     };
-
-//     // run the async process
-//     match p.process_paths(paths, progress_callback).await {
-//         Ok(result) => Ok(result),
-//         Err(e) => Err(format!("Failed to process paths: {e:?}")),
-//     }
-// }
+#[tauri::command]
+pub async fn process_paths_tauri(
+    paths: Vec<String>,
+    state: tauri::State<'_, FileProcessorState>,
+    app_handle: AppHandle,
+) -> Result<serde_json::Value, String> {
+    // Create a cloned instance of the processor
+    let processor = {
+        let guard = state.0.lock().map_err(|e| e.to_string())?;
+        match guard.as_ref() {
+            Some(p) => p.clone(),
+            None => return Err("File processor not initialized".to_string()),
+        }
+    }; // MutexGuard is dropped here
+    
+    // Create a progress handler that emits Tauri event
+    let progress_handler = move |status: ProcessingStatus| {
+        let _ = app_handle.emit("file-processing-progress", &status);
+    };
+    
+    processor
+        .process_paths(paths, progress_handler)
+        .await
+        .map_err(|e| e.to_string())
+}

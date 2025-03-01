@@ -114,3 +114,9 @@ export interface RecentDbResult {
   path: string;
   lastClicked: string;
 }
+
+export interface IndexingProgress {
+  total: number;
+  processed: number;
+  percentage: number;
+}

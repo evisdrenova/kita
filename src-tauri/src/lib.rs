@@ -2,6 +2,7 @@ mod app_handler;
 mod resource_monitor;
 mod file_processor;
 
+use file_processor::FileProcessorState;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -14,6 +15,7 @@ pub fn run() {
             resource_monitor::init(app)?;
             Ok(())
         })
+        .manage(FileProcessorState::default())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             app_handler::get_apps_data,

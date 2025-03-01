@@ -42,6 +42,8 @@ import {
 } from "lucide-react";
 import { FaRegFilePdf } from "react-icons/fa";
 import { errorToast, successToast } from "./components/ui/toast";
+import FolderSettings from "./FolderSettings";
+import { open } from "@tauri-apps/plugin-dialog";
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -163,6 +165,58 @@ export default function App() {
     });
   }
 
+  const toggleCategory = (category: SearchCategory) => {
+    setSelectedCategories((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(category)) {
+        newSet.delete(category);
+      } else {
+        newSet.add(category);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectPaths = async () => {
+    try {
+      // Open Tauri's file dialog (replaces electron.selectPaths)
+      const selected = await open({
+        multiple: true,
+        directory: true, // Allow selecting directories
+        filters: [], // No filters for now, but you can add them if needed
+      });
+
+      // If user canceled or didn't select anything
+      if (!selected || (Array.isArray(selected) && !selected.length)) return;
+
+      // Convert to array if it's a single path
+      const paths = Array.isArray(selected) ? selected : [selected];
+
+      setIsIndexing(true);
+      setIndexingProgress(null);
+
+      // Set up event listener for progress updates
+      const unlistenProgress = await listen<IndexingProgress>(
+        "file-processing-progress",
+        (event) => {
+          setIndexingProgress(event.payload);
+        }
+      );
+
+      // Call your Rust command to process the paths
+      await invoke("process_paths_tauri", { paths });
+
+      // Clean up listener and reset state
+      unlistenProgress();
+      setIsIndexing(false);
+      setIndexingProgress(null);
+    } catch (error) {
+      console.error("Error indexing paths:", error);
+      setIsIndexing(false);
+      setIndexingProgress(null);
+      errorToast("Error indexing selected paths");
+    }
+  };
   // listens for resource events and app update events
   useEffect(() => {
     let unlistenUsage: UnlistenFn | undefined;
@@ -343,18 +397,18 @@ export default function App() {
       <div className="sticky bottom-0">
         <Footer setIsSettingsOpen={setIsSettingsOpen} />
       </div>
-      {/* <FolderSettings
-          selectedCategories={selectedCategories}
-          toggleCategory={toggleCategory}
-          searchCategories={searchCategories}
-          isIndexing={isIndexing}
-          indexingProgress={indexingProgress}
-          handleSelectPaths={handleSelectPaths}
-          setIsIndexing={setIsIndexing}
-          isSettingsOpen={isSettingsOpen}
-          setIsSettingsOpen={setIsSettingsOpen}
-          setIndexingProgress={setIndexingProgress}
-        /> */}
+      <FolderSettings
+        selectedCategories={selectedCategories}
+        toggleCategory={toggleCategory}
+        searchCategories={searchCategories}
+        isIndexing={isIndexing}
+        indexingProgress={indexingProgress}
+        handleSelectPaths={handleSelectPaths}
+        setIsIndexing={setIsIndexing}
+        isSettingsOpen={isSettingsOpen}
+        setIsSettingsOpen={setIsSettingsOpen}
+        setIndexingProgress={setIndexingProgress}
+      />
     </div>
   );
 }
@@ -510,6 +564,27 @@ function AppRow(props: AppRowProps) {
       setIsRestarting(false);
     }
   };
+
+  async function startIndexing(paths: string[]) {
+    await invoke("init_file_processor", {
+      dbPath: "mydb.sqlite",
+      concurrency: 4,
+    });
+
+    const unlisten = await listen("file-processing-progress", (event) => {
+      console.log("Progress event:", event.payload);
+      // e.g. { total: 100, processed: 57, percentage: 57 }
+    });
+
+    try {
+      const result = await invoke("process_paths_tauri", { paths });
+      console.log("All done. Result:", result);
+    } catch (err) {
+      console.error("Failed to process paths:", err);
+    } finally {
+      unlisten();
+    }
+  }
 
   return (
     <div className="flex items-center w-full gap-2">
