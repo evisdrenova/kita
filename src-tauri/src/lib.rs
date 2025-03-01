@@ -1,5 +1,6 @@
 mod app_handler;
 mod resource_monitor;
+mod file_processor;
 
 use tauri::Manager;
 
@@ -21,6 +22,8 @@ pub fn run() {
             app_handler::launch_or_switch_to_app,
                   resource_monitor::start_resource_monitoring,
             resource_monitor::stop_resource_monitoring,
+            file_processor::init_file_processor,
+            file_processor::process_paths_tauri,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
