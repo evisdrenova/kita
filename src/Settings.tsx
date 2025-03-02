@@ -8,7 +8,6 @@ import {
 import { Button } from "./components/ui/button";
 import { Checkbox } from "./components/ui/checkbox";
 import { forwardRef, useEffect, useState } from "react";
-import { Progress } from "./components/ui/progress";
 import { IndexingProgress, SearchCategory } from "./types/types";
 import { ScrollArea } from "./components/ui/scroll-area";
 import { Separator } from "./components/ui/separator";
@@ -23,6 +22,7 @@ interface FolderSettingsProps {
   isSettingsOpen: boolean;
   setIsSettingsOpen: (val: boolean) => void;
   showProgress: boolean;
+  indexElapsedTime: number;
 }
 type SettingCategory =
   | "General"
@@ -43,6 +43,7 @@ const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
       isSettingsOpen,
       setIsSettingsOpen,
       showProgress,
+      indexElapsedTime,
     } = props;
 
     const [selectedSettingCategory, setSelectedSettingCategory] =
@@ -60,6 +61,7 @@ const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
           indexingProgress={indexingProgress}
           handleSelectPaths={handleSelectPaths}
           showProgress={showProgress}
+          indexElapsedTime={indexElapsedTime}
         />
       ),
       Shortcuts: <Shortcuts />,
@@ -124,6 +126,7 @@ interface IndexSettingsProps {
   indexingProgress: IndexingProgress | null;
   handleSelectPaths: () => void;
   showProgress: boolean;
+  indexElapsedTime: number;
 }
 
 function IndexingSettings(props: IndexSettingsProps) {
@@ -135,7 +138,20 @@ function IndexingSettings(props: IndexSettingsProps) {
     indexingProgress,
     handleSelectPaths,
     showProgress,
+    indexElapsedTime,
   } = props;
+
+  const formatTime = (seconds: number) => {
+    if (seconds < 60) {
+      return `${seconds.toFixed(2)} seconds`;
+    } else {
+      const minutes = Math.floor(seconds / 60);
+      const remainingSeconds = seconds % 60;
+      return `${minutes} ${
+        minutes === 1 ? "minute" : "minutes"
+      } ${remainingSeconds.toFixed(0)} seconds`;
+    }
+  };
 
   return (
     <div className="space-y-6 p-6">
@@ -178,6 +194,11 @@ function IndexingSettings(props: IndexSettingsProps) {
               <>
                 Completed! {indexingProgress?.processed} of{" "}
                 {indexingProgress?.total} files processed
+                {indexElapsedTime !== null && (
+                  <span className="ml-1">
+                    in in {formatTime(indexElapsedTime)}
+                  </span>
+                )}
               </>
             )}
           </p>

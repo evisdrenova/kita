@@ -43,7 +43,6 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { appDataDir, documentDir } from "@tauri-apps/api/path";
 import { join } from "@tauri-apps/api/path";
 import Settings from "./Settings";
-import { isSet } from "node:util/types";
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -63,6 +62,7 @@ export default function App() {
     Record<number, { cpu_usage: number; memory_bytes: number }>
   >({});
   const [showProgress, setShowProgress] = useState(false);
+  const [indexElapsedTime, setIndexElapsedTime] = useState<number | null>(null);
 
   // const handleSelectPaths = async () => {
   //   try {
@@ -181,6 +181,8 @@ export default function App() {
   const handleSelectPaths = async () => {
     setShowProgress(false);
     setIndexingProgress(null);
+    setIndexElapsedTime(null);
+
     try {
       const selected = await open({
         multiple: true,
@@ -192,6 +194,9 @@ export default function App() {
       if (!selected || (Array.isArray(selected) && !selected.length)) return;
 
       const paths = Array.isArray(selected) ? selected : [selected];
+
+      // Record the start time
+      const startTime = Date.now();
 
       setIsIndexing(true);
       setShowProgress(true);
@@ -210,8 +215,12 @@ export default function App() {
 
       await invoke("process_paths_command", { paths });
 
-      unlistenProgress();
+      // Calculate elapsed time in seconds when processing completes
+      const endTime = Date.now();
+      const timeElapsed = (endTime - startTime) / 1000; // Convert ms to seconds
+      setIndexElapsedTime(timeElapsed);
 
+      unlistenProgress();
       setIsIndexing(false);
     } catch (error) {
       const err = error as Error;
@@ -418,6 +427,7 @@ export default function App() {
         isSettingsOpen={isSettingsOpen}
         setIsSettingsOpen={setIsSettingsOpen}
         showProgress={showProgress}
+        indexElapsedTime={indexElapsedTime ?? 0}
       />
     </div>
   );
@@ -441,17 +451,17 @@ function SearchResults(props: SearchResultsProps) {
     resourceData = {},
     refreshApps,
   } = props;
-  const [copiedId, setCopiedId] = useState<number | null>(null);
+  // const [copiedId, setCopiedId] = useState<number | null>(null);
 
-  const handleCopy = async (path: string, id: number) => {
-    try {
-      await navigator.clipboard.writeText(path);
-      setCopiedId(id);
-      setTimeout(() => setCopiedId(null), 2000);
-    } catch (err) {
-      errorToast("Failed to copy path");
-    }
-  };
+  // const handleCopy = async (path: string, id: number) => {
+  //   try {
+  //     await navigator.clipboard.writeText(path);
+  //     setCopiedId(id);
+  //     setTimeout(() => setCopiedId(null), 2000);
+  //   } catch (err) {
+  //     errorToast("Failed to copy path");
+  //   }
+  // };
 
   // Apply real-time resource data to the app
   const getUpdatedApp = (app: AppMetadata): AppMetadata => {
