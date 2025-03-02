@@ -1,5 +1,10 @@
 import { Folder, Loader2 } from "lucide-react";
-import { Dialog, DialogContent } from "./components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "./components/ui/dialog";
 import { Button } from "./components/ui/button";
 import { Checkbox } from "./components/ui/checkbox";
 import { forwardRef, useEffect, useState } from "react";
@@ -78,7 +83,8 @@ const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
         <DialogContent className="sm:max-w-lg md:max-w-2xl lg:max-w-3xl xl:max-w-4xl h-max-3/4 overflow-hidden p-0">
           <div className="flex flex-col">
             <div className="flex items-center border-b p-4">
-              <h2 className="text-lg font-medium">Settings</h2>
+              <DialogTitle className="font-normal">Settings</DialogTitle>
+              <DialogDescription />
             </div>
             <div className="flex flex-1 overflow-hidden">
               <div className="w-[200px] border-r">
