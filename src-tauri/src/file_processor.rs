@@ -8,6 +8,8 @@ use tokio::sync::Semaphore;
 use tokio::task;
 use walkdir::WalkDir;
 
+use crate::utils::get_category_from_extension;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SearchSectionType {
@@ -90,7 +92,6 @@ pub struct FileProcessor {
 impl FileProcessor {
     // gathers file metadata from the given path
     // uses blocking  i/o, so we do spawn_blocking to run the file processing
-
     async fn collect_all_files(
         &self,
         paths: &[String],
@@ -134,37 +135,33 @@ impl FileProcessor {
             let db_path = self.db_path.clone();
             move || -> Result<(), FileProcessorError> {
                 let conn = Connection::open(db_path)?;
-
-                // Example table creation
+    
+                // Set pragmas for better performance
                 conn.execute_batch(
                     r#"
                     PRAGMA journal_mode = WAL;
                     PRAGMA synchronous = NORMAL;
-                    CREATE TABLE IF NOT EXISTS files (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        path TEXT UNIQUE,
-                        name TEXT,
-                        extension TEXT,
-                        size INTEGER,
-                        created_at TEXT,
-                        updated_at TEXT
-                    );
                     "#,
                 )?;
-
-                // Insert or update
+    
                 conn.execute(
                     r#"
-                    INSERT OR IGNORE INTO files (path, name, extension, size, created_at, updated_at)
-                    VALUES (?1, ?2, ?3, ?4, datetime('now'), datetime('now'));
+                    INSERT OR IGNORE INTO files (path, name, extension, size, category, created_at, updated_at)
+                    VALUES (?1, ?2, ?3, ?4, ?5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
                     "#,
-                    params![file.base.path, file.base.name, file.extension, file.size],
+                    params![
+                        file.base.path, 
+                        file.base.name, 
+                        file.extension, 
+                        file.size,
+                        get_category_from_extension(&file.extension)
+                    ],
                 )?;
-
+    
                 Ok(())
             }
         });
-
+    
         handle
             .await
             .map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?
@@ -179,7 +176,7 @@ impl FileProcessor {
         paths: Vec<String>,
         on_progress: impl Fn(ProcessingStatus) + Send + Sync + Clone + 'static,
     ) -> Result<serde_json::Value, FileProcessorError> {
-        
+
         println!("The paths {:?}", paths);
 
         // 1) gather all files
@@ -216,7 +213,7 @@ impl FileProcessor {
                         processed: done,
                         percentage,
                     };
-                    progress_fn(status); // Use the cloned function here
+                    progress_fn(status);
                 }
             });
             handles.push(handle);

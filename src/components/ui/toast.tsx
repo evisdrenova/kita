@@ -1,5 +1,5 @@
 import { toast } from "sonner";
-import { Check, X, AlertCircle } from "lucide-react";
+import { Check, AlertCircle } from "lucide-react";
 
 type ToastOptions = Parameters<typeof toast>[1];
 

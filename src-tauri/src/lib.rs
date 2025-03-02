@@ -2,6 +2,7 @@ mod app_handler;
 mod file_processor;
 mod resource_monitor;
 mod database_handler;
+mod utils;
 
 use file_processor::FileProcessorState;
 use tauri::Manager;

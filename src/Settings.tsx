@@ -7,7 +7,7 @@ import {
 } from "./components/ui/dialog";
 import { Button } from "./components/ui/button";
 import { Checkbox } from "./components/ui/checkbox";
-import { forwardRef, useEffect, useState } from "react";
+import { forwardRef, useState } from "react";
 import { IndexingProgress, SearchCategory } from "./types/types";
 import { ScrollArea } from "./components/ui/scroll-area";
 import { Separator } from "./components/ui/separator";
