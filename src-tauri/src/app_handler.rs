@@ -29,28 +29,6 @@ lazy_static! {
     static ref ICON_CACHE: Mutex<HashMap<String, Option<String>>> = Mutex::new(HashMap::new());
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum SectionType {
-    Apps,
-    Files,
-    Semantic,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum SearchItem {
-    App(AppMetadata),
-    // File(FileMetadata),
-    // Semantic(SemanticResult),
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SearchSection {
-    pub type_: SectionType,
-    pub title: String,
-    pub items: Vec<SearchItem>,
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppMetadata {
@@ -280,30 +258,16 @@ pub fn get_combined_apps() -> Result<Vec<AppMetadata>, String> {
 
 // returns the running apps and installed apps along with their app icons
 #[tauri::command]
-pub fn get_apps_data() -> Result<Vec<SearchSection>, String> {
-    let mut sections = Vec::new();
+pub fn get_apps_data() -> Result<Vec<AppMetadata>, String> {
+    let mut combined_apps: Vec<AppMetadata> = get_combined_apps()?;
 
-    let mut comibined_apps: Vec<AppMetadata> = get_combined_apps()?;
+    process_icons_in_parallel(&mut combined_apps);
 
-    process_icons_in_parallel(&mut comibined_apps);
+    combined_apps.sort_by(|a, b| a.name.cmp(&b.name));
 
-    comibined_apps.sort_by(|a, b| a.name.cmp(&b.name));
-
-    let app_items: Vec<SearchItem> = comibined_apps
-        .into_iter()
-        .map(|app| SearchItem::App(app))
-        .collect();
-
-    sections.push(SearchSection {
-        type_: SectionType::Apps,
-        title: "Applications".to_string(),
-        items: app_items,
-    });
-
-    Ok(sections)
+    Ok(combined_apps)
 }
 
-// runs function to get app icons in parallel
 pub fn process_icons_in_parallel(apps: &mut Vec<AppMetadata>) {
     // get paths for parallelization
     let paths_and_names: Vec<(String, String)> = apps
@@ -476,7 +440,7 @@ pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
     get_app_icon_fallback(app_path, app_name)
 }
 
-// Improved fallback method that replaces the slow NSWorkspace approach
+// create custom svg image if we can't get the app icon in a reasonable amount of time
 pub fn get_app_icon_fallback(app_path: &str, app_name: &str) -> Option<String> {
     // Extract the first letter of the app name for our letter-based icon
     let first_letter = app_name
@@ -518,7 +482,7 @@ pub fn get_app_icon_fallback(app_path: &str, app_name: &str) -> Option<String> {
 
 #[tauri::command]
 pub async fn force_quit_application(pid: u32) -> Result<(), String> {
-    // On macOS, you can use the "kill" command to force quit apps
+    // On macOS, we can use the "kill" command to force quit apps
     match std::process::Command::new("kill")
         .args(["-9", &pid.to_string()])
         .status()
@@ -542,22 +506,21 @@ pub async fn restart_application(
     app: AppMetadata,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    // Step 1: Force quit if it's running
+    // try to force quit
     if let Some(pid) = app.pid {
-        // Try to force quit
         let _ = force_quit_application(pid).await;
 
         // Wait a moment for the app to fully quit
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
     }
 
-    // Step 2: Launch the app
+    // launch the app
     Command::new("open")
         .arg(&app.path)
         .status()
         .map_err(|e| format!("Failed to launch application: {}", e))?;
 
-    // Step 3: Update the frontend after restarting
+    // update the frontend after restarting
     tokio::spawn(async move {
         // Wait a bit for the app to start
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -572,7 +535,6 @@ pub async fn restart_application(
                         let mut updated_app = new_app.clone();
                         updated_app.resource_usage = Some(usage);
 
-                        // Emit to frontend
                         let _ = app_handle.emit("app-restarted", updated_app);
                     }
                 }

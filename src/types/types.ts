@@ -29,20 +29,6 @@ export interface AppResourceUsage {
   memory_bytes: number;
 }
 
-export type SearchItem = FileMetadata | AppMetadata | SemanticMetadata;
-
-export enum SearchSectionType {
-  Apps = "apps",
-  Files = "files",
-  Semantic = "semantic",
-}
-
-export interface SearchSection {
-  type_: SearchSectionType;
-  title: string;
-  items: SearchItem[];
-}
-
 export interface IndexingProgress {
   total: number;
   processed: number;
@@ -119,4 +105,11 @@ export interface IndexingProgress {
   total: number;
   processed: number;
   percentage: number;
+}
+
+export interface Column<T> {
+  key: string;
+  header: string;
+  width?: number;
+  render?: (item: T) => React.ReactNode;
 }
