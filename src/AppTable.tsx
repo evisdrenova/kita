@@ -16,7 +16,7 @@ const columns: Column<AppMetadata>[] = [
   {
     key: "name",
     header: "Application",
-    width: 40,
+    width: 70,
     render: (app) => (
       <div className="flex items-center min-w-0">
         {app?.icon ? (
@@ -45,7 +45,7 @@ const columns: Column<AppMetadata>[] = [
     render: (app) => {
       const memoryUsage = app.resource_usage?.memory_bytes;
       return app?.pid && memoryUsage !== undefined ? (
-        <div className="flex items-center justify-end gap-1 text-xs text-gray-500">
+        <div className="flex items-center justify-start gap-1 text-xs text-gray-500">
           <MemoryStick className="w-3 h-3" />
           {typeof memoryUsage === "number"
             ? FormatFileSize(memoryUsage)
@@ -61,7 +61,7 @@ const columns: Column<AppMetadata>[] = [
     render: (app) => {
       const cpuUsage = app.resource_usage?.cpu_usage;
       return app?.pid && cpuUsage !== undefined ? (
-        <div className="flex items-center justify-end gap-1 text-xs text-gray-500">
+        <div className="flex items-center justify-start gap-1 text-xs text-gray-500">
           <Cpu className="w-3 h-3" />
           {typeof cpuUsage === "number" ? cpuUsage.toFixed(1) : cpuUsage}%
         </div>
@@ -176,7 +176,7 @@ export default function AppTable(props: Props) {
                 }
                 style={{
                   cursor: column.key !== "actions" ? "pointer" : "default",
-                  width: column.width,
+                  width: `${column.width}%`,
                 }}
               >
                 {column.header}
@@ -264,11 +264,11 @@ const TableRow = memo(
       if (!app.pid) return null;
 
       return (
-        <div className="flex items-center justify-end space-x-1 ">
+        <div className="flex flex-row items-center justify-start gap-4 ">
           <button
             onClick={handleForceQuit}
             disabled={isKilling}
-            className="p-1 rounded-sm hover:bg-red-500/10 text-red-500 hover:text-red-600 transition-colors"
+            className="p-1 rounded-sm hover:bg-red-500/10 text-red-500 hover:text-red-600 transition-colors cursor-pointer"
             title="Force quit"
           >
             {isKilling ? (
@@ -281,7 +281,7 @@ const TableRow = memo(
           <button
             onClick={handleRestart}
             disabled={isRestarting}
-            className="p-1 rounded-sm hover:bg-blue-500/10 text-blue-500 hover:text-blue-600 transition-colors"
+            className="p-1 rounded-sm hover:bg-blue-500/10 text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
             title="Restart application"
           >
             {isRestarting ? (
@@ -294,6 +294,16 @@ const TableRow = memo(
       );
     };
 
+    const renderCells = (column: Column<AppMetadata>) => {
+      if (column.key === "actions") {
+        return renderActions();
+      } else if (column.render) {
+        return column.render(app);
+      } else {
+        (app as any)[column.key];
+      }
+    };
+
     return (
       <tr
         onClick={handleClick}
@@ -301,11 +311,7 @@ const TableRow = memo(
       >
         {columns.map((column) => (
           <td key={column.key} className="p-2">
-            {column.key === "actions"
-              ? renderActions()
-              : column.render
-              ? column.render(app)
-              : (app as any)[column.key]}
+            {renderCells(column)}
           </td>
         ))}
       </tr>
