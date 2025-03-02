@@ -1,11 +1,10 @@
-use rusqlite::{params, Connection, Error as RusqliteError};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter};
-use tokio::sync::{Barrier, Semaphore};
+use tauri::{AppHandle, Emitter, Manager};
+use tokio::sync::Semaphore;
 use tokio::task;
 use walkdir::WalkDir;
 
@@ -276,12 +275,14 @@ pub fn process_file(
 #[derive(Default)]
 pub struct FileProcessorState(Mutex<Option<FileProcessor>>);
 
+// sets up initialize file processor state
 #[tauri::command]
-pub async fn init_file_processor(
+pub fn initialize_file_processor(
     db_path: String,
     concurrency: usize,
-    state: tauri::State<'_, FileProcessorState>,
+    app_handle: AppHandle,
 ) -> Result<(), String> {
+    let state = app_handle.state::<FileProcessorState>();
     let mut processor_guard = state.0.lock().map_err(|e| e.to_string())?;
     *processor_guard = Some(FileProcessor {
         db_path: PathBuf::from(db_path),

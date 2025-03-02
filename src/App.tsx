@@ -12,7 +12,6 @@ import {
   SearchItem,
   SearchSection,
   SearchSectionType,
-  SemanticMetadata,
 } from "./types/types";
 import Header from "./Header";
 import {
@@ -21,8 +20,6 @@ import {
   truncatePath,
 } from "./lib/utils";
 import {
-  Check,
-  Copy,
   Cpu,
   Database,
   File,
@@ -42,9 +39,8 @@ import {
 } from "lucide-react";
 import { FaRegFilePdf } from "react-icons/fa";
 import { errorToast, successToast } from "./components/ui/toast";
-import FolderSettings from "./Settings";
 import { open } from "@tauri-apps/plugin-dialog";
-import { appDataDir } from "@tauri-apps/api/path";
+import { appDataDir, documentDir } from "@tauri-apps/api/path";
 import { join } from "@tauri-apps/api/path";
 import Settings from "./Settings";
 
@@ -186,7 +182,7 @@ export default function App() {
         multiple: true,
         directory: true,
         title: "Select Files or Folders to Index",
-        defaultPath: await appDataDir(),
+        defaultPath: await documentDir(),
       });
 
       if (!selected || (Array.isArray(selected) && !selected.length)) return;
@@ -195,8 +191,6 @@ export default function App() {
 
       console.log("paths", paths);
 
-      // /Users/evisdrenova/Library/Application Support/kita/kita-database.sqlite
-
       setIsIndexing(true);
       setIndexingProgress(null);
 
@@ -204,26 +198,20 @@ export default function App() {
 
       console.log("paths", dbPath);
 
-      // await invoke("init_file_processor", {
-      //   dbPath: dbPath,
-      //   concurrency: 4,
-      // });
+      // Set up event listener for progress updates
+      const unlistenProgress = await listen<IndexingProgress>(
+        "file-processing-progress",
+        (event) => {
+          setIndexingProgress(event.payload);
+        }
+      );
 
-      // // Set up event listener for progress updates
-      // const unlistenProgress = await listen<IndexingProgress>(
-      //   "file-processing-progress",
-      //   (event) => {
-      //     setIndexingProgress(event.payload);
-      //   }
-      // );
+      // Call your Rust command to process the paths
+      await invoke("process_paths_tauri", { paths });
 
-      // // Call your Rust command to process the paths
-      // await invoke("process_paths_tauri", { paths });
-
-      // // Clean up listener and reset state
-      // unlistenProgress();
-      // setIsIndexing(false);
-      // setIndexingProgress(null);
+      unlistenProgress();
+      setIsIndexing(false);
+      setIndexingProgress(null);
     } catch (error) {
       console.error("Error indexing paths:", error);
       setIsIndexing(false);
@@ -231,27 +219,6 @@ export default function App() {
       errorToast("Error indexing selected paths");
     }
   };
-
-  // async function startIndexing(paths: string[]) {
-  //   await invoke("init_file_processor", {
-  //     dbPath: "mydb.sqlite",
-  //     concurrency: 4,
-  //   });
-
-  //   const unlisten = await listen("file-processing-progress", (event) => {
-  //     console.log("Progress event:", event.payload);
-  //     // e.g. { total: 100, processed: 57, percentage: 57 }
-  //   });
-
-  //   try {
-  //     const result = await invoke("process_paths_tauri", { paths });
-  //     console.log("All done. Result:", result);
-  //   } catch (err) {
-  //     console.error("Failed to process paths:", err);
-  //   } finally {
-  //     unlisten();
-  //   }
-  // }
 
   // listens for resource events and app update events
   useEffect(() => {

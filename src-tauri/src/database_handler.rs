@@ -2,6 +2,7 @@ use rusqlite::Connection;
 use tauri::AppHandle;
 use tauri::Manager;
 use thiserror::Error;
+use std::path::PathBuf;
 
 #[derive(Error, Debug)]
 pub enum DbError {
@@ -13,15 +14,14 @@ pub enum DbError {
     TauriPath(#[from] tauri::Error),
 }
 
-// handles creating the database
+// handles creating the database and returns the db_path
 #[tauri::command]
-pub fn initialize_database(app_handle: AppHandle) -> Result<(), DbError> {
-    let app_data_dir = app_handle.path().app_data_dir().map_err(|_| DbError::NoAppDataDir)?;
+pub fn initialize_database(app_handle: AppHandle) -> Result<PathBuf, DbError> {
+    let app_data_dir: PathBuf = app_handle.path().app_data_dir().map_err(|_| DbError::NoAppDataDir)?;
     
-    let mut db_path = app_data_dir;
-    db_path.push("kita-database.sqlite");
+    let db_path = app_data_dir.join("kita-database.sqlite");
 
-    let conn = Connection::open(db_path)?;
+    let conn = Connection::open(&db_path)?;
 
     conn.execute_batch(
       "
@@ -53,5 +53,5 @@ pub fn initialize_database(app_handle: AppHandle) -> Result<(), DbError> {
       ",
     )?;
   
-    Ok(())
+    Ok(db_path)
   }

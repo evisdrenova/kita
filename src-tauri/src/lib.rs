@@ -12,14 +12,36 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
+
             window.open_devtools();
             window.close_devtools();
-            match database_handler::initialize_database(app.app_handle().clone()) {
-                Ok(()) => {
-                    println!("Database successfully initialized.")
+
+            let db_path = match database_handler::initialize_database
+            (app.app_handle().clone()) {
+                Ok(path) => {
+                    println!("Database successfully initialized at {:?}", path);
+                    path
                 }
                 Err(e) => {
-                    eprintln!("Failed to initialize database: {e}")
+                    eprintln!("Failed to initialize database: {e}");
+                    return Err(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to initialize database: {}", e)
+                    )));
+                }
+            };
+
+            let db_path_str = db_path.to_string_lossy().to_string();
+
+            match file_processor::initialize_file_processor(db_path_str, 4, app.app_handle().clone()){
+                Ok(()) => {
+                    println!("File processor successfully initialized.")
+                }Err(e) => {
+                    eprintln!("Failed to initialize file processor: {e}");
+                    return Err(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to initialize file processor: {}", e)
+                    )));
                 }
             }
             resource_monitor::init(app)?;
@@ -34,7 +56,6 @@ pub fn run() {
             app_handler::launch_or_switch_to_app,
             resource_monitor::start_resource_monitoring,
             resource_monitor::stop_resource_monitoring,
-            file_processor::init_file_processor,
             file_processor::process_paths_tauri,
         ])
         .run(tauri::generate_context!())

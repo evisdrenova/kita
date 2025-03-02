@@ -33,7 +33,7 @@ type SettingCategory =
   | "Advanced";
 
 const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
-  (props, ref) => {
+  (props, _) => {
     const {
       toggleCategory,
       selectedCategories,
