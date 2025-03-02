@@ -277,7 +277,6 @@ const TableRow = memo(
               <X className="h-3 w-3" />
             )}
           </button>
-
           <button
             onClick={handleRestart}
             disabled={isRestarting}

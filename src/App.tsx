@@ -96,7 +96,7 @@ export default function App() {
 
   // handles switching to the file or app
   async function handleResultSelect(app: AppMetadata) {
-    await invoke<AppMetadata[]>("launch_or_switch_to_application", {
+    await invoke<AppMetadata[]>("launch_or_switch_to_app", {
       app: app,
     });
   }
