@@ -28,11 +28,13 @@ export const successToast = (
 
 export const errorToast = (
   title: string,
+  description?: string,
   options?: Omit<ToastOptions, "unstyled" | "classNames">
 ) => {
   return toast.error(title, {
     unstyled: true,
     icon: <AlertCircle className="h-3 w-3 text-red-500" />,
+    description: description && description,
     classNames: {
       toast:
         "p-2 rounded-lg shadow-lg flex items-center gap-3 bg-gray-200 dark:bg-zinc-800 ring ring-red-900",

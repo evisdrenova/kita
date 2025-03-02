@@ -43,6 +43,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { appDataDir, documentDir } from "@tauri-apps/api/path";
 import { join } from "@tauri-apps/api/path";
 import Settings from "./Settings";
+import { isSet } from "node:util/types";
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -61,6 +62,7 @@ export default function App() {
   const [resourceData, setResourceData] = useState<
     Record<number, { cpu_usage: number; memory_bytes: number }>
   >({});
+  const [showProgress, setShowProgress] = useState(false);
 
   // const handleSelectPaths = async () => {
   //   try {
@@ -177,6 +179,8 @@ export default function App() {
   };
 
   const handleSelectPaths = async () => {
+    setShowProgress(false);
+    setIndexingProgress(null);
     try {
       const selected = await open({
         multiple: true,
@@ -189,36 +193,40 @@ export default function App() {
 
       const paths = Array.isArray(selected) ? selected : [selected];
 
-      console.log("paths", paths);
-
       setIsIndexing(true);
+      setShowProgress(true);
       setIndexingProgress(null);
 
-      const dbPath = await getDbPath();
-
-      console.log("paths", dbPath);
-
-      // Set up event listener for progress updates
       const unlistenProgress = await listen<IndexingProgress>(
         "file-processing-progress",
         (event) => {
-          setIndexingProgress(event.payload);
+          console.log("Received progress event:", event);
+          const progress = event.payload;
+          if (progress) {
+            setIndexingProgress(progress);
+          }
         }
       );
 
-      // Call your Rust command to process the paths
-      await invoke("process_paths_tauri", { paths });
+      await invoke("process_paths_command", { paths });
 
       unlistenProgress();
+
       setIsIndexing(false);
-      setIndexingProgress(null);
     } catch (error) {
-      console.error("Error indexing paths:", error);
+      const err = error as Error;
       setIsIndexing(false);
+      setShowProgress(false);
       setIndexingProgress(null);
-      errorToast("Error indexing selected paths");
+      errorToast("Error indexing selected paths:", err.message);
     }
   };
+
+  // reset the progres if the settings are closed
+  useEffect(() => {
+    setShowProgress(false);
+    setIndexingProgress(null);
+  }, [isSettingsOpen]);
 
   // listens for resource events and app update events
   useEffect(() => {
@@ -407,10 +415,9 @@ export default function App() {
         isIndexing={isIndexing}
         indexingProgress={indexingProgress}
         handleSelectPaths={handleSelectPaths}
-        setIsIndexing={setIsIndexing}
         isSettingsOpen={isSettingsOpen}
         setIsSettingsOpen={setIsSettingsOpen}
-        setIndexingProgress={setIndexingProgress}
+        showProgress={showProgress}
       />
     </div>
   );

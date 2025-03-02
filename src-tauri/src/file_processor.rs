@@ -122,11 +122,8 @@ impl FileProcessor {
         .await
         .map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?;
 
-        // Step 2: now 'outer' is Result<Vec<FileMetadata>, FileProcessorError>.
-        //         We unwrap the inner result with '?'.
         let files: Vec<FileMetadata> = outer?;
 
-        // Finally return the vector
         Ok(files)
     }
 
@@ -182,6 +179,9 @@ impl FileProcessor {
         paths: Vec<String>,
         on_progress: impl Fn(ProcessingStatus) + Send + Sync + Clone + 'static,
     ) -> Result<serde_json::Value, FileProcessorError> {
+        
+        println!("The paths {:?}", paths);
+
         // 1) gather all files
         let files = self.collect_all_files(&paths).await?;
         let total = files.len();
@@ -275,7 +275,7 @@ pub fn process_file(
 #[derive(Default)]
 pub struct FileProcessorState(Mutex<Option<FileProcessor>>);
 
-// sets up initialize file processor state
+// sets up initialize file processor state and store in the tauri instance
 #[tauri::command]
 pub fn initialize_file_processor(
     db_path: String,
@@ -292,7 +292,7 @@ pub fn initialize_file_processor(
 }
 
 #[tauri::command]
-pub async fn process_paths_tauri(
+pub async fn process_paths_command(
     paths: Vec<String>,
     state: tauri::State<'_, FileProcessorState>,
     app_handle: AppHandle,

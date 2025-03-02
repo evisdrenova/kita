@@ -18,12 +18,11 @@ interface FolderSettingsProps {
   selectedCategories: Set<SearchCategory>;
   searchCategories: readonly SearchCategory[];
   isIndexing: boolean;
-  setIsIndexing: (val: boolean) => void;
   indexingProgress: IndexingProgress | null;
   handleSelectPaths: () => void;
   isSettingsOpen: boolean;
   setIsSettingsOpen: (val: boolean) => void;
-  setIndexingProgress: (val: IndexingProgress | null) => void;
+  showProgress: boolean;
 }
 type SettingCategory =
   | "General"
@@ -33,7 +32,7 @@ type SettingCategory =
   | "Advanced";
 
 const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
-  (props, _) => {
+  (props) => {
     const {
       toggleCategory,
       selectedCategories,
@@ -43,23 +42,11 @@ const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
       handleSelectPaths,
       isSettingsOpen,
       setIsSettingsOpen,
-      setIsIndexing,
-      setIndexingProgress,
+      showProgress,
     } = props;
 
     const [selectedSettingCategory, setSelectedSettingCategory] =
       useState<SettingCategory>("Indexing");
-
-    useEffect(() => {
-      if (indexingProgress?.percentage === 100) {
-        const timer = setTimeout(() => {
-          setIsIndexing(false);
-          setIndexingProgress(null);
-        }, 500);
-
-        return () => clearTimeout(timer);
-      }
-    }, [indexingProgress?.percentage]);
 
     const settingCategoryComponents: Record<SettingCategory, JSX.Element> = {
       General: <General />,
@@ -72,6 +59,7 @@ const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
           isIndexing={isIndexing}
           indexingProgress={indexingProgress}
           handleSelectPaths={handleSelectPaths}
+          showProgress={showProgress}
         />
       ),
       Shortcuts: <Shortcuts />,
@@ -135,6 +123,7 @@ interface IndexSettingsProps {
   isIndexing: boolean;
   indexingProgress: IndexingProgress | null;
   handleSelectPaths: () => void;
+  showProgress: boolean;
 }
 
 function IndexingSettings(props: IndexSettingsProps) {
@@ -145,7 +134,9 @@ function IndexingSettings(props: IndexSettingsProps) {
     isIndexing,
     indexingProgress,
     handleSelectPaths,
+    showProgress,
   } = props;
+
   return (
     <div className="space-y-6 p-6">
       <h3 className="text-lg font-medium mb-1">Indexing</h3>
@@ -168,13 +159,27 @@ function IndexingSettings(props: IndexSettingsProps) {
           {isIndexing ? "Processing..." : "Select Folders/Files"}
         </Button>
       </div>
-      {isIndexing && indexingProgress && (
+      {showProgress && (
         <div className="mt-2 space-y-1">
-          <Progress value={indexingProgress.percentage} className="h-1" />
+          <div className="h-1 w-full bg-gray-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-700 transition-all duration-300"
+              style={{ width: `${indexingProgress?.percentage || 0}%` }}
+            />
+          </div>
           <p className="text-xs text-muted-foreground">
-            Processed {indexingProgress.processed} of {indexingProgress.total}{" "}
-            files ({indexingProgress.percentage}
-            %)
+            {isIndexing ? (
+              <>
+                Processed {indexingProgress?.processed} of{" "}
+                {indexingProgress?.total} files ({indexingProgress?.percentage}
+                %)
+              </>
+            ) : (
+              <>
+                Completed! {indexingProgress?.processed} of{" "}
+                {indexingProgress?.total} files processed
+              </>
+            )}
           </p>
         </div>
       )}
