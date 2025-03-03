@@ -117,6 +117,43 @@ export function truncatePath(path: string, maxLength: number = 50) {
   return `${startPath}...${endPath}/${fileName}`;
 }
 
+export function truncateFilename(
+  filename: string,
+  maxLength: number = 30,
+  showExtension: boolean = true
+): string {
+  if (filename.length <= maxLength) {
+    return filename;
+  }
+
+  // Split filename and extension
+  const lastDotIndex = filename.lastIndexOf(".");
+  const hasExtension = lastDotIndex > 0 && lastDotIndex < filename.length - 1;
+
+  if (!hasExtension || !showExtension) {
+    // Simple truncation if no extension or we don't care about showing it
+    return filename.slice(0, maxLength - 3) + "...";
+  }
+
+  const name = filename.slice(0, lastDotIndex);
+  const extension = filename.slice(lastDotIndex);
+
+  // Reserve space for extension and ellipsis
+  const maxNameLength = maxLength - extension.length - 3;
+
+  if (maxNameLength <= 0) {
+    // Extension is too long, truncate it too
+    return (
+      filename.slice(0, Math.floor(maxLength / 2) - 2) +
+      "..." +
+      filename.slice(filename.length - Math.floor(maxLength / 2) + 1)
+    );
+  }
+
+  // Normal case: truncate name and preserve extension
+  return name.slice(0, maxNameLength) + "..." + extension;
+}
+
 // Helper function to check if a string is valid JSON
 export function isValidJSON(str: string) {
   try {

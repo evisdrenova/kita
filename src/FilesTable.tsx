@@ -12,7 +12,7 @@ import {
   FileArchive,
 } from "lucide-react";
 import { FileMetadata, Column } from "./types/types";
-import { FormatFileSize, truncatePath } from "./lib/utils";
+import { FormatFileSize, truncateFilename, truncatePath } from "./lib/utils";
 import { FaRegFilePdf } from "react-icons/fa";
 
 interface Props {
@@ -26,16 +26,18 @@ const columns: Column<FileMetadata>[] = [
     header: "File Name",
     width: 40,
     render: (file) => (
-      <div className="flex items-center min-w-0">
+      <div className="flex items-center flex-row gap-2 ">
         {getFileIcon(file.extension)}
-        <span className="text-sm truncate">{file.name}</span>
+        <span className="text-sm truncate">
+          {truncateFilename(file.name, 40, true)}
+        </span>
       </div>
     ),
   },
   {
     key: "path",
     header: "Path",
-    width: 30,
+    width: 40,
     render: (file) => (
       <div className="flex items-center justify-start gap-1 text-xs text-gray-500">
         {truncatePath(file.path)}
@@ -217,16 +219,16 @@ function getFileIcon(filePath: string) {
     case ".app":
     case ".exe":
     case ".dmg":
-      icon = <Package className="h-3 w-3" />;
+      icon = <Package className="h-4 w-4" />;
       break;
     case ".pdf":
-      icon = <FaRegFilePdf className="h-3 w-3" />;
+      icon = <FaRegFilePdf className="h-4 w-4" />;
       break;
     case ".doc":
     case ".docx":
     case ".txt":
     case ".rtf":
-      icon = <FileText className="h-3 w-3" />;
+      icon = <FileText className="h-4 w-4" />;
       break;
     case ".jpg":
     case ".jpeg":
@@ -234,7 +236,7 @@ function getFileIcon(filePath: string) {
     case ".gif":
     case ".svg":
     case ".webp":
-      icon = <Image className="h-3 w-3" />;
+      icon = <Image className="h-4 w-4" />;
       break;
     case ".js":
     case ".ts":
@@ -245,40 +247,40 @@ function getFileIcon(filePath: string) {
     case ".cpp":
     case ".html":
     case ".css":
-      icon = <FileCode className="h-3 w-3" />;
+      icon = <FileCode className="h-4 w-4" />;
       break;
     case ".mp4":
     case ".mov":
     case ".avi":
     case ".mkv":
-      icon = <Film className="h-3 w-3" />;
+      icon = <Film className="h-4 w-4" />;
       break;
     case ".mp3":
     case ".wav":
     case ".flac":
     case ".m4a":
-      icon = <Music className="h-3 w-3" />;
+      icon = <Music className="h-4 w-4" />;
       break;
     case ".json":
     case ".xml":
     case ".yaml":
     case ".yml":
-      icon = <Database className="h-3 w-3" />;
+      icon = <Database className="h-4 w-4" />;
       break;
     case ".xlsx":
     case ".xls":
     case ".csv":
-      icon = <FileSpreadsheet className="h-3 w-3" />;
+      icon = <FileSpreadsheet className="h-4 w-4" />;
       break;
     case ".zip":
     case ".rar":
     case ".7z":
     case ".tar":
     case ".gz":
-      icon = <FileArchive className="h-3 w-3" />;
+      icon = <FileArchive className="h-4 w-4" />;
       break;
     default:
-      icon = <File className="h-3 w-3" />;
+      icon = <File className="h-4 w-4" />;
   }
 
   return icon;
