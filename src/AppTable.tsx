@@ -10,6 +10,7 @@ interface Props {
   refreshApps: () => Promise<void>;
   appResourceData?: Record<number, { cpu_usage: number; memory_bytes: number }>;
   onRowClick?: (app: AppMetadata) => void;
+  selectedItemName?: string;
 }
 
 const columns: Column<AppMetadata>[] = [
@@ -76,7 +77,13 @@ const columns: Column<AppMetadata>[] = [
 ];
 
 export default function AppTable(props: Props) {
-  const { data, refreshApps, appResourceData = {}, onRowClick } = props;
+  const {
+    data,
+    refreshApps,
+    appResourceData = {},
+    onRowClick,
+    selectedItemName,
+  } = props;
 
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
@@ -197,6 +204,7 @@ export default function AppTable(props: Props) {
               columns={columns}
               onRowClick={onRowClick}
               refreshApps={refreshApps}
+              isSelected={app.name === selectedItemName}
             />
           ))}
         </tbody>
@@ -211,11 +219,13 @@ const TableRow = memo(
     columns,
     onRowClick,
     refreshApps,
+    isSelected,
   }: {
     app: AppMetadata;
     columns: Column<AppMetadata>[];
     onRowClick?: (app: AppMetadata) => void;
     refreshApps: () => Promise<void>;
+    isSelected: boolean;
   }) => {
     const [isKilling, setIsKilling] = useState<boolean>(false);
     const [isRestarting, setIsRestarting] = useState<boolean>(false);
@@ -306,7 +316,9 @@ const TableRow = memo(
     return (
       <tr
         onClick={handleClick}
-        className="hover:bg-muted transition-colors group cursor-pointer"
+        className={`transition-colors group cursor-pointer ${
+          isSelected ? "bg-muted" : "hover:bg-muted/50"
+        }`}
       >
         {columns.map((column) => (
           <td key={column.key} className="p-2">

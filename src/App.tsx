@@ -38,64 +38,117 @@ export default function App() {
   const [showProgress, setShowProgress] = useState(false);
   const [indexElapsedTime, setIndexElapsedTime] = useState<number | null>(null);
 
-  // handles key up and down acions
-  // useEffect(() => {
-  //   const handleKeyDown = (e: KeyboardEvent) => {
-  //     if (searchSections.length === 0) return;
+  // Add these state variables to track current section and item
+  const [currentSection, setCurrentSection] = useState<"apps" | "files">(
+    "apps"
+  );
+  const [currentItemIndex, setCurrentItemIndex] = useState<number>(-1);
 
-  //     let currentSection = selectedSection;
-  //     if (currentSection === undefined) {
-  //       const appsIndex = searchSections.findIndex(
-  //         (sec) => sec.type_ === SearchSectionType.Apps
-  //       );
-  //       currentSection = appsIndex >= 0 ? appsIndex : 0;
-  //     }
+  // Add this useEffect for keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (appsData.length === 0 && filesData.length === 0) return;
 
-  //     if (e.key === "ArrowDown") {
-  //       e.preventDefault();
+      // Filter data based on search query
+      const filteredApps = filterItems(appsData, searchQuery);
+      const filteredFiles = filterItems(filesData, searchQuery);
 
-  //       if (selectedSection === undefined) {
-  //         setSelectedSection(currentSection);
-  //         setSelectedItem(0);
-  //         return;
-  //       }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
 
-  //       const section = searchSections[currentSection];
-  //       if (selectedItem < section.items.length - 1) {
-  //         setSelectedItem(selectedItem + 1);
-  //       } else if (currentSection < searchSections.length - 1) {
-  //         setSelectedSection(currentSection + 1);
-  //         setSelectedItem(0);
-  //       }
-  //     } else if (e.key === "ArrowUp") {
-  //       e.preventDefault();
-  //       if (selectedSection === undefined) {
-  //         return;
-  //       }
+        if (currentSection === "apps") {
+          // If we're at the end of apps section, move to files section
+          if (currentItemIndex >= filteredApps.length - 1) {
+            if (filteredFiles.length > 0) {
+              setCurrentSection("files");
+              setCurrentItemIndex(0);
+              // Update selectedItem to highlight the first file
+              setSelectedItem(filteredFiles[0].name);
+            }
+          } else {
+            // Move to next app in the list
+            const newIndex = currentItemIndex + 1;
+            setCurrentItemIndex(newIndex);
+            // Update selectedItem to highlight the new app
+            setSelectedItem(filteredApps[newIndex].name);
+          }
+        } else if (currentSection === "files") {
+          // Move to next file in the list if possible
+          if (currentItemIndex < filteredFiles.length - 1) {
+            const newIndex = currentItemIndex + 1;
+            setCurrentItemIndex(newIndex);
+            // Update selectedItem to highlight the new file
+            setSelectedItem(filteredFiles[newIndex].name);
+          }
+        }
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
 
-  //       if (selectedItem > 0) {
-  //         setSelectedItem(selectedItem - 1);
-  //       } else if (currentSection > 0) {
-  //         setSelectedSection(currentSection - 1);
-  //         setSelectedItem(searchSections[currentSection - 1].items.length - 1);
-  //       }
-  //     } else if (e.key === "Enter") {
-  //       e.preventDefault();
-  //       if (selectedSection === undefined) {
-  //         return;
-  //       }
+        if (currentSection === "files") {
+          // If we're at the beginning of files section, move to apps section
+          if (currentItemIndex <= 0) {
+            if (filteredApps.length > 0) {
+              setCurrentSection("apps");
+              setCurrentItemIndex(filteredApps.length - 1);
+              // Update selectedItem to highlight the last app
+              setSelectedItem(filteredApps[filteredApps.length - 1].name);
+            }
+          } else {
+            // Move to previous file in the list
+            const newIndex = currentItemIndex - 1;
+            setCurrentItemIndex(newIndex);
+            // Update selectedItem to highlight the new file
+            setSelectedItem(filteredFiles[newIndex].name);
+          }
+        } else if (currentSection === "apps") {
+          // Move to previous app in the list if possible
+          if (currentItemIndex > 0) {
+            const newIndex = currentItemIndex - 1;
+            setCurrentItemIndex(newIndex);
+            // Update selectedItem to highlight the new app
+            setSelectedItem(filteredApps[newIndex].name);
+          }
+        }
+      } else if (e.key === "Enter") {
+        e.preventDefault();
 
-  //       const section = searchSections[currentSection];
-  //       const item = section?.items[selectedItem];
-  //       if (item) {
-  //         handleResultSelect(item);
-  //       }
-  //     }
-  //   };
+        // Only proceed if we have an active selection
+        if (currentItemIndex >= 0) {
+          if (
+            currentSection === "apps" &&
+            filteredApps.length > currentItemIndex
+          ) {
+            const app = filteredApps[currentItemIndex];
+            handleAppSelect(app);
+          } else if (
+            currentSection === "files" &&
+            filteredFiles.length > currentItemIndex
+          ) {
+            const file = filteredFiles[currentItemIndex];
+            handleFileSelect(file);
+          }
+        }
+      }
+    };
 
-  //   document.addEventListener("keydown", handleKeyDown);
-  //   return () => document.removeEventListener("keydown", handleKeyDown);
-  // }, [searchSections, selectedSection, selectedItem]);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [
+    appsData,
+    filesData,
+    searchQuery,
+    currentSection,
+    currentItemIndex,
+    selectedItem,
+  ]);
+
+  // Reset the selection when search query changes
+  useEffect(() => {
+    // Reset to apps section and first item when search query changes
+    setCurrentSection("apps");
+    setCurrentItemIndex(-1);
+    setSelectedItem(undefined);
+  }, [searchQuery]);
 
   // handles switching to the file or app
   async function handleAppSelect(app: AppMetadata) {
@@ -105,8 +158,8 @@ export default function App() {
   }
 
   async function handleFileSelect(file: FileMetadata) {
-    await invoke<FileMetadata[]>("launch_or_switch_to_app", {
-      app: file,
+    await invoke<FileMetadata[]>("open_file", {
+      filePath: file.path,
     });
   }
 
@@ -297,10 +350,19 @@ export default function App() {
           }, [appsData, searchQuery])}
           onRowClick={(app) => {
             setSelectedItem(app.name);
+            setCurrentSection("apps");
+            setCurrentItemIndex(
+              filterItems(appsData, searchQuery).findIndex(
+                (a) => a.name === app.name
+              )
+            );
             handleAppSelect(app);
           }}
           appResourceData={resourceData}
           refreshApps={refreshApps}
+          selectedItemName={
+            currentSection === "apps" ? selectedItem : undefined
+          }
         />
         <FilesTable
           data={useMemo(() => {
@@ -308,8 +370,17 @@ export default function App() {
           }, [filesData, searchQuery])}
           onRowClick={(file) => {
             setSelectedItem(file.name);
+            setCurrentSection("files");
+            setCurrentItemIndex(
+              filterItems(filesData, searchQuery).findIndex(
+                (f) => f.name === file.name
+              )
+            );
             handleFileSelect(file);
           }}
+          selectedItemName={
+            currentSection === "files" ? selectedItem : undefined
+          }
         />
       </main>
       <div className="sticky bottom-0">

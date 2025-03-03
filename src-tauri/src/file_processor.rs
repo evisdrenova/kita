@@ -7,6 +7,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Semaphore;
 use tokio::task;
 use walkdir::WalkDir;
+use std::process::Command;
+
 
 use crate::utils::get_category_from_extension;
 
@@ -377,4 +379,20 @@ for file in files_iter {
     files.push(file.map_err(|e| format!("Row mapping error: {e}"))?);
 }
 Ok(files)
+}
+
+
+#[tauri::command]
+pub fn open_file(file_path: &str) -> Result<(), String> {
+
+    let status = Command::new("open")
+        .arg(file_path)
+        .status()
+        .map_err(|e| format!("Failed to open file: {}", e))?;
+    
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("Failed to open file, exit code: {:?}", status.code()))
+    }
 }

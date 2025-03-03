@@ -1,4 +1,4 @@
-import React, { useState, useMemo, memo, useCallback } from "react";
+import { useState, useMemo, memo, useCallback } from "react";
 import {
   File,
   FileText,
@@ -18,6 +18,7 @@ import { FaRegFilePdf } from "react-icons/fa";
 interface Props {
   data: FileMetadata[];
   onRowClick?: (file: FileMetadata) => void;
+  selectedItemName?: string;
 }
 
 const columns: Column<FileMetadata>[] = [
@@ -67,7 +68,7 @@ const columns: Column<FileMetadata>[] = [
 ];
 
 export default function FilesTable(props: Props) {
-  const { data, onRowClick } = props;
+  const { data, onRowClick, selectedItemName } = props;
 
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
@@ -171,6 +172,7 @@ export default function FilesTable(props: Props) {
               file={file}
               columns={columns}
               onRowClick={onRowClick}
+              isSelected={file.name === selectedItemName}
             />
           ))}
         </tbody>
@@ -184,10 +186,12 @@ const FileRow = memo(
     file,
     columns,
     onRowClick,
+    isSelected,
   }: {
     file: FileMetadata;
     columns: Column<FileMetadata>[];
     onRowClick?: (file: FileMetadata) => void;
+    isSelected: boolean;
   }) => {
     const handleClick = useCallback(() => {
       if (onRowClick) onRowClick(file);
@@ -196,7 +200,9 @@ const FileRow = memo(
     return (
       <tr
         onClick={handleClick}
-        className="hover:bg-muted transition-colors cursor-pointer"
+        className={`transition-colors cursor-pointer ${
+          isSelected ? "bg-muted" : "hover:bg-muted/50"
+        }`}
       >
         {columns.map((column) => (
           <td key={column.key} className="p-2 truncate">
