@@ -139,5 +139,3 @@ export function FormatFileSize(bytes: number | undefined): string {
   // Otherwise format with 2 decimal places
   return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${units[i]}`;
 }
-
-

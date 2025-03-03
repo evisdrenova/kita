@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Semaphore;
 use tokio::task;
 use walkdir::WalkDir;
@@ -86,7 +86,7 @@ pub enum FileProcessorError {
 
 #[derive(Clone)]
 pub struct FileProcessor {
-    pub db_path: PathBuf,         // sqlite db path
+    pub db_path: PathBuf,         // sqlite db path - TODO, i think we may want to convert this to a db pool and manage a pool of connections using r2d2_rusqlite
     pub concurrency_limit: usize, // max concurrency limit
 }
 impl FileProcessor {
@@ -237,6 +237,12 @@ impl FileProcessor {
         });
         Ok(result)
     }
+
+
+
+
+
+    
 }
 
 pub fn process_file(
@@ -312,4 +318,63 @@ pub async fn process_paths_command(
         .process_paths(paths, progress_handler)
         .await
         .map_err(|e| e.to_string())
+}
+
+
+#[tauri::command]
+pub fn get_files_data(query: String, state: State<'_, FileProcessorState>) -> Result<Vec<FileMetadata>, String> {
+     
+    let processor = {
+        let guard = state.0.lock().map_err(|e| e.to_string())?;
+        guard.as_ref().ok_or("File processor not initialized".to_string())?.clone()
+    };
+
+     // Open a connection using the stored db_path
+     let conn = Connection::open(processor.db_path)
+     .map_err(|e| format!("Failed to open database: {e}"))?;
+
+ // Build the LIKE pattern from the query
+ let like_pattern = format!("%{}%", query);
+
+ // Prepare the query statement
+ let mut stmt = conn.prepare(
+    "
+    SELECT 
+        id,
+        name,
+        path,
+        extension,
+        size,
+        created_at,
+        updated_at
+    FROM files
+    WHERE name LIKE ?1 OR path LIKE ?2
+    LIMIT 50
+    "
+).map_err(|e| format!("Failed to prepare statement: {e}"))?;
+
+// Map the rows into FileMetadata. We assume that the 'id' field in the database corresponds to the optional id.
+let files_iter = stmt.query_map(
+    params![like_pattern, like_pattern],
+    |row| {
+        Ok(FileMetadata {
+            base: BaseMetadata {
+                id: Some(row.get(0)?),
+                name: row.get(1)?,
+                path: row.get(2)?,
+            },
+            file_type: SearchSectionType::Files,
+            extension: row.get(3)?,
+            size: row.get(4)?,
+            created_at: row.get(5).ok(),
+            updated_at: row.get(6).ok(),
+        })
+    }
+).map_err(|e| format!("Query execution error: {e}"))?;
+
+let mut files = Vec::new();
+for file in files_iter {
+    files.push(file.map_err(|e| format!("Row mapping error: {e}"))?);
+}
+Ok(files)
 }

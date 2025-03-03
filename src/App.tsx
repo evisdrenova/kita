@@ -5,6 +5,7 @@ import "./globals.css";
 import Footer from "./Footer";
 import {
   AppMetadata,
+  FileMetadata,
   IndexingProgress,
   searchCategories,
   SearchCategory,
@@ -15,6 +16,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { documentDir } from "@tauri-apps/api/path";
 import Settings from "./Settings";
 import AppTable from "./AppTable";
+import FilesTable from "./FilesTable";
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -26,6 +28,7 @@ export default function App() {
     useState<IndexingProgress | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [appsData, setAppsData] = useState<AppMetadata[]>([]);
+  const [filesData, setFilesData] = useState<FileMetadata[]>([]);
   const [selectedItem, setSelectedItem] = useState<string>();
   // const [recents, setRecents] = useState<FileMetadata[]>([]);
   // const [isSearchActive, setIsSearchActive] = useState(false);
@@ -95,9 +98,15 @@ export default function App() {
   // }, [searchSections, selectedSection, selectedItem]);
 
   // handles switching to the file or app
-  async function handleResultSelect(app: AppMetadata) {
+  async function handleAppSelect(app: AppMetadata) {
     await invoke<AppMetadata[]>("launch_or_switch_to_app", {
       app: app,
+    });
+  }
+
+  async function handleFileSelect(file: FileMetadata) {
+    await invoke<FileMetadata[]>("launch_or_switch_to_app", {
+      app: file,
     });
   }
 
@@ -177,6 +186,13 @@ export default function App() {
       try {
         const appData = await invoke<AppMetadata[]>("get_apps_data");
         setAppsData(appData);
+
+        const filesData = await invoke<FileMetadata[]>("get_files_data", {
+          query: searchQuery,
+        });
+        setFilesData(filesData);
+
+        console.log("filesData", filesData);
 
         const pids = appData
           .filter((app) => app.pid != null)
@@ -281,10 +297,19 @@ export default function App() {
           }, [appsData, searchQuery])}
           onRowClick={(app) => {
             setSelectedItem(app.name);
-            handleResultSelect(app);
+            handleAppSelect(app);
           }}
           appResourceData={resourceData}
           refreshApps={refreshApps}
+        />
+        <FilesTable
+          data={useMemo(() => {
+            return filterItems(filesData, searchQuery);
+          }, [filesData, searchQuery])}
+          onRowClick={(file) => {
+            setSelectedItem(file.name);
+            handleFileSelect(file);
+          }}
         />
       </main>
       <div className="sticky bottom-0">
@@ -305,17 +330,3 @@ export default function App() {
     </div>
   );
 }
-
-// function EmptyState() {
-//   return (
-//     <div className="flex flex-col items-center justify-center p-8 space-y-2 text-primary-foreground/40 rounded-xl">
-//       <div className="bg-gray-200 dark:bg-muted rounded-full p-4">
-//         <Search className="text-primary-foreground/80" />
-//       </div>
-//       <h2 className="mb-2 text-xs font-semibold text-primary-foreground">
-//         No files found
-//       </h2>
-//       <p>Try searching for something else</p>
-//     </div>
-//   );
-// }

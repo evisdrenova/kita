@@ -58,6 +58,7 @@ pub fn run() {
             resource_monitor::start_resource_monitoring,
             resource_monitor::stop_resource_monitoring,
             file_processor::process_paths_command,
+            file_processor::get_files_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
