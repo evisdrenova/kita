@@ -24,7 +24,7 @@ interface Props {
 const columns: Column<FileMetadata>[] = [
   {
     key: "name",
-    header: "File Name",
+    header: "Files",
     width: 40,
     render: (file) => (
       <div className="flex items-center flex-row gap-2 ">
@@ -40,7 +40,7 @@ const columns: Column<FileMetadata>[] = [
     header: "Path",
     width: 40,
     render: (file) => (
-      <div className="flex items-center justify-start gap-1 text-xs text-gray-500">
+      <div className="flex items-center justify-start gap-1 text-[14px] text-gray-500">
         {truncatePath(file.path)}
       </div>
     ),
@@ -134,7 +134,7 @@ export default function FilesTable(props: Props) {
   }, [data, sortKey, sortDirection]);
 
   return (
-    <div className="table-container" style={{ overflowX: "auto" }}>
+    <div className="overflow-auto border rounded border-border">
       <table
         className="w-full border-collapse"
         style={{ tableLayout: "fixed" }}

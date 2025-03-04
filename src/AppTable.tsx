@@ -16,7 +16,7 @@ interface Props {
 const columns: Column<AppMetadata>[] = [
   {
     key: "name",
-    header: "Application",
+    header: "Applications",
     width: 70,
     render: (app) => (
       <div className="flex items-center min-w-0">
@@ -167,7 +167,7 @@ export default function AppTable(props: Props) {
   }, [data, appResourceData, sortKey, sortDirection]);
 
   return (
-    <div className="table-container" style={{ overflowX: "auto" }}>
+    <div className="overflow-auto border rounded border-border">
       <table
         className="w-full border-collapse"
         style={{ tableLayout: "fixed" }}

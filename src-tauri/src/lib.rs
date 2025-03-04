@@ -3,6 +3,7 @@ mod file_processor;
 mod resource_monitor;
 mod database_handler;
 mod utils;
+mod tokenizer;
 
 use file_processor::FileProcessorState;
 use tauri::Manager;

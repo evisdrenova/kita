@@ -152,9 +152,9 @@ impl FileProcessor {
                     VALUES (?1, ?2, ?3, ?4, ?5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
                     "#,
                     params![
-                        file.base.path, 
-                        file.base.name, 
-                        file.extension, 
+                        file.base.path,
+                        file.base.name,
+                        file.extension,
                         file.size,
                         get_category_from_extension(&file.extension)
                     ],
@@ -322,43 +322,75 @@ pub async fn process_paths_command(
         .map_err(|e| e.to_string())
 }
 
-
 #[tauri::command]
-pub fn get_files_data(query: String, state: State<'_, FileProcessorState>) -> Result<Vec<FileMetadata>, String> {
-     
+pub fn get_files_data(
+    query: String,
+    state: State<'_, FileProcessorState>
+) -> Result<Vec<FileMetadata>, String> {
     let processor = {
         let guard = state.0.lock().map_err(|e| e.to_string())?;
         guard.as_ref().ok_or("File processor not initialized".to_string())?.clone()
     };
 
-     // Open a connection using the stored db_path
-     let conn = Connection::open(processor.db_path)
-     .map_err(|e| format!("Failed to open database: {e}"))?;
+    let conn = Connection::open(processor.db_path)
+        .map_err(|e| format!("Failed to open database: {e}"))?;
 
- // Build the LIKE pattern from the query
- let like_pattern = format!("%{}%", query);
+    // If query is empty, show last 50 inserted or last 50 updated
+    // TODO: we can be smarter here and understand the files the user commonly ccesses and show them here using a last_accessed_date or recents or something 
+    if query.trim().is_empty() {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, name, path, extension, size, created_at, updated_at
+            FROM files
+            ORDER BY updated_at DESC
+            LIMIT 50
+            "#
+        ).map_err(|e| format!("Failed to prepare statement: {e}"))?;
 
- // Prepare the query statement
- let mut stmt = conn.prepare(
-    "
-    SELECT 
-        id,
-        name,
-        path,
-        extension,
-        size,
-        created_at,
-        updated_at
-    FROM files
-    WHERE name LIKE ?1 OR path LIKE ?2
-    LIMIT 50
-    "
-).map_err(|e| format!("Failed to prepare statement: {e}"))?;
+        let files_iter = stmt.query_map([], |row| {
+            Ok(FileMetadata {
+                base: BaseMetadata {
+                    id: Some(row.get(0)?),
+                    name: row.get(1)?,
+                    path: row.get(2)?,
+                },
+                file_type: SearchSectionType::Files,
+                extension: row.get(3)?,
+                size: row.get(4)?,
+                created_at: row.get(5).ok(),
+                updated_at: row.get(6).ok(),
+            })
+        }).map_err(|e| format!("Query execution error: {e}"))?;
 
-// Map the rows into FileMetadata. We assume that the 'id' field in the database corresponds to the optional id.
-let files_iter = stmt.query_map(
-    params![like_pattern, like_pattern],
-    |row| {
+        let mut files = Vec::new();
+        for file in files_iter {
+            files.push(file.map_err(|e| format!("Row mapping error: {e}"))?);
+        }
+        return Ok(files);
+    }
+
+    // For non-empty query, do an FTS5 MATCH
+    // Example: simple usage might treat query as a phrase. 
+    // For partial matches or multiple tokens, see notes below.
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT
+          f.id,
+          f.name,
+          f.path,
+          f.extension,
+          f.size,
+          f.created_at,
+          f.updated_at
+        FROM files_fts AS ft
+        JOIN files f ON ft.rowid = f.id
+        WHERE ft MATCH ?
+        LIMIT 50
+        "#
+    ).map_err(|e| format!("Failed to prepare statement: {e}"))?;
+
+    let files_iter = stmt.query_map([query.as_str()], |row| {
         Ok(FileMetadata {
             base: BaseMetadata {
                 id: Some(row.get(0)?),
@@ -371,14 +403,14 @@ let files_iter = stmt.query_map(
             created_at: row.get(5).ok(),
             updated_at: row.get(6).ok(),
         })
-    }
-).map_err(|e| format!("Query execution error: {e}"))?;
+    }).map_err(|e| format!("Query execution error: {e}"))?;
 
-let mut files = Vec::new();
-for file in files_iter {
-    files.push(file.map_err(|e| format!("Row mapping error: {e}"))?);
-}
-Ok(files)
+    let mut files = Vec::new();
+    for file in files_iter {
+        files.push(file.map_err(|e| format!("Row mapping error: {e}"))?);
+    }
+
+    Ok(files)
 }
 
 

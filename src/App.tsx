@@ -240,6 +240,7 @@ export default function App() {
         const appData = await invoke<AppMetadata[]>("get_apps_data");
         setAppsData(appData);
 
+        console.log("files data", searchQuery);
         const filesData = await invoke<FileMetadata[]>("get_files_data", {
           query: searchQuery,
         });
@@ -322,10 +323,12 @@ export default function App() {
     }
   }
 
+  console.log("files", filesData);
+
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <Header setSearchQuery={setSearchQuery} searchQuery={searchQuery} />
-      <main className="flex-1 px-2 pt-4 overflow-auto scrollbar">
+      <main className="flex-1 px-2 pt-4 overflow-auto scrollbar flex flex-col gap-2">
         {/* {searchQuery.trim() === "" ? (
           recents.length > 0 ? (
             <Recents
