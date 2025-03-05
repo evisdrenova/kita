@@ -9,6 +9,8 @@ use tokio::task;
 use walkdir::WalkDir;
 use std::process::Command;
 
+use crate::tokenizer::build_doc_text;
+
 
 use crate::utils::get_category_from_extension;
 
@@ -139,30 +141,58 @@ impl FileProcessor {
                 let conn = Connection::open(db_path)?;
     
                 // Set pragmas for better performance
-                conn.execute_batch(
-                    r#"
-                    PRAGMA journal_mode = WAL;
-                    PRAGMA synchronous = NORMAL;
-                    "#,
-                )?;
-    
-                conn.execute(
-                    r#"
-                    INSERT OR IGNORE INTO files (path, name, extension, size, category, created_at, updated_at)
-                    VALUES (?1, ?2, ?3, ?4, ?5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
-                    "#,
-                    params![
-                        file.base.path,
-                        file.base.name,
-                        file.extension,
-                        file.size,
-                        get_category_from_extension(&file.extension)
-                    ],
-                )?;
-    
-                Ok(())
-            }
-        });
+       // Set pragmas for better performance
+       conn.execute_batch(
+        r#"
+        PRAGMA journal_mode = WAL;
+        PRAGMA synchronous = NORMAL;
+        "#,
+    )?;
+
+    // 1) Insert or ignore into `files`
+    conn.execute(
+        r#"
+        INSERT OR IGNORE INTO files (path, name, extension, size, category, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+        "#,
+        params![
+            file.base.path,
+            file.base.name,
+            file.extension,
+            file.size,
+            get_category_from_extension(&file.extension)
+        ],
+    )?;
+
+    // 2) Retrieve the `id` for this file (whether newly inserted or existing)
+    let file_id: i64 = conn.query_row(
+        "SELECT id FROM files WHERE path = ?1",
+        [file.base.path.clone()],
+        |row| row.get(0),
+    )?;
+
+    // 3) Build doc_text from name/path/extension as trigrams
+    //    (or your own logic for substring searching)
+    let doc_text = build_doc_text(
+        &file.base.name,
+        &file.base.path,
+        &file.extension
+    );
+
+    // 4) Insert or update in the FTS table
+    //    rowid = file_id ensures they match for joining later.
+    conn.execute(
+        r#"
+        INSERT INTO files_fts(rowid, doc_text)
+        VALUES (?1, ?2)
+        ON CONFLICT(rowid) DO UPDATE SET doc_text = excluded.doc_text;
+        "#,
+        params![file_id, doc_text],
+    )?;
+
+    Ok(())
+}
+});
     
         handle
             .await
@@ -239,11 +269,6 @@ impl FileProcessor {
         });
         Ok(result)
     }
-
-
-
-
-
     
 }
 
@@ -323,10 +348,7 @@ pub async fn process_paths_command(
 }
 
 #[tauri::command]
-pub fn get_files_data(
-    query: String,
-    state: State<'_, FileProcessorState>
-) -> Result<Vec<FileMetadata>, String> {
+pub fn get_files_data(query: String, state: State<'_, FileProcessorState>) -> Result<Vec<FileMetadata>, String> {
     let processor = {
         let guard = state.0.lock().map_err(|e| e.to_string())?;
         guard.as_ref().ok_or("File processor not initialized".to_string())?.clone()
@@ -335,44 +357,87 @@ pub fn get_files_data(
     let conn = Connection::open(processor.db_path)
         .map_err(|e| format!("Failed to open database: {e}"))?;
 
-    // If query is empty, show last 50 inserted or last 50 updated
-    // TODO: we can be smarter here and understand the files the user commonly ccesses and show them here using a last_accessed_date or recents or something 
+    // If user typed nothing, return first 50 files but we can be smarter here and check based on recents
     if query.trim().is_empty() {
-        let mut stmt = conn.prepare(
-            r#"
-            SELECT id, name, path, extension, size, created_at, updated_at
-            FROM files
-            ORDER BY updated_at DESC
-            LIMIT 50
-            "#
-        ).map_err(|e| format!("Failed to prepare statement: {e}"))?;
 
-        let files_iter = stmt.query_map([], |row| {
-            Ok(FileMetadata {
-                base: BaseMetadata {
-                    id: Some(row.get(0)?),
-                    name: row.get(1)?,
-                    path: row.get(2)?,
-                },
-                file_type: SearchSectionType::Files,
-                extension: row.get(3)?,
-                size: row.get(4)?,
-                created_at: row.get(5).ok(),
-                updated_at: row.get(6).ok(),
-            })
-        }).map_err(|e| format!("Query execution error: {e}"))?;
+    let mut stmt = conn.prepare(
+        r#"
+             SELECT
+              id,
+              name,
+              path,
+              extension,
+              size,
+              created_at,
+              updated_at
+            FROM files
+            LIMIT 50
+        "#
+    ).map_err(|e| format!("Failed to prepare statement: {e}"))?;
+
+    let mut rows = stmt.query([]).map_err(|e| format!("Query error: {e}"))?;
+
 
         let mut files = Vec::new();
-        for file in files_iter {
-            files.push(file.map_err(|e| format!("Row mapping error: {e}"))?);
+        while let Some(row) = rows.next().map_err(|e| format!("Row error: {e}"))? {
+            files.push(FileMetadata {
+                base: BaseMetadata {
+                    id: Some(row.get(0).map_err(|e| e.to_string())?),
+                    name: row.get(1).map_err(|e| e.to_string())?,
+                    path: row.get(2).map_err(|e| e.to_string())?,
+                },
+                file_type: SearchSectionType::Files,
+                extension: row.get(3).map_err(|e| e.to_string())?,
+                size: row.get(4).map_err(|e| e.to_string())?,
+                created_at: row.get(5).ok(),
+                updated_at: row.get(6).ok(),
+            });
         }
         return Ok(files);
     }
 
-    // For non-empty query, do an FTS5 MATCH
-    // Example: simple usage might treat query as a phrase. 
-    // For partial matches or multiple tokens, see notes below.
+    // Fallback if query is under 3 chars, because we won't have a direct trigram for it
+    if query.len() < 3 {
+        // maybe do a LIKE fallback
+        let like_pattern = format!("%{}%", query);
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT
+              id,
+              name,
+              path,
+              extension,
+              size,
+              created_at,
+              updated_at
+            FROM files
+            WHERE name LIKE ?1 OR path LIKE ?2 OR extension LIKE ?3
+            LIMIT 50
+            "#
+        ).map_err(|e| format!("Failed to prepare statement: {e}"))?;
 
+        let mut rows = stmt.query([&like_pattern, &like_pattern, &like_pattern])
+            .map_err(|e| format!("Query error: {e}"))?;
+
+        let mut files = Vec::new();
+        while let Some(row) = rows.next().map_err(|e| format!("Row error: {e}"))? {
+            files.push(FileMetadata {
+                base: BaseMetadata {
+                    id: Some(row.get(0).map_err(|e| e.to_string())?),
+                    name: row.get(1).map_err(|e| e.to_string())?,
+                    path: row.get(2).map_err(|e| e.to_string())?,
+                },
+                file_type: SearchSectionType::Files,
+                extension: row.get(3).map_err(|e| e.to_string())?,
+                size: row.get(4).map_err(|e| e.to_string())?,
+                created_at: row.get(5).ok(),
+                updated_at: row.get(6).ok(),
+            });
+        }
+        return Ok(files);
+    }
+
+    // Otherwise, for 3+ char query, do an FTS search on doc_text
     let mut stmt = conn.prepare(
         r#"
         SELECT
@@ -383,31 +448,30 @@ pub fn get_files_data(
           f.size,
           f.created_at,
           f.updated_at
-        FROM files_fts AS ft
+        FROM files_fts ft
         JOIN files f ON ft.rowid = f.id
-        WHERE ft MATCH ?
+        WHERE ft.doc_text MATCH ?1
         LIMIT 50
         "#
     ).map_err(|e| format!("Failed to prepare statement: {e}"))?;
 
-    let files_iter = stmt.query_map([query.as_str()], |row| {
-        Ok(FileMetadata {
-            base: BaseMetadata {
-                id: Some(row.get(0)?),
-                name: row.get(1)?,
-                path: row.get(2)?,
-            },
-            file_type: SearchSectionType::Files,
-            extension: row.get(3)?,
-            size: row.get(4)?,
-            created_at: row.get(5).ok(),
-            updated_at: row.get(6).ok(),
-        })
-    }).map_err(|e| format!("Query execution error: {e}"))?;
+    let mut rows = stmt.query([query.as_str()])
+        .map_err(|e| format!("Query error: {e}"))?;
 
     let mut files = Vec::new();
-    for file in files_iter {
-        files.push(file.map_err(|e| format!("Row mapping error: {e}"))?);
+    while let Some(row) = rows.next().map_err(|e| format!("Row error: {e}"))? {
+        files.push(FileMetadata {
+            base: BaseMetadata {
+                id: Some(row.get(0).map_err(|e| e.to_string())?),
+                name: row.get(1).map_err(|e| e.to_string())?,
+                path: row.get(2).map_err(|e| e.to_string())?,
+            },
+            file_type: SearchSectionType::Files,
+            extension: row.get(3).map_err(|e| e.to_string())?,
+            size: row.get(4).map_err(|e| e.to_string())?,
+            created_at: row.get(5).ok(),
+            updated_at: row.get(6).ok(),
+        });
     }
 
     Ok(files)

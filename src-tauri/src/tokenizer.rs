@@ -1,55 +1,31 @@
-use rusqlite::vtab::{
-    sqlite3_tokenizer_module, Context, CreateTokenizerModule, Tokenizer, TokenizerModule,
-    TokenizerControl,
-};
-use rusqlite::{Connection, Result};
+// builds the 3 character trigram
+// if the len < 3, we'll jsut return the entire string 
+pub fn build_trigrams(s: &str) -> String {
 
-pub struct TrigramTokenizerModule;
+let len = s.len();
 
-// create an instance of the tokenizer
-impl TokenizerModule for TrigramTokenizerModule {
-    type Tokenizer = TrigramTokenizer;
-
-    fn create(&self, _args: &[&[u8]]) -> Result<Self::Tokenizer> {
-        Ok(TrigramTokenizer)
-    }
+if len < 3 {
+    return s.to_string();
 }
 
-pub struct TrigramTokenizer;
-
-/// break input text into trigram tokens
-impl Tokenizer for TrigramTokenizer {
-    fn tokenize<F>(&self, text: &str, mut token_callback: F) -> Result<()>
-    where
-        F: FnMut(&str, usize, usize, TokenizerControl) -> Result<()>,
-    {
-        // We'll produce overlapping 3-character substrings.
-        // For example, "example.pdf" -> "exa", "xam", "amp", "mpl", "ple", "le.", "e.p", ".pd", "pdf"
-        let length = text.len();
-        if length < 3 {
-            // If the string is too short, you may want to treat it as a single token or skip.
-            // We'll treat 1-2 character strings as single tokens:
-            return token_callback(text, 0, length, TokenizerControl::empty());
-        }
-
-        // Generate every 3-character substring
-        for i in 0..(length - 2) {
-            let token = &text[i..i + 3];
-            // The (start, end) offsets in the original text:
-            let start_offset = i;
-            let end_offset = i + 3;
-
-            token_callback(token, start_offset, end_offset, TokenizerControl::empty())?;
-        }
-
-        Ok(())
-    }
+// for length >= 3, we produce overlapping tokens
+// i.e. for "tokens" -> "tok", "oke", "ken", "ens"
+let mut tokens = Vec::with_capacity(len-2);
+// subtract 2 to determine the total number of tokens to output
+for i in 0..(len - 2){
+    tokens.push(&s[i..1 + 3]);
+}
+// join with spaces so FTS sees each 3-char slice as a separate token
+tokens.join(" ")
 }
 
-/// A convenience function to register the `trigram` tokenizer module with a SQLite connection.
-/// Must be called *before* creating the FTS table that uses `tokenize='trigram'`.
-pub fn init_trigram_tokenizer_module(conn: &Connection) -> Result<()> {
-    let tokenizer_module = CreateTokenizerModule::new(TrigramTokenizerModule);
-    // Register our module name as "trigram"
-    conn.create_module("trigram", tokenizer_module)
+// combine name/path/extension trigrams into one doc_text string that fs5 can search over
+pub fn build_doc_text(name: &str, path: &str, extension: &str) -> String {
+
+    let mut parts = Vec::new();
+    parts.push(build_trigrams(name));
+    parts.push(build_trigrams(path));
+    parts.push(build_trigrams(extension));
+
+    parts.join(" ")
 }

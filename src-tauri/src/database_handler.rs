@@ -14,17 +14,18 @@ pub enum DbError {
     TauriPath(#[from] tauri::Error),
 }
 
-/* FTS5 stays in syc with the for files table using triggers which makes updating our indexes easier.  */
 
 // handles creating the database and returns the db_path
 #[tauri::command]
 pub fn initialize_database(app_handle: AppHandle) -> Result<PathBuf, DbError> {
     let app_data_dir: PathBuf = app_handle.path().app_data_dir().map_err(|_| DbError::NoAppDataDir)?;
     
-    let db_path = app_data_dir.join("kita-database.sqlite");
+    let db_path: PathBuf = app_data_dir.join("kita-database.sqlite");
 
-    let conn = Connection::open(&db_path)?;
+    let conn: Connection = Connection::open(&db_path)?;
 
+    // the fts5 table will create shadow tables to store config, index, data, etc. 
+    // theese are all technically part of the fts5 virtual table
     conn.execute_batch(
       r#"
       CREATE TABLE IF NOT EXISTS files (
@@ -55,37 +56,11 @@ pub fn initialize_database(app_handle: AppHandle) -> Result<PathBuf, DbError> {
 
       CREATE VIRTUAL TABLE IF NOT EXISTS files_fts
       USING fts5 (
-          name,
-          path,
-          extension,
-          content='',
-          tokenize='unicode61'
+          doc_text,
+          content=''
       );
-
-      -- Trigger: after inserting into files, insert into files_fts
-      CREATE TRIGGER IF NOT EXISTS files_ai
-      AFTER INSERT ON files BEGIN
-          INSERT INTO files_fts(rowid, name, path, extension)
-          VALUES (new.id, new.name, new.path, new.extension);
-      END;
-
-      -- Trigger: after deleting from files, remove from files_fts
-      CREATE TRIGGER IF NOT EXISTS files_ad
-      AFTER DELETE ON files BEGIN
-          DELETE FROM files_fts WHERE rowid = old.id;
-      END;
-
-      -- Trigger: after updating files, update files_fts
-      CREATE TRIGGER IF NOT EXISTS files_au
-      AFTER UPDATE ON files BEGIN
-          UPDATE files_fts
-          SET name = new.name,
-              path = new.path,
-              extension = new.extension
-          WHERE rowid = old.id;
-      END;
       "#
-  )?;
+    )?;
 
-  Ok(db_path)
+    Ok(db_path)
 }
