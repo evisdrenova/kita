@@ -32,7 +32,7 @@ type SettingCategory =
   | "Advanced";
 
 const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
-  (props) => {
+  (props, ref) => {
     const {
       toggleCategory,
       selectedCategories,
@@ -70,7 +70,10 @@ const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
 
     return (
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <DialogContent className="sm:max-w-lg md:max-w-2xl lg:max-w-3xl xl:max-w-4xl h-max-3/4 overflow-hidden p-0">
+        <DialogContent
+          ref={ref}
+          className="sm:max-w-lg md:max-w-2xl lg:max-w-3xl xl:max-w-4xl h-max-3/4 overflow-hidden p-0"
+        >
           <div className="flex flex-col">
             <div className="flex items-center border-b p-4">
               <DialogTitle className="font-normal">Settings</DialogTitle>

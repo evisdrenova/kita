@@ -12,8 +12,9 @@ if len < 3 {
 // i.e. for "tokens" -> "tok", "oke", "ken", "ens"
 let mut tokens = Vec::with_capacity(len-2);
 // subtract 2 to determine the total number of tokens to output
+
 for i in 0..(len - 2){
-    tokens.push(&s[i..1 + 3]);
+    tokens.push(&s[i..i + 3]);
 }
 // join with spaces so FTS sees each 3-char slice as a separate token
 tokens.join(" ")

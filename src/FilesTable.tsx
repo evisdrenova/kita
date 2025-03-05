@@ -134,50 +134,54 @@ export default function FilesTable(props: Props) {
   }, [data, sortKey, sortDirection]);
 
   return (
-    <div className="overflow-auto border rounded border-border">
-      <table
-        className="w-full border-collapse"
-        style={{ tableLayout: "fixed" }}
-      >
-        <colgroup>
-          {columns.map((column) => (
-            <col key={column.key} style={{ width: `${column.width}%` }} />
-          ))}
-        </colgroup>
-        <thead>
-          <tr>
-            {columns.map((column) => (
-              <th
-                key={column.key}
-                className="text-left p-2 text-sm font-medium text-gray-500"
-                onClick={() => handleSort(column.key)}
-                style={{
-                  cursor: "pointer",
-                }}
-              >
-                {column.header}
-                {sortKey === column.key && (
-                  <span className="ml-1">
-                    {sortDirection === "asc" ? "↑" : "↓"}
-                  </span>
-                )}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {sortedFiles.map((file) => (
-            <FileRow
-              key={`${file.path}-${file.name}`}
-              file={file}
-              columns={columns}
-              onRowClick={onRowClick}
-              isSelected={file.name === selectedItemName}
-            />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      {sortedFiles.length > 0 && (
+        <div className="overflow-autoß border rounded border-border">
+          <table
+            className="w-full border-collapse"
+            style={{ tableLayout: "fixed" }}
+          >
+            <colgroup>
+              {columns.map((column) => (
+                <col key={column.key} style={{ width: `${column.width}%` }} />
+              ))}
+            </colgroup>
+            <thead>
+              <tr>
+                {columns.map((column) => (
+                  <th
+                    key={column.key}
+                    className="text-left p-2 text-sm font-medium text-gray-500"
+                    onClick={() => handleSort(column.key)}
+                    style={{
+                      cursor: "pointer",
+                    }}
+                  >
+                    {column.header}
+                    {sortKey === column.key && (
+                      <span className="ml-1">
+                        {sortDirection === "asc" ? "↑" : "↓"}
+                      </span>
+                    )}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sortedFiles.map((file) => (
+                <FileRow
+                  key={`${file.path}-${file.name}`}
+                  file={file}
+                  columns={columns}
+                  onRowClick={onRowClick}
+                  isSelected={file.name === selectedItemName}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
   );
 }
 
