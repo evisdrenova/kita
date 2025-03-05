@@ -28,5 +28,7 @@ pub fn build_doc_text(name: &str, path: &str, extension: &str) -> String {
     parts.push(build_trigrams(path));
     parts.push(build_trigrams(extension));
 
+    println!("the tokens: {:?}", parts);
+
     parts.join(" ")
 }

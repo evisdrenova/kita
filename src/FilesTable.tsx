@@ -136,7 +136,7 @@ export default function FilesTable(props: Props) {
   return (
     <>
       {sortedFiles.length > 0 && (
-        <div className="overflow-autoß border rounded border-border">
+        <div className="overflow-auto border rounded border-border">
           <table
             className="w-full border-collapse"
             style={{ tableLayout: "fixed" }}

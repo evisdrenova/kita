@@ -134,7 +134,7 @@ impl FileProcessor {
 
     /// Process a single file: do DB writes, text extraction, embedding, etc.
     /// We'll do this in a blocking task because rusqlite is blocking.
-    async fn process_one_file(&self, file: FileMetadata) -> Result<(), FileProcessorError> {
+async fn process_one_file(&self, file: FileMetadata) -> Result<(), FileProcessorError> {
         let handle = task::spawn_blocking({
             let db_path = self.db_path.clone();
             move || -> Result<(), FileProcessorError> {
@@ -171,6 +171,8 @@ impl FileProcessor {
         |row| row.get(0),
     )?;
 
+    println!("the file id: {}", file_id);
+
     // 3) Build doc_text from name/path/extension as trigrams
     //    (or your own logic for substring searching)
     let doc_text = build_doc_text(
@@ -178,6 +180,8 @@ impl FileProcessor {
         &file.base.path,
         &file.extension
     );
+
+    println!("the doc_text: {:?}", doc_text);
 
     // 4) Insert or update in the FTS table
     //    rowid = file_id ensures they match for joining later.
@@ -359,7 +363,7 @@ pub fn get_files_data(query: String, state: State<'_, FileProcessorState>) -> Re
 
     // If user typed nothing, return first 50 files but we can be smarter here and check based on recents
     if query.trim().is_empty() {
-
+println!("the query is empty");
     let mut stmt = conn.prepare(
         r#"
              SELECT
@@ -398,6 +402,8 @@ pub fn get_files_data(query: String, state: State<'_, FileProcessorState>) -> Re
 
     // Fallback if query is under 3 chars, because we won't have a direct trigram for it
     if query.len() < 3 {
+
+        println!("the query is less than 3");
         // maybe do a LIKE fallback
         let like_pattern = format!("%{}%", query);
         let mut stmt = conn.prepare(
@@ -437,6 +443,8 @@ pub fn get_files_data(query: String, state: State<'_, FileProcessorState>) -> Re
         return Ok(files);
     }
 
+
+    println!("the query is more than 3");
     // Otherwise, for 3+ char query, do an FTS search on doc_text
     let mut stmt = conn.prepare(
         r#"

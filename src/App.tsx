@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import "./globals.css";
@@ -240,7 +240,6 @@ export default function App() {
         const appData = await invoke<AppMetadata[]>("get_apps_data");
         setAppsData(appData);
 
-        console.log("files data", searchQuery);
         const filesData = await invoke<FileMetadata[]>("get_files_data", {
           query: searchQuery,
         });
@@ -324,6 +323,9 @@ export default function App() {
   }
 
   console.log("files", filesData);
+  console.log("get apps data", appsData);
+
+  console.log("search query", searchQuery);
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
@@ -347,6 +349,7 @@ export default function App() {
             <EmptyState />
           </div>
         ) : ( */}
+
         <AppTable
           data={useMemo(() => {
             return filterItems(appsData, searchQuery);
@@ -367,6 +370,7 @@ export default function App() {
             currentSection === "apps" ? selectedItem : undefined
           }
         />
+
         <FilesTable
           data={useMemo(() => {
             return filterItems(filesData, searchQuery);

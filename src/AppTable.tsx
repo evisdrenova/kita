@@ -167,49 +167,53 @@ export default function AppTable(props: Props) {
   }, [data, appResourceData, sortKey, sortDirection]);
 
   return (
-    <div className="overflow-auto border rounded border-border">
-      <table
-        className="w-full border-collapse"
-        style={{ tableLayout: "fixed" }}
-      >
-        <thead>
-          <tr>
-            {columns.map((column) => (
-              <th
-                key={column.key}
-                className="text-left p-2 text-sm font-medium text-gray-500"
-                onClick={() =>
-                  column.key !== "actions" && handleSort(column.key)
-                }
-                style={{
-                  cursor: column.key !== "actions" ? "pointer" : "default",
-                  width: `${column.width}%`,
-                }}
-              >
-                {column.header}
-                {sortKey === column.key && column.key !== "actions" && (
-                  <span className="ml-1">
-                    {sortDirection === "asc" ? "↑" : "↓"}
-                  </span>
-                )}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {processedApps.map((app) => (
-            <TableRow
-              key={app.pid || app.name}
-              app={app}
-              columns={columns}
-              onRowClick={onRowClick}
-              refreshApps={refreshApps}
-              isSelected={app.name === selectedItemName}
-            />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      {processedApps.length > 0 && (
+        <div className="overflow-auto border rounded border-border">
+          <table
+            className="w-full border-collapse"
+            style={{ tableLayout: "fixed" }}
+          >
+            <thead>
+              <tr>
+                {columns.map((column) => (
+                  <th
+                    key={column.key}
+                    className="text-left p-2 text-sm font-medium text-gray-500"
+                    onClick={() =>
+                      column.key !== "actions" && handleSort(column.key)
+                    }
+                    style={{
+                      cursor: column.key !== "actions" ? "pointer" : "default",
+                      width: `${column.width}%`,
+                    }}
+                  >
+                    {column.header}
+                    {sortKey === column.key && column.key !== "actions" && (
+                      <span className="ml-1">
+                        {sortDirection === "asc" ? "↑" : "↓"}
+                      </span>
+                    )}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {processedApps.map((app) => (
+                <TableRow
+                  key={app.pid || app.name}
+                  app={app}
+                  columns={columns}
+                  onRowClick={onRowClick}
+                  refreshApps={refreshApps}
+                  isSelected={app.name === selectedItemName}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
   );
 }
 
