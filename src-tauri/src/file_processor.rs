@@ -9,7 +9,7 @@ use tokio::task;
 use walkdir::WalkDir;
 use std::process::Command;
 
-use crate::tokenizer::build_doc_text;
+use crate::tokenizer::{build_doc_text,build_trigrams};
 
 
 use crate::utils::get_category_from_extension;
@@ -134,69 +134,61 @@ impl FileProcessor {
 
     /// Process a single file: do DB writes, text extraction, embedding, etc.
     /// We'll do this in a blocking task because rusqlite is blocking.
-async fn process_one_file(&self, file: FileMetadata) -> Result<(), FileProcessorError> {
+    async fn process_one_file(&self, file: FileMetadata) -> Result<(), FileProcessorError> {
         let handle = task::spawn_blocking({
             let db_path = self.db_path.clone();
             move || -> Result<(), FileProcessorError> {
                 let conn = Connection::open(db_path)?;
     
                 // Set pragmas for better performance
-       // Set pragmas for better performance
-       conn.execute_batch(
-        r#"
-        PRAGMA journal_mode = WAL;
-        PRAGMA synchronous = NORMAL;
-        "#,
-    )?;
-
-    // 1) Insert or ignore into `files`
-    conn.execute(
-        r#"
-        INSERT OR IGNORE INTO files (path, name, extension, size, category, created_at, updated_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
-        "#,
-        params![
-            file.base.path,
-            file.base.name,
-            file.extension,
-            file.size,
-            get_category_from_extension(&file.extension)
-        ],
-    )?;
-
-    // 2) Retrieve the `id` for this file (whether newly inserted or existing)
-    let file_id: i64 = conn.query_row(
-        "SELECT id FROM files WHERE path = ?1",
-        [file.base.path.clone()],
-        |row| row.get(0),
-    )?;
-
-    println!("the file id: {}", file_id);
-
-    // 3) Build doc_text from name/path/extension as trigrams
-    //    (or your own logic for substring searching)
-    let doc_text = build_doc_text(
-        &file.base.name,
-        &file.base.path,
-        &file.extension
-    );
-
-    println!("the doc_text: {:?}", doc_text);
-
-    // 4) Insert or update in the FTS table
-    //    rowid = file_id ensures they match for joining later.
-    conn.execute(
-        r#"
-        INSERT INTO files_fts(rowid, doc_text)
-        VALUES (?1, ?2)
-        ON CONFLICT(rowid) DO UPDATE SET doc_text = excluded.doc_text;
-        "#,
-        params![file_id, doc_text],
-    )?;
-
-    Ok(())
-}
-});
+                conn.execute_batch(
+                    r#"
+                    PRAGMA journal_mode = WAL;
+                    PRAGMA synchronous = NORMAL;
+                    "#,
+                )?;
+    
+                // Insert file metadata
+                conn.execute(
+                    r#"
+                    INSERT OR IGNORE INTO files (path, name, extension, size, category, created_at, updated_at)
+                    VALUES (?1, ?2, ?3, ?4, ?5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                    "#,
+                    params![
+                        file.base.path,
+                        file.base.name,
+                        file.extension,
+                        file.size,
+                        get_category_from_extension(&file.extension)
+                    ],
+                )?;
+                
+                // Get the file ID for FTS insertion
+                let file_id: i64 = conn.query_row(
+                    "SELECT id FROM files WHERE path = ?1",
+                    [file.base.path.clone()],
+                    |row| row.get(0),
+                )?;
+    
+                // Build document text from file metadata for search indexing
+                let doc_text = build_doc_text(
+                    &file.base.name,
+                    &file.base.path,
+                    &file.extension
+                );
+    
+                // Insert into full-text search table
+                conn.execute(
+                    r#"
+                    INSERT INTO files_fts(rowid, doc_text)
+                    VALUES (?1, ?2)
+                    "#,
+                    params![file_id, doc_text],
+                )?;
+                
+                Ok(())
+            }
+        });
     
         handle
             .await
@@ -400,12 +392,11 @@ println!("the query is empty");
         return Ok(files);
     }
 
-    // Fallback if query is under 3 chars, because we won't have a direct trigram for it
     if query.len() < 3 {
-
         println!("the query is less than 3");
-        // maybe do a LIKE fallback
+        
         let like_pattern = format!("%{}%", query);
+        
         let mut stmt = conn.prepare(
             r#"
             SELECT
@@ -421,8 +412,9 @@ println!("the query is empty");
             LIMIT 50
             "#
         ).map_err(|e| format!("Failed to prepare statement: {e}"))?;
-
-        let mut rows = stmt.query([&like_pattern, &like_pattern, &like_pattern])
+    
+        // Provide all three parameters the query expects
+        let mut rows = stmt.query(params![&like_pattern, &like_pattern, &like_pattern])
             .map_err(|e| format!("Query error: {e}"))?;
 
         let mut files = Vec::new();
@@ -443,9 +435,10 @@ println!("the query is empty");
         return Ok(files);
     }
 
+    let search_trigrams = build_trigrams(&query); 
+    println!("more than 3 in search query, the search trigrams: {}", search_trigrams);
 
-    println!("the query is more than 3");
-    // Otherwise, for 3+ char query, do an FTS search on doc_text
+    // do an FTS search on doc_text
     let mut stmt = conn.prepare(
         r#"
         SELECT
@@ -463,7 +456,8 @@ println!("the query is empty");
         "#
     ).map_err(|e| format!("Failed to prepare statement: {e}"))?;
 
-    let mut rows = stmt.query([query.as_str()])
+    // Fix: Use search_trigrams instead of raw query
+    let mut rows = stmt.query([search_trigrams.as_str()])
         .map_err(|e| format!("Query error: {e}"))?;
 
     let mut files = Vec::new();
@@ -499,4 +493,76 @@ pub fn open_file(file_path: &str) -> Result<(), String> {
     } else {
         Err(format!("Failed to open file, exit code: {:?}", status.code()))
     }
+}
+
+#[tauri::command]
+pub fn check_fts_table(state: State<'_, FileProcessorState>) -> Result<String, String> {
+    let processor = {
+        let guard = state.0.lock().map_err(|e| e.to_string())?;
+        guard.as_ref().ok_or("File processor not initialized".to_string())?.clone()
+    };
+
+    let conn = Connection::open(processor.db_path)
+        .map_err(|e| format!("Failed to open database: {e}"))?;
+    
+    let mut result = String::new();
+    
+    // Check total count of entries in files_fts table
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM files_fts", [], |row| row.get(0))
+        .map_err(|e| format!("Failed to count FTS rows: {e}"))?;
+    
+    result.push_str(&format!("Total entries in files_fts table: {}\n\n", count));
+    
+    // If there are entries, check some examples
+    if count > 0 {
+        // Get a sample of the entries
+        let mut stmt = conn.prepare(
+            "SELECT rowid, doc_text FROM files_fts LIMIT 5"
+        ).map_err(|e| format!("Failed to prepare statement: {e}"))?;
+        
+        let rows = stmt.query_map([], |row| {
+            let rowid: i64 = row.get(0)?;
+            let doc_text: String = row.get(1)?;
+            Ok((rowid, doc_text))
+        }).map_err(|e| format!("Query error: {e}"))?;
+        
+        result.push_str("Sample entries from files_fts:\n");
+        for entry in rows {
+            if let Ok((rowid, doc_text)) = entry {
+                result.push_str(&format!("rowid: {}, doc_text: {}\n", rowid, doc_text));
+            }
+        }
+        
+        // Get and check a "notes" file if one exists
+        if let Ok((rowid, doc_text)) = conn.query_row(
+            "SELECT ft.rowid, ft.doc_text FROM files_fts ft JOIN files f ON ft.rowid = f.id WHERE f.name LIKE '%notes%' LIMIT 1",
+            [],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        ) {
+            result.push_str(&format!("\nFound 'notes' file - rowid: {}, doc_text: {}\n", rowid, doc_text));
+            
+            // Test a search that should match this "notes" file
+            let trigram_search = build_trigrams("note");
+            let count_match: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM files_fts WHERE doc_text MATCH ?",
+                [trigram_search.as_str()],
+                |row| row.get(0)
+            ).unwrap_or(0);
+            
+            result.push_str(&format!("\nFiles matching 'note' trigrams ({}): {}\n", trigram_search, count_match));
+        }
+    }
+    
+    // Check the configuration of the FTS table
+    result.push_str("\nFTS5 table configuration:\n");
+    if let Ok(config) = conn.query_row(
+        "SELECT sql FROM sqlite_master WHERE name = 'files_fts'",
+        [],
+        |row| row.get::<_, String>(0)
+    ) {
+        result.push_str(&format!("Table SQL: {}\n", config));
+    }
+    
+    Ok(result)
 }

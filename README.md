@@ -61,3 +61,5 @@ We create a small TrigramTokenizer that splits each string into 3‑character ov
 We register that tokenizer with SQLite’s FTS5 engine.
 We store each filename/path as a series of these 3‑char tokens in the files_fts table.
 When the user searches for, e.g., "exa", that becomes an FTS search for the exa token—matching anywhere that has those three characters consecutively.
+
+// too many renders on firs tload

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import "./globals.css";
@@ -37,110 +37,10 @@ export default function App() {
   >({});
   const [showProgress, setShowProgress] = useState(false);
   const [indexElapsedTime, setIndexElapsedTime] = useState<number | null>(null);
-
-  // Add these state variables to track current section and item
   const [currentSection, setCurrentSection] = useState<"apps" | "files">(
     "apps"
   );
   const [currentItemIndex, setCurrentItemIndex] = useState<number>(-1);
-
-  // Add this useEffect for keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (appsData.length === 0 && filesData.length === 0) return;
-
-      // Filter data based on search query
-      const filteredApps = filterItems(appsData, searchQuery);
-      const filteredFiles = filterItems(filesData, searchQuery);
-
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-
-        if (currentSection === "apps") {
-          // If we're at the end of apps section, move to files section
-          if (currentItemIndex >= filteredApps.length - 1) {
-            if (filteredFiles.length > 0) {
-              setCurrentSection("files");
-              setCurrentItemIndex(0);
-              // Update selectedItem to highlight the first file
-              setSelectedItem(filteredFiles[0].name);
-            }
-          } else {
-            // Move to next app in the list
-            const newIndex = currentItemIndex + 1;
-            setCurrentItemIndex(newIndex);
-            // Update selectedItem to highlight the new app
-            setSelectedItem(filteredApps[newIndex].name);
-          }
-        } else if (currentSection === "files") {
-          // Move to next file in the list if possible
-          if (currentItemIndex < filteredFiles.length - 1) {
-            const newIndex = currentItemIndex + 1;
-            setCurrentItemIndex(newIndex);
-            // Update selectedItem to highlight the new file
-            setSelectedItem(filteredFiles[newIndex].name);
-          }
-        }
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-
-        if (currentSection === "files") {
-          // If we're at the beginning of files section, move to apps section
-          if (currentItemIndex <= 0) {
-            if (filteredApps.length > 0) {
-              setCurrentSection("apps");
-              setCurrentItemIndex(filteredApps.length - 1);
-              // Update selectedItem to highlight the last app
-              setSelectedItem(filteredApps[filteredApps.length - 1].name);
-            }
-          } else {
-            // Move to previous file in the list
-            const newIndex = currentItemIndex - 1;
-            setCurrentItemIndex(newIndex);
-            // Update selectedItem to highlight the new file
-            setSelectedItem(filteredFiles[newIndex].name);
-          }
-        } else if (currentSection === "apps") {
-          // Move to previous app in the list if possible
-          if (currentItemIndex > 0) {
-            const newIndex = currentItemIndex - 1;
-            setCurrentItemIndex(newIndex);
-            // Update selectedItem to highlight the new app
-            setSelectedItem(filteredApps[newIndex].name);
-          }
-        }
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-
-        // Only proceed if we have an active selection
-        if (currentItemIndex >= 0) {
-          if (
-            currentSection === "apps" &&
-            filteredApps.length > currentItemIndex
-          ) {
-            const app = filteredApps[currentItemIndex];
-            handleAppSelect(app);
-          } else if (
-            currentSection === "files" &&
-            filteredFiles.length > currentItemIndex
-          ) {
-            const file = filteredFiles[currentItemIndex];
-            handleFileSelect(file);
-          }
-        }
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [
-    appsData,
-    filesData,
-    searchQuery,
-    currentSection,
-    currentItemIndex,
-    selectedItem,
-  ]);
 
   // Reset the selection when search query changes
   useEffect(() => {
@@ -150,20 +50,18 @@ export default function App() {
     setSelectedItem(undefined);
   }, [searchQuery]);
 
-  // handles switching to the file or app
-  async function handleAppSelect(app: AppMetadata) {
-    await invoke<AppMetadata[]>("launch_or_switch_to_app", {
-      app: app,
-    });
-  }
+  // handles opening an app when the user selects it
+  const handleAppSelect = useCallback(async (app: AppMetadata) => {
+    await invoke<AppMetadata[]>("launch_or_switch_to_app", { app });
+  }, []);
 
-  async function handleFileSelect(file: FileMetadata) {
-    await invoke<FileMetadata[]>("open_file", {
-      filePath: file.path,
-    });
-  }
+  // handles opening a file when the user selects it
+  const handleFileSelect = useCallback(async (file: FileMetadata) => {
+    await invoke<FileMetadata[]>("open_file", { filePath: file.path });
+  }, []);
 
-  const toggleCategory = (category: SearchCategory) => {
+  // toggles categories in the index dialog
+  const toggleCategory = useCallback((category: SearchCategory) => {
     setSelectedCategories((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(category)) {
@@ -173,9 +71,10 @@ export default function App() {
       }
       return newSet;
     });
-  };
+  }, []);
 
-  const handleSelectPaths = async () => {
+  // starts the indexing when the user selects the paths they want to index
+  const handleSelectPaths = useCallback(async () => {
     setShowProgress(false);
     setIndexingProgress(null);
     setIndexElapsedTime(null);
@@ -199,7 +98,6 @@ export default function App() {
       const unlistenProgress = await listen<IndexingProgress>(
         "file-processing-progress",
         (event) => {
-          console.log("Received progress event:", event);
           const progress = event.payload;
           if (progress) {
             setIndexingProgress(progress);
@@ -214,6 +112,12 @@ export default function App() {
 
       setIndexElapsedTime(indexTimeElapsed);
       unlistenProgress();
+
+      const filesData = await invoke<FileMetadata[]>("get_files_data", {
+        query: searchQuery,
+      });
+      setFilesData(filesData);
+
       setIsIndexing(false);
     } catch (error) {
       const err = error as Error;
@@ -222,7 +126,7 @@ export default function App() {
       setIndexingProgress(null);
       errorToast("Error indexing selected paths:", err.message);
     }
-  };
+  }, [searchQuery]);
 
   // reset the progress indicator if the settings are closed
   useEffect(() => {
@@ -230,22 +134,20 @@ export default function App() {
     setIndexingProgress(null);
   }, [isSettingsOpen]);
 
-  // listens for resource events and app update events
+  // gets initial data - only gets called once in the beginning when the component mounts
   useEffect(() => {
     let unlistenUsage: UnlistenFn | undefined;
     let unlistenApps: UnlistenFn | undefined;
 
-    (async () => {
+    const initialize = async () => {
       try {
         const appData = await invoke<AppMetadata[]>("get_apps_data");
         setAppsData(appData);
 
         const filesData = await invoke<FileMetadata[]>("get_files_data", {
-          query: searchQuery,
+          query: "",
         });
         setFilesData(filesData);
-
-        console.log("filesData", filesData);
 
         const pids = appData
           .filter((app) => app.pid != null)
@@ -275,20 +177,19 @@ export default function App() {
         unlistenApps = await listen("apps-with-resources-updated", (event) => {
           const updatedApps = event.payload as AppMetadata[];
           setAppsData((prev) => {
-            return prev.map((apps) => {
-              return {
-                ...apps,
-                items: updatedApps.map((app) => app),
-              };
-
-              return apps;
-            });
+            // Simplified update to avoid unnecessary work
+            return prev.map((app) => ({
+              ...app,
+              items: updatedApps.map((updatedApp) => updatedApp),
+            }));
           });
         });
       } catch (err) {
         console.error("Failed to set up resource monitoring:", err);
       }
-    })();
+    };
+
+    initialize();
 
     return () => {
       if (unlistenUsage) unlistenUsage();
@@ -300,27 +201,141 @@ export default function App() {
     };
   }, []);
 
-  const filterItems = <T extends { name: string }>(
-    items: T[],
-    query: string
-  ): T[] => {
-    if (!query.trim()) {
-      return items;
-    }
+  // fetches fitlered data from backend when searchQuery changes
+  useEffect(() => {
+    let isMounted = true;
+    const fetchFilesData = async () => {
+      try {
+        const data = await invoke<FileMetadata[]>("get_files_data", {
+          query: searchQuery,
+        });
+        if (isMounted) {
+          setFilesData(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch files data:", error);
+      }
+    };
 
-    return items.filter((item) => {
-      return item.name.toLowerCase().includes(query.toLowerCase());
-    });
-  };
+    fetchFilesData();
+    return () => {
+      isMounted = false;
+    };
+  }, [searchQuery]);
 
-  async function refreshApps() {
+  //  base filter items function for filtering apps, files, etc.
+  const filterItems = useCallback(
+    <T extends { name: string }>(items: T[], query: string): T[] => {
+      if (!query.trim()) {
+        return items;
+      }
+      return items.filter((item) =>
+        item.name.toLowerCase().includes(query.toLowerCase())
+      );
+    },
+    []
+  );
+
+  // filters apps
+  const filteredApps = useMemo(
+    () => filterItems(appsData, searchQuery),
+    [filterItems, appsData, searchQuery]
+  );
+
+  // filters files
+  const filteredFiles = useMemo(
+    () => filterItems(filesData, searchQuery),
+    [filterItems, filesData, searchQuery]
+  );
+
+  // refreshes app data
+  const refreshApps = useCallback(async () => {
     try {
       const appData = await invoke<AppMetadata[]>("get_apps_data");
       setAppsData(appData);
     } catch (err) {
       console.error("Failed to refresh apps:", err);
     }
-  }
+  }, []);
+
+  // handles keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (appsData.length === 0 && filesData.length === 0) return;
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+
+        if (currentSection === "apps") {
+          if (currentItemIndex >= filteredApps.length - 1) {
+            if (filteredFiles.length > 0) {
+              setCurrentSection("files");
+              setCurrentItemIndex(0);
+              setSelectedItem(filteredFiles[0].name);
+            }
+          } else {
+            const newIndex = currentItemIndex + 1;
+            setCurrentItemIndex(newIndex);
+            setSelectedItem(filteredApps[newIndex].name);
+          }
+        } else if (currentSection === "files") {
+          if (currentItemIndex < filteredFiles.length - 1) {
+            const newIndex = currentItemIndex + 1;
+            setCurrentItemIndex(newIndex);
+            setSelectedItem(filteredFiles[newIndex].name);
+          }
+        }
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+
+        if (currentSection === "files") {
+          if (currentItemIndex <= 0) {
+            if (filteredApps.length > 0) {
+              setCurrentSection("apps");
+              setCurrentItemIndex(filteredApps.length - 1);
+              setSelectedItem(filteredApps[filteredApps.length - 1].name);
+            }
+          } else {
+            const newIndex = currentItemIndex - 1;
+            setCurrentItemIndex(newIndex);
+            setSelectedItem(filteredFiles[newIndex].name);
+          }
+        } else if (currentSection === "apps") {
+          if (currentItemIndex > 0) {
+            const newIndex = currentItemIndex - 1;
+            setCurrentItemIndex(newIndex);
+            setSelectedItem(filteredApps[newIndex].name);
+          }
+        }
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+
+        if (currentItemIndex >= 0) {
+          if (
+            currentSection === "apps" &&
+            filteredApps.length > currentItemIndex
+          ) {
+            handleAppSelect(filteredApps[currentItemIndex]);
+          } else if (
+            currentSection === "files" &&
+            filteredFiles.length > currentItemIndex
+          ) {
+            handleFileSelect(filteredFiles[currentItemIndex]);
+          }
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [
+    filteredApps,
+    filteredFiles,
+    currentSection,
+    currentItemIndex,
+    handleAppSelect,
+    handleFileSelect,
+  ]);
 
   console.log("files", filesData);
   console.log("get apps data", appsData);
@@ -351,16 +366,12 @@ export default function App() {
         ) : ( */}
 
         <AppTable
-          data={useMemo(() => {
-            return filterItems(appsData, searchQuery);
-          }, [appsData, searchQuery])}
+          data={filteredApps}
           onRowClick={(app) => {
             setSelectedItem(app.name);
             setCurrentSection("apps");
             setCurrentItemIndex(
-              filterItems(appsData, searchQuery).findIndex(
-                (a) => a.name === app.name
-              )
+              filteredApps.findIndex((a) => a.name === app.name)
             );
             handleAppSelect(app);
           }}
@@ -372,16 +383,12 @@ export default function App() {
         />
 
         <FilesTable
-          data={useMemo(() => {
-            return filterItems(filesData, searchQuery);
-          }, [filesData, searchQuery])}
+          data={filteredFiles}
           onRowClick={(file) => {
             setSelectedItem(file.name);
             setCurrentSection("files");
             setCurrentItemIndex(
-              filterItems(filesData, searchQuery).findIndex(
-                (f) => f.name === file.name
-              )
+              filteredFiles.findIndex((f) => f.name === file.name)
             );
             handleFileSelect(file);
           }}
