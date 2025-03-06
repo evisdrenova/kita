@@ -116,12 +116,12 @@
 
 ::-webkit-scrollbar-track {
   background: hsl(var(--transparent));
-  border-radius: 6px; /* Adjusted to match thicker width */
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb {
   background: hsl(var(--border));
-  border-radius: 6px; /* Adjusted to match thicker width */
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {

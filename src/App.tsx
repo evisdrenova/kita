@@ -134,11 +134,8 @@ export default function App() {
     setIndexingProgress(null);
   }, [isSettingsOpen]);
 
-  // gets initial data - only gets called once in the beginning when the component mounts
+  // initial data load - runs once on mount
   useEffect(() => {
-    let unlistenUsage: UnlistenFn | undefined;
-    let unlistenApps: UnlistenFn | undefined;
-
     const initialize = async () => {
       try {
         const appData = await invoke<AppMetadata[]>("get_apps_data");
@@ -154,7 +151,20 @@ export default function App() {
           .map((app) => app.pid);
 
         await invoke("start_resource_monitoring", { pids });
+      } catch (err) {
+        console.error("Failed to initialize data:", err);
+      }
+    };
 
+    initialize();
+  }, []);
+
+  // resource usage monitoring - updates every second
+  useEffect(() => {
+    let unlistenUsage: UnlistenFn | undefined;
+
+    const setupResourceMonitoring = async () => {
+      try {
         unlistenUsage = await listen("resource-usage-updated", (event) => {
           const updates = event.payload as Record<
             number,
@@ -163,25 +173,21 @@ export default function App() {
 
           setResourceData((prev) => {
             const newState = { ...prev };
+            let hasChanges = false;
+
             Object.entries(updates).forEach(([pidStr, usage]) => {
               const pidNum = Number(pidStr);
-              newState[pidNum] = {
-                cpu_usage: usage.cpu_usage,
-                memory_bytes: usage.memory_bytes,
-              };
+              if (
+                !prev[pidNum] ||
+                prev[pidNum].cpu_usage !== usage.cpu_usage ||
+                prev[pidNum].memory_bytes !== usage.memory_bytes
+              ) {
+                newState[pidNum] = usage;
+                hasChanges = true;
+              }
             });
-            return newState;
-          });
-        });
 
-        unlistenApps = await listen("apps-with-resources-updated", (event) => {
-          const updatedApps = event.payload as AppMetadata[];
-          setAppsData((prev) => {
-            // Simplified update to avoid unnecessary work
-            return prev.map((app) => ({
-              ...app,
-              items: updatedApps.map((updatedApp) => updatedApp),
-            }));
+            return hasChanges ? newState : prev;
           });
         });
       } catch (err) {
@@ -189,15 +195,47 @@ export default function App() {
       }
     };
 
-    initialize();
+    setupResourceMonitoring();
 
     return () => {
       if (unlistenUsage) unlistenUsage();
-      if (unlistenApps) unlistenApps();
-
       invoke("stop_resource_monitoring").catch((err) => {
         console.error("Failed to stop resource monitoring:", err);
       });
+    };
+  }, []);
+
+  //Apps updates monitoring
+  useEffect(() => {
+    let unlistenApps: UnlistenFn | undefined;
+
+    const setupAppsMonitoring = async () => {
+      try {
+        unlistenApps = await listen("apps-with-resources-updated", (event) => {
+          const updatedApps = event.payload as AppMetadata[];
+          setAppsData((prev) => {
+            // Compare with previous state to avoid unnecessary updates
+            const newApps = prev.map((app) => ({
+              ...app,
+              items: updatedApps.map((updatedApp) => updatedApp),
+            }));
+
+            if (JSON.stringify(prev) === JSON.stringify(newApps)) {
+              return prev; // Return previous reference if no change
+            }
+
+            return newApps;
+          });
+        });
+      } catch (err) {
+        console.error("Failed to set up apps monitoring:", err);
+      }
+    };
+
+    setupAppsMonitoring();
+
+    return () => {
+      if (unlistenApps) unlistenApps();
     };
   }, []);
 
