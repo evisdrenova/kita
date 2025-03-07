@@ -9,6 +9,7 @@ import {
   IndexingProgress,
   searchCategories,
   SearchCategory,
+  Section,
 } from "./types/types";
 import Header from "./Header";
 import { errorToast } from "./components/ui/toast";
@@ -17,6 +18,8 @@ import { documentDir } from "@tauri-apps/api/path";
 import Settings from "./Settings";
 import AppTable from "./AppTable";
 import FilesTable from "./FilesTable";
+import SectionNav from "./SectionNav";
+import { Command, File } from "lucide-react";
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -41,6 +44,7 @@ export default function App() {
     "apps"
   );
   const [currentItemIndex, setCurrentItemIndex] = useState<number>(-1);
+  const [activeSection, setActiveSection] = useState<number | null>(null);
 
   // Reset the selection when search query changes
   useEffect(() => {
@@ -374,13 +378,60 @@ export default function App() {
     handleFileSelect,
   ]);
 
+  const sections: Section[] = [
+    {
+      id: 0,
+      name: "Applications",
+      icon: <Command className="w-4 h-4" />,
+      component: (
+        <AppTable
+          data={filteredApps}
+          onRowClick={(app) => {
+            setSelectedItem(app.name);
+            setCurrentSection("apps");
+            setCurrentItemIndex(
+              filteredApps.findIndex((a) => a.name === app.name)
+            );
+            handleAppSelect(app);
+          }}
+          appResourceData={resourceData}
+          refreshApps={refreshApps}
+          selectedItemName={
+            currentSection === "apps" ? selectedItem : undefined
+          }
+        />
+      ),
+    },
+    {
+      id: 1,
+      name: "Files",
+      icon: <File className="w-4 h-4" />,
+      component: (
+        <FilesTable
+          data={filteredFiles}
+          onRowClick={(file) => {
+            setSelectedItem(file.name);
+            setCurrentSection("files");
+            setCurrentItemIndex(
+              filteredFiles.findIndex((f) => f.name === file.name)
+            );
+            handleFileSelect(file);
+          }}
+          selectedItemName={
+            currentSection === "files" ? selectedItem : undefined
+          }
+        />
+      ),
+    },
+  ];
+
   console.log("files", filesData);
   console.log("get apps data", appsData);
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <Header setSearchQuery={setSearchQuery} searchQuery={searchQuery} />
-      <main className="flex-1 px-2 pt-4 overflow-auto scrollbar flex flex-col gap-2">
+      <main className="flex-1 overflow-auto scrollbar">
         {/* {searchQuery.trim() === "" ? (
           recents.length > 0 ? (
             <Recents
@@ -399,36 +450,10 @@ export default function App() {
             <EmptyState />
           </div>
         ) : ( */}
-        <AppTable
-          data={filteredApps}
-          onRowClick={(app) => {
-            setSelectedItem(app.name);
-            setCurrentSection("apps");
-            setCurrentItemIndex(
-              filteredApps.findIndex((a) => a.name === app.name)
-            );
-            handleAppSelect(app);
-          }}
-          appResourceData={resourceData}
-          refreshApps={refreshApps}
-          selectedItemName={
-            currentSection === "apps" ? selectedItem : undefined
-          }
-        />
-
-        <FilesTable
-          data={filteredFiles}
-          onRowClick={(file) => {
-            setSelectedItem(file.name);
-            setCurrentSection("files");
-            setCurrentItemIndex(
-              filteredFiles.findIndex((f) => f.name === file.name)
-            );
-            handleFileSelect(file);
-          }}
-          selectedItemName={
-            currentSection === "files" ? selectedItem : undefined
-          }
+        <SectionNav
+          sections={sections}
+          activeSection={activeSection}
+          setActiveSection={setActiveSection}
         />
       </main>
       <div className="sticky bottom-0">

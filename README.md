@@ -35,4 +35,4 @@ When the user searches for, e.g., "exa", that becomes an FTS search for the exa 
 // optimize the get_app_icon to be faster, the icon conversion is taking way too long
 // i might be able to use the sysinfo crate to replace all of the libproc functions - investigate further
 
-// still work on the re-renders, maybe parse out the mem and cpu columns and just re-render those instead of having to re-render everything. Files shouldn't be re-rending as much but they are - look into that.
+// optimize the app list rendering it's a little slow - coudl use virtualization for the table or somethign else

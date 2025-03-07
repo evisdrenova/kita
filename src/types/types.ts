@@ -1,3 +1,11 @@
+export interface Section {
+  id: number;
+  name: string;
+  icon: JSX.Element;
+  component: JSX.Element;
+  counts?: number;
+}
+
 interface BaseMetadata {
   id?: number;
   name: string;
