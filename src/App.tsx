@@ -214,14 +214,13 @@ export default function App() {
         unlistenApps = await listen("apps-with-resources-updated", (event) => {
           const updatedApps = event.payload as AppMetadata[];
           setAppsData((prev) => {
-            // Compare with previous state to avoid unnecessary updates
             const newApps = prev.map((app) => ({
               ...app,
               items: updatedApps.map((updatedApp) => updatedApp),
             }));
 
             if (JSON.stringify(prev) === JSON.stringify(newApps)) {
-              return prev; // Return previous reference if no change
+              return prev;
             }
 
             return newApps;
@@ -378,8 +377,6 @@ export default function App() {
   console.log("files", filesData);
   console.log("get apps data", appsData);
 
-  console.log("search query", searchQuery);
-
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <Header setSearchQuery={setSearchQuery} searchQuery={searchQuery} />
@@ -402,7 +399,6 @@ export default function App() {
             <EmptyState />
           </div>
         ) : ( */}
-
         <AppTable
           data={filteredApps}
           onRowClick={(app) => {

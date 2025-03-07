@@ -76,7 +76,7 @@ pub async fn start_resource_monitoring(
     // TODO: implement check for existing task here
     tokio::spawn(async move {
         let mut system = System::new();
-        let mut tick_interval = interval(Duration::from_secs(1));
+        let mut tick_interval = interval(Duration::from_secs(5));
 
         // The main loop
         loop {

@@ -6,14 +6,7 @@ Fast and intelligent search running locally on your mac.
 
 (Kita means "found" in Japanese)
 
-# Architecture
-
-![alt text](image.png)
-
-## Components
-
-// optimize the get_app_icon to be faster, the icon conversion is taking way too long
-// i might be able to use the sysinfo crate to replace all of the libproc functions - investigate further
+# Design
 
 ## Trigram Tokenizer
 
@@ -36,3 +29,10 @@ We create a small TrigramTokenizer that splits each string into 3‑character ov
 We register that tokenizer with SQLite’s FTS5 engine.
 We store each filename/path as a series of these 3‑char tokens in the files_fts table.
 When the user searches for, e.g., "exa", that becomes an FTS search for the exa token—matching anywhere that has those three characters consecutively.
+
+## Roadmap
+
+// optimize the get_app_icon to be faster, the icon conversion is taking way too long
+// i might be able to use the sysinfo crate to replace all of the libproc functions - investigate further
+
+// still work on the re-renders, maybe parse out the mem and cpu columns and just re-render those instead of having to re-render everything. Files shouldn't be re-rending as much but they are - look into that.

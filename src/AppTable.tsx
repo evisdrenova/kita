@@ -43,31 +43,20 @@ const columns: Column<AppMetadata>[] = [
     key: "memory",
     header: "Memory",
     width: 20,
-    render: (app) => {
-      const memoryUsage = app.resource_usage?.memory_bytes;
-      return app?.pid && memoryUsage !== undefined ? (
-        <div className="flex items-center justify-start gap-1 text-xs text-gray-500">
-          <MemoryStick className="w-3 h-3" />
-          {typeof memoryUsage === "number"
-            ? FormatFileSize(memoryUsage)
-            : memoryUsage}
-        </div>
-      ) : null;
-    },
+    render: (app) => (
+      <MemoryCell
+        pid={app.pid}
+        memoryBytes={app.resource_usage?.memory_bytes}
+      />
+    ),
   },
   {
     key: "cpu",
     header: "CPU",
     width: 20,
-    render: (app) => {
-      const cpuUsage = app.resource_usage?.cpu_usage;
-      return app?.pid && cpuUsage !== undefined ? (
-        <div className="flex items-center justify-start gap-1 text-xs text-gray-500">
-          <Cpu className="w-3 h-3" />
-          {typeof cpuUsage === "number" ? cpuUsage.toFixed(1) : cpuUsage}%
-        </div>
-      ) : null;
-    },
+    render: (app) => (
+      <CpuCell pid={app.pid} cpuUsage={app.resource_usage?.cpu_usage} />
+    ),
   },
   {
     key: "actions",
@@ -75,6 +64,47 @@ const columns: Column<AppMetadata>[] = [
     width: 20,
   },
 ];
+
+// memoize memorycell to reduce re-renders
+const MemoryCell = React.memo(
+  function MemoryCell({
+    pid,
+    memoryBytes,
+  }: {
+    pid?: number;
+    memoryBytes?: number;
+  }) {
+    if (!pid || memoryBytes === undefined) return null;
+
+    return (
+      <div className="flex items-center justify-start gap-1 text-xs text-gray-500">
+        <MemoryStick className="w-3 h-3" />
+        {typeof memoryBytes === "number"
+          ? FormatFileSize(memoryBytes)
+          : memoryBytes}
+      </div>
+    );
+  },
+  (prev, next) => {
+    return prev.pid === next.pid && prev.memoryBytes === next.memoryBytes;
+  }
+);
+
+const CpuCell = React.memo(
+  function CpuCell({ pid, cpuUsage }: { pid?: number; cpuUsage?: number }) {
+    if (!pid || cpuUsage === undefined) return null;
+
+    return (
+      <div className="flex items-center justify-start gap-1 text-xs text-gray-500">
+        <Cpu className="w-3 h-3" />
+        {typeof cpuUsage === "number" ? cpuUsage.toFixed(1) : cpuUsage}%
+      </div>
+    );
+  },
+  (prev, next) => {
+    return prev.pid === next.pid && prev.cpuUsage === next.cpuUsage;
+  }
+);
 
 export default function AppTable(props: Props) {
   const {
@@ -169,48 +199,58 @@ export default function AppTable(props: Props) {
   return (
     <>
       {processedApps.length > 0 && (
-        <div className="overflow-auto border rounded border-border">
-          <table
-            className="w-full border-collapse"
-            style={{ tableLayout: "fixed" }}
-          >
-            <thead>
-              <tr>
-                {columns.map((column) => (
-                  <th
-                    key={column.key}
-                    className="text-left p-2 text-sm font-medium text-gray-500"
-                    onClick={() =>
-                      column.key !== "actions" && handleSort(column.key)
-                    }
-                    style={{
-                      cursor: column.key !== "actions" ? "pointer" : "default",
-                      width: `${column.width}%`,
-                    }}
-                  >
-                    {column.header}
-                    {sortKey === column.key && column.key !== "actions" && (
-                      <span className="ml-1">
-                        {sortDirection === "asc" ? "↑" : "↓"}
-                      </span>
-                    )}
-                  </th>
+        <div className="border rounded border-border flex flex-col">
+          <div className="bg-inherit border-b border-b-border">
+            <table
+              className="w-full border-collapse"
+              style={{ tableLayout: "fixed" }}
+            >
+              <thead>
+                <tr>
+                  {columns.map((column) => (
+                    <th
+                      key={column.key}
+                      className="text-left p-2 text-sm font-medium text-gray-500"
+                      onClick={() =>
+                        column.key !== "actions" && handleSort(column.key)
+                      }
+                      style={{
+                        cursor:
+                          column.key !== "actions" ? "pointer" : "default",
+                        width: `${column.width}%`,
+                      }}
+                    >
+                      {column.header}
+                      {sortKey === column.key && column.key !== "actions" && (
+                        <span className="ml-1">
+                          {sortDirection === "asc" ? "↑" : "↓"}
+                        </span>
+                      )}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+            </table>
+          </div>
+          <div className="overflow-auto" style={{ maxHeight: "400px" }}>
+            <table
+              className="w-full border-collapse"
+              style={{ tableLayout: "fixed" }}
+            >
+              <tbody>
+                {processedApps.map((app) => (
+                  <TableRow
+                    key={app.pid || app.name}
+                    app={app}
+                    columns={columns}
+                    onRowClick={onRowClick}
+                    refreshApps={refreshApps}
+                    isSelected={app.name === selectedItemName}
+                  />
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {processedApps.map((app) => (
-                <TableRow
-                  key={app.pid || app.name}
-                  app={app}
-                  columns={columns}
-                  onRowClick={onRowClick}
-                  refreshApps={refreshApps}
-                  isSelected={app.name === selectedItemName}
-                />
-              ))}
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </>
@@ -325,7 +365,11 @@ const TableRow = memo(
         }`}
       >
         {columns.map((column) => (
-          <td key={column.key} className="p-2">
+          <td
+            key={column.key}
+            className="p-2"
+            style={{ width: `${column.width}%` }}
+          >
             {renderCells(column)}
           </td>
         ))}

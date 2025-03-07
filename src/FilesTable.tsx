@@ -136,49 +136,57 @@ export default function FilesTable(props: Props) {
   return (
     <>
       {sortedFiles.length > 0 && (
-        <div className="overflow-auto border rounded border-border">
-          <table
-            className="w-full border-collapse"
-            style={{ tableLayout: "fixed" }}
-          >
-            <colgroup>
-              {columns.map((column) => (
-                <col key={column.key} style={{ width: `${column.width}%` }} />
-              ))}
-            </colgroup>
-            <thead>
-              <tr>
-                {columns.map((column) => (
-                  <th
-                    key={column.key}
-                    className="text-left p-2 text-sm font-medium text-gray-500"
-                    onClick={() => handleSort(column.key)}
-                    style={{
-                      cursor: "pointer",
-                    }}
-                  >
-                    {column.header}
-                    {sortKey === column.key && (
-                      <span className="ml-1">
-                        {sortDirection === "asc" ? "↑" : "↓"}
-                      </span>
-                    )}
-                  </th>
+        <div className="border rounded border-border flex flex-col">
+          <div className="bg-inherit border-b border-b-border">
+            <table
+              className="w-full border-collapse"
+              style={{ tableLayout: "fixed" }}
+            >
+              <thead>
+                <tr>
+                  {columns.map((column) => (
+                    <th
+                      key={column.key}
+                      className="text-left p-2 text-sm font-medium text-gray-500"
+                      onClick={() =>
+                        column.key !== "actions" && handleSort(column.key)
+                      }
+                      style={{
+                        cursor:
+                          column.key !== "actions" ? "pointer" : "default",
+                        width: `${column.width}%`,
+                      }}
+                    >
+                      {column.header}
+                      {sortKey === column.key && column.key !== "actions" && (
+                        <span className="ml-1">
+                          {sortDirection === "asc" ? "↑" : "↓"}
+                        </span>
+                      )}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+            </table>
+          </div>
+          <div className="overflow-auto" style={{ maxHeight: "400px" }}>
+            <table
+              className="w-full border-collapse"
+              style={{ tableLayout: "fixed" }}
+            >
+              <tbody>
+                {sortedFiles.map((file) => (
+                  <FileRow
+                    key={`${file.path}-${file.name}`}
+                    file={file}
+                    columns={columns}
+                    onRowClick={onRowClick}
+                    isSelected={file.name === selectedItemName}
+                  />
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {sortedFiles.map((file) => (
-                <FileRow
-                  key={`${file.path}-${file.name}`}
-                  file={file}
-                  columns={columns}
-                  onRowClick={onRowClick}
-                  isSelected={file.name === selectedItemName}
-                />
-              ))}
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </>
@@ -209,7 +217,11 @@ const FileRow = memo(
         }`}
       >
         {columns.map((column) => (
-          <td key={column.key} className="p-2 truncate">
+          <td
+            key={column.key}
+            className="p-2 truncate"
+            style={{ width: `${column.width}%` }}
+          >
             {column.render ? column.render(file) : (file as any)[column.key]}
           </td>
         ))}
