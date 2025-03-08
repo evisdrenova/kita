@@ -293,7 +293,6 @@ pub fn process_icons_in_parallel(apps: &mut Vec<AppMetadata>) {
 }
 
 // gets the app icon
-// TODO: spend more time optimizing this later, icon convresion still taking like 10ms
 pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
     // Check cache first
     if let Ok(cache) = ICON_CACHE.lock() {
@@ -305,13 +304,16 @@ pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
     // Handle known problematic apps with hardcoded paths and return svg
     match app_path {
         path if path.contains("/System/Applications/Calendar.app") => {
-            return get_app_icon_fallback(app_path, app_name);
+            return get_icon_from_app_icons_folder("Calendar", app_path, app_name);
         }
         path if path.contains("/System/Applications/Photo Booth.app") => {
-            return get_app_icon_fallback(app_path, app_name);
+            return get_icon_from_app_icons_folder("PhotoBooth", app_path, app_name);
         }
         path if path.contains("/System/Applications/System Settings.app") => {
-            return get_app_icon_fallback(app_path, app_name);
+            return get_icon_from_app_icons_folder("SystemSettings", app_path, app_name);
+        }
+        path if path.contains("/System/Applications/Google Chrome.app") => {
+            return get_icon_from_app_icons_folder("Chrome", app_path, app_name);
         }
         _ => {}
     }
@@ -543,4 +545,32 @@ pub async fn restart_application(
     });
 
     Ok(())
+}
+
+
+fn get_icon_from_app_icons_folder(icon_name: &str, app_path: &str, app_name: &str) -> Option<String> {
+    let app_dir = std::env::current_dir()
+    .unwrap_or_default()
+        .join("src")
+        .join("app_icons")
+        .join(format!("{}.svg", icon_name));
+    
+    if app_dir.exists() {
+        if let Ok(icon_data) = std::fs::read_to_string(&app_dir) {
+
+    let base64_svg = format!(
+        "data:image/svg+xml;base64,{}",
+        BASE64_STANDARD.encode(icon_data.as_bytes())
+    );
+
+    // Cache the result
+    if let Ok(mut cache) = ICON_CACHE.lock() {
+        cache.insert(app_path.to_string(), Some(base64_svg.clone()));
+    }
+            return Some(icon_data);
+        }
+    }
+
+    // Fall back to the original function if file doesn't exist
+    get_app_icon_fallback(app_path, app_name)
 }
