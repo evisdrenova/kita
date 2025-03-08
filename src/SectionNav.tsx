@@ -1,6 +1,6 @@
 import React, { memo } from "react";
 import { Section } from "./types/types";
-import { Home, House, HouseIcon, Layers2 } from "lucide-react";
+import { Layers2 } from "lucide-react";
 
 interface SectionNavProps {
   sections: Section[];
