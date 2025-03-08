@@ -4,6 +4,7 @@ export interface Section {
   icon: JSX.Element;
   component: JSX.Element;
   counts?: number;
+  getLimitedComponent?: (limit: number) => JSX.Element;
 }
 
 interface BaseMetadata {
