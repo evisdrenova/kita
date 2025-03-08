@@ -1,15 +1,55 @@
-import React, { memo } from "react";
+import React, { memo, useState } from "react";
 import { Section } from "./types/types";
-import { Layers2 } from "lucide-react";
+import { Layers2, ChevronDown } from "lucide-react";
+import { Separator } from "./components/ui/separator";
 
 interface SectionNavProps {
   sections: Section[];
   activeSection: number | null;
   setActiveSection: (val: number | null) => void;
+  totalCount?: number;
+  searchQuery?: string;
 }
 
+const PaginatedSection = ({
+  section,
+  searchQuery,
+}: {
+  section: Section;
+  searchQuery?: string;
+}) => {
+  const [showMore, setShowMore] = useState(false);
+
+  // If there's a search query, don't paginate
+  const shouldPaginate = !searchQuery?.trim();
+
+  const limitedComponent =
+    shouldPaginate && !showMore
+      ? section.getLimitedComponent?.(5)
+      : section.component;
+
+  return (
+    <div className="flex flex-col gap-1">
+      {limitedComponent}
+
+      {/* Only show "Show More" if pagination is active and there are more items to show */}
+      {shouldPaginate && !showMore && (section.counts || 0) > 5 && (
+        <button
+          onClick={() => setShowMore(true)}
+          className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 py-1 self-start"
+        >
+          <ChevronDown className="w-3 h-3" />
+          Show More ({(section.counts || 0) - 5} more)
+        </button>
+      )}
+      <Separator />
+    </div>
+  );
+};
+
 const SectionNav = (props: SectionNavProps) => {
-  const { sections, activeSection, setActiveSection } = props;
+  const { sections, activeSection, setActiveSection, totalCount, searchQuery } =
+    props;
 
   // If activeSection is null, we want to show "All" content
   const activeComponent =
@@ -19,21 +59,20 @@ const SectionNav = (props: SectionNavProps) => {
 
   return (
     <div className="flex flex-col">
-      <nav className="flex flex-row gap-2 border-b border-b-border">
-        <div className="px-3 py-2 flex gap-2 overflow-x-auto scrollbar-none">
-          {/* Special "All" button */}
+      <nav className="flex flex-row gap-2 border-b border-b-border sticky top-0 bg-zinc-800">
+        <div className="px-3 py-2 flex gap-2 overflow-auto scrollbar-none">
+          {/* All button*/}
           <NavButton
             key="all"
             section={{
               id: -1,
               name: "All",
               icon: <Layers2 className="w-4 h-4" />,
+              counts: totalCount,
             }}
             isActive={activeSection === null}
             onClick={() => setActiveSection(null)}
           />
-
-          {/* Regular section buttons */}
           {sections.map((section) => (
             <NavButton
               key={section.id}
@@ -46,15 +85,20 @@ const SectionNav = (props: SectionNavProps) => {
       </nav>
 
       <div className="p-2">
-        {/* When "All" is selected (activeSection is null), render all components */}
+        {/* When "All" is selected (activeSection is null), render all components with pagination */}
         {activeSection === null ? (
           <div className="flex flex-col gap-4">
             {sections.map((section) => (
               <div key={section.id}>
                 <h2 className="text-sm font-medium text-gray-400 mb-2">
                   {section.name}
+                  {section.counts !== undefined && (
+                    <span className="ml-2 text-gray-500">
+                      ({section.counts})
+                    </span>
+                  )}
                 </h2>
-                {section.component}
+                <PaginatedSection section={section} searchQuery={searchQuery} />
               </div>
             ))}
           </div>
@@ -85,7 +129,7 @@ const NavButton = memo(
       onClick={onClick}
       className={`
       flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium
-      transition-colors duration-150
+      transition-colors duration-150 cursor-pointer
       ${
         isActive
           ? "bg-blue-500/20 text-white-400 ring-1 ring-blue-400/30"
@@ -95,12 +139,14 @@ const NavButton = memo(
     >
       {section.icon}
       {section.name}
-      {section.counts && (
+      {section.counts !== undefined && section.counts > 0 && (
         <span
           className={`
           inline-flex items-center justify-center rounded-full px-1.5 
           ${
-            isActive ? "bg-red-400/20 text-red-400" : "bg-white/5 text-gray-500"
+            isActive
+              ? "bg-blue-400/20 text-blue-200"
+              : "bg-white/5 text-gray-500"
           }
         `}
         >

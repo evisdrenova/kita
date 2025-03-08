@@ -46,6 +46,20 @@ export default function App() {
   const [currentItemIndex, setCurrentItemIndex] = useState<number>(-1);
   const [activeSection, setActiveSection] = useState<number | null>(null);
 
+  // base section definition
+  const sectionDefinitions = [
+    {
+      id: 0,
+      name: "Applications",
+      icon: <Command className="w-4 h-4" />,
+    },
+    {
+      id: 1,
+      name: "Files",
+      icon: <File className="w-4 h-4" />,
+    },
+  ];
+
   // Reset the selection when search query changes
   useEffect(() => {
     // Reset to apps section and first item when search query changes
@@ -209,7 +223,7 @@ export default function App() {
     };
   }, []);
 
-  //Apps updates monitoring
+  // Apps updates monitoring
   useEffect(() => {
     let unlistenApps: UnlistenFn | undefined;
 
@@ -378,52 +392,102 @@ export default function App() {
     handleFileSelect,
   ]);
 
-  const sections: Section[] = [
-    {
-      id: 0,
-      name: "Applications",
-      icon: <Command className="w-4 h-4" />,
-      component: (
-        <AppTable
-          data={filteredApps}
-          onRowClick={(app) => {
-            setSelectedItem(app.name);
-            setCurrentSection("apps");
-            setCurrentItemIndex(
-              filteredApps.findIndex((a) => a.name === app.name)
-            );
-            handleAppSelect(app);
-          }}
-          appResourceData={resourceData}
-          refreshApps={refreshApps}
-          selectedItemName={
-            currentSection === "apps" ? selectedItem : undefined
-          }
-        />
-      ),
-    },
-    {
-      id: 1,
-      name: "Files",
-      icon: <File className="w-4 h-4" />,
-      component: (
-        <FilesTable
-          data={filteredFiles}
-          onRowClick={(file) => {
-            setSelectedItem(file.name);
-            setCurrentSection("files");
-            setCurrentItemIndex(
-              filteredFiles.findIndex((f) => f.name === file.name)
-            );
-            handleFileSelect(file);
-          }}
-          selectedItemName={
-            currentSection === "files" ? selectedItem : undefined
-          }
-        />
-      ),
-    },
-  ];
+  // memoized full section array
+  const sections: Section[] = useMemo(() => {
+    return [
+      {
+        ...sectionDefinitions[0],
+        counts: filteredApps.length,
+        component: (
+          <AppTable
+            data={filteredApps}
+            onRowClick={(app) => {
+              setSelectedItem(app.name);
+              setCurrentSection("apps");
+              setCurrentItemIndex(
+                filteredApps.findIndex((a) => a.name === app.name)
+              );
+              handleAppSelect(app);
+            }}
+            appResourceData={resourceData}
+            refreshApps={refreshApps}
+            selectedItemName={
+              currentSection === "apps" ? selectedItem : undefined
+            }
+          />
+        ),
+        // Add a method to get a limited component
+        getLimitedComponent: (limit: number) => (
+          <AppTable
+            data={filteredApps.slice(0, limit)}
+            onRowClick={(app) => {
+              setSelectedItem(app.name);
+              setCurrentSection("apps");
+              setCurrentItemIndex(
+                filteredApps.findIndex((a) => a.name === app.name)
+              );
+              handleAppSelect(app);
+            }}
+            appResourceData={resourceData}
+            refreshApps={refreshApps}
+            selectedItemName={
+              currentSection === "apps" ? selectedItem : undefined
+            }
+          />
+        ),
+      },
+      {
+        ...sectionDefinitions[1],
+        counts: filteredFiles.length,
+        component: (
+          <FilesTable
+            data={filteredFiles}
+            onRowClick={(file) => {
+              setSelectedItem(file.name);
+              setCurrentSection("files");
+              setCurrentItemIndex(
+                filteredFiles.findIndex((f) => f.name === file.name)
+              );
+              handleFileSelect(file);
+            }}
+            selectedItemName={
+              currentSection === "files" ? selectedItem : undefined
+            }
+          />
+        ),
+        // Add a method to get a limited component
+        getLimitedComponent: (limit: number) => (
+          <FilesTable
+            data={filteredFiles.slice(0, limit)}
+            onRowClick={(file) => {
+              setSelectedItem(file.name);
+              setCurrentSection("files");
+              setCurrentItemIndex(
+                filteredFiles.findIndex((f) => f.name === file.name)
+              );
+              handleFileSelect(file);
+            }}
+            selectedItemName={
+              currentSection === "files" ? selectedItem : undefined
+            }
+          />
+        ),
+      },
+    ];
+  }, [
+    filteredApps,
+    filteredFiles,
+    currentSection,
+    selectedItem,
+    resourceData,
+    handleAppSelect,
+    handleFileSelect,
+    refreshApps,
+  ]);
+  // total counts for sections
+  const totalCount = useMemo(() => {
+    return filteredApps.length + filteredFiles.length;
+  }, [filteredApps.length, filteredFiles.length]);
 
   console.log("files", filesData);
   console.log("get apps data", appsData);
@@ -454,6 +518,7 @@ export default function App() {
           sections={sections}
           activeSection={activeSection}
           setActiveSection={setActiveSection}
+          totalCount={totalCount}
         />
       </main>
       <div className="sticky bottom-0">

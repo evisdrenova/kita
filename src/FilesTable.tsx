@@ -65,7 +65,7 @@ const FileRow = memo(
       <div
         onClick={handleClick}
         className={cn(
-          isSelected ? "bg-muted" : "hover:bg-zinc-800/80",
+          isSelected ? "bg-muted" : "hover:bg-zinc-800",
           "transition-colors cursor-pointer rounded "
         )}
       >
@@ -99,7 +99,7 @@ function FileName({ file }: { file: FileMetadata }) {
 
 function FilePath({ file }: { file: FileMetadata }) {
   return (
-    <div className="flex items-center justify-start gap-1 text-[12px] text-gray-500">
+    <div className="flex items-center justify-start gap-1 text-gray-500">
       {truncatePath(file.path)}
     </div>
   );

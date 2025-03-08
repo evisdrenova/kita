@@ -2,7 +2,7 @@ import React, { useState, useMemo, memo, useCallback } from "react";
 import { Package, MemoryStick, Cpu, X, RefreshCw, Loader2 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { successToast, errorToast } from "./components/ui/toast";
-import { FormatFileSize } from "./lib/utils";
+import { cn, FormatFileSize } from "./lib/utils";
 import { AppMetadata, Column } from "./types/types";
 
 interface Props {
@@ -16,7 +16,7 @@ interface Props {
 const columns: Column<AppMetadata>[] = [
   {
     key: "name",
-    header: "Applications",
+    header: "Name",
     width: 70,
     render: (app) => (
       <div className="flex items-center min-w-0">
@@ -199,8 +199,8 @@ export default function AppTable(props: Props) {
   return (
     <>
       {processedApps.length > 0 && (
-        <div className="border rounded border-border flex flex-col">
-          <div className="bg-inherit border-b border-b-border">
+        <div className=" flex flex-col">
+          <div className="bg-inherit ">
             <table
               className="w-full border-collapse"
               style={{ tableLayout: "fixed" }}
@@ -232,7 +232,7 @@ export default function AppTable(props: Props) {
               </thead>
             </table>
           </div>
-          <div className="overflow-auto" style={{ maxHeight: "400px" }}>
+          <div>
             <table
               className="w-full border-collapse"
               style={{ tableLayout: "fixed" }}
@@ -360,9 +360,10 @@ const TableRow = memo(
     return (
       <tr
         onClick={handleClick}
-        className={`transition-colors group cursor-pointer ${
-          isSelected ? "bg-muted" : "hover:bg-muted/50"
-        }`}
+        className={cn(
+          isSelected ? "bg-muted" : "hover:bg-zinc-800",
+          "transition-colors cursor-pointer rounded "
+        )}
       >
         {columns.map((column) => (
           <td
