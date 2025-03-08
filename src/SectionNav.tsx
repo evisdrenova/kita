@@ -20,7 +20,6 @@ const PaginatedSection = ({
 }) => {
   const [showMore, setShowMore] = useState(false);
 
-  // If there's a search query, don't paginate
   const shouldPaginate = !searchQuery?.trim();
 
   const limitedComponent =
@@ -31,8 +30,6 @@ const PaginatedSection = ({
   return (
     <div className="flex flex-col gap-1">
       {limitedComponent}
-
-      {/* Only show "Show More" if pagination is active and there are more items to show */}
       {shouldPaginate && !showMore && (section.counts || 0) > 5 && (
         <button
           onClick={() => setShowMore(true)}
@@ -42,7 +39,7 @@ const PaginatedSection = ({
           Show More ({(section.counts || 0) - 5} more)
         </button>
       )}
-      <Separator />
+      {/* <Separator /> */}
     </div>
   );
 };
@@ -88,7 +85,7 @@ const SectionNav = (props: SectionNavProps) => {
         {/* When "All" is selected (activeSection is null), render all components with pagination */}
         {activeSection === null ? (
           <div className="flex flex-col gap-4">
-            {sections.map((section) => (
+            {sections.map((section, index) => (
               <div key={section.id}>
                 <h2 className="text-sm font-medium text-gray-400 mb-2">
                   {section.name}
@@ -99,6 +96,7 @@ const SectionNav = (props: SectionNavProps) => {
                   )}
                 </h2>
                 <PaginatedSection section={section} searchQuery={searchQuery} />
+                {index != sections.length - 1 && <Separator />}
               </div>
             ))}
           </div>
