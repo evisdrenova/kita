@@ -4,13 +4,12 @@
 
 use base64::prelude::*;
 use cocoa::base::{id, nil};
-use cocoa::foundation::{NSAutoreleasePool, NSSize};
+use cocoa::foundation::{NSAutoreleasePool, NSSize, NSUInteger};
 use lazy_static::lazy_static;
 use libproc::libproc::proc_pid;
 use libproc::processes;
 use objc::runtime::Object;
 use objc::{class, msg_send, sel, sel_impl};
-use objc2_app_kit::NSPNGFileType;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -21,6 +20,8 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
 use tauri::Emitter;
+use objc2_app_kit::NSBitmapImageFileType;
+
 
 use crate::resource_monitor::AppResourceUsage;
 
@@ -28,7 +29,6 @@ use crate::resource_monitor::AppResourceUsage;
 lazy_static! {
     static ref ICON_CACHE: Mutex<HashMap<String, Option<String>>> = Mutex::new(HashMap::new());
 }
-
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppMetadata {
@@ -292,154 +292,137 @@ pub fn process_icons_in_parallel(apps: &mut Vec<AppMetadata>) {
     }
 }
 
-// gets the app icon
 pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
-    // Check cache first
+
     if let Ok(cache) = ICON_CACHE.lock() {
         if let Some(cached_icon) = cache.get(app_path) {
             return cached_icon.clone();
         }
     }
 
-    // Handle known problematic apps with hardcoded paths and return svg
-    match app_path {
-        path if path.contains("/System/Applications/Calendar.app") => {
-            return get_icon_from_app_icons_folder("Calendar", app_path, app_name);
+    unsafe {
+        let pool = NSAutoreleasePool::new(nil);
+
+        // Convert app_path to NSString
+        let cstr = std::ffi::CString::new(app_path).unwrap_or_default();
+        let ns_string: id = msg_send![class!(NSString), alloc];
+        let ns_app_path: id = msg_send![ns_string, initWithUTF8String:cstr.as_ptr()];
+
+        if ns_app_path.is_null() {
+            println!("Failed to create NSString from path: {}", app_path);
+            pool.drain();
+            return get_app_icon_fallback(app_path, app_name);
         }
-        path if path.contains("/System/Applications/Photo Booth.app") => {
-            return get_icon_from_app_icons_folder("PhotoBooth", app_path, app_name);
+
+        let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
+        let ns_image: id = msg_send![workspace, iconForFile: ns_app_path];
+
+        if ns_image.is_null() {
+            println!("iconForFile returned null for: {}", app_path);
+            pool.drain();
+            return get_app_icon_fallback(app_path, app_name);
         }
-        path if path.contains("/System/Applications/System Settings.app") => {
-            return get_icon_from_app_icons_folder("SystemSettings", app_path, app_name);
+
+        let size = NSSize::new(32.0, 32.0);
+        let _: () = msg_send![ns_image, setSize:size];
+
+        let png_data: Vec<u8> = nsimage_to_png_data(ns_image)?;
+
+        let base64_result = format!(
+            "data:image/png;base64,{}",
+            BASE64_STANDARD.encode(&png_data)
+        );
+        
+        pool.drain();
+
+        if let Ok(mut cache) = ICON_CACHE.lock() {
+            cache.insert(app_path.to_string(), Some(base64_result.clone()));
         }
-        path if path.contains("/System/Applications/Google Chrome.app") => {
-            return get_icon_from_app_icons_folder("Chrome", app_path, app_name);
-        }
-        _ => {}
+
+        Some(base64_result)
     }
+}
 
-    // common icon path names
-    let potential_icon_paths = vec![
-        format!("{}/Contents/Resources/{}.icns", app_path, app_name),
-        format!("{}/Contents/Resources/AppIcon.icns", app_path),
-        format!("{}/Contents/Resources/Icon.icns", app_path),
-        format!("{}/Contents/Resources/electron.icns", app_path),
-    ];
-
-    let mut icon_path = None;
-    for path in potential_icon_paths {
-        if Path::new(&path).exists() {
-            icon_path = Some(path);
-            break;
-        }
-    }
-
-    // If no icon found, try to read Info.plist to find the icon file name
-    if icon_path.is_none() {
-        let info_plist_path = format!("{}/Contents/Info.plist", app_path);
-        if let Ok(info_plist_content) = fs::read_to_string(&info_plist_path) {
-            // CFBundleIconName is the name of the icon
-            if let Some(icon_file_start) = info_plist_content.find("<key>CFBundleIconName</key>") {
-                if let Some(string_start) = info_plist_content[icon_file_start..].find("<string>") {
-                    if let Some(string_end) =
-                        info_plist_content[icon_file_start + string_start..].find("</string>")
-                    {
-                        let start_pos = icon_file_start + string_start + "<string>".len();
-                        let end_pos = icon_file_start + string_start + string_end;
-                        let icon_file = &info_plist_content[start_pos..end_pos];
-
-                        // Add .icns extension if missing
-                        let icon_file_name = if icon_file.ends_with(".icns") {
-                            icon_file.to_string()
-                        } else {
-                            format!("{}.icns", icon_file)
-                        };
-
-                        icon_path = Some(format!(
-                            "{}/Contents/Resources/{}",
-                            app_path, icon_file_name
-                        ));
-                    }
-                }
+fn nsimage_to_png_data(ns_image: id) -> Option<Vec<u8>> {
+    unsafe {
+        // Set up an autorelease pool to catch any Objective-C exceptions
+        let pool = NSAutoreleasePool::new(nil);
+        
+        // Wrap everything in a closure to ensure cleanup happens
+        let result = (|| {
+            // Get CGImage from NSImage
+            let cg_image: id = msg_send![ns_image, CGImageForProposedRect:nil context:nil hints:nil];
+            if cg_image.is_null() {
+                return None;
             }
-        }
-    }
-
-    // Read and process the icon file if found
-    if let Some(path) = icon_path {
-        if let Ok(icon_data) = fs::read(&path) {
-            unsafe {
-                let pool = NSAutoreleasePool::new(nil);
-
-                // Create an NSData object with the icon data
-                let ns_data: id = msg_send![class!(NSData), dataWithBytes:icon_data.as_ptr() length:icon_data.len()];
-                if ns_data.is_null() {
-                    println!("Failed to create NSData from icon data");
-                    return get_app_icon_fallback(app_path, app_name);
-                }
-
-                // Create an NSImage from the NSData
-                let ns_image: id = msg_send![class!(NSImage), alloc];
-                let ns_image: id = msg_send![ns_image, initWithData:ns_data];
-                if ns_image.is_null() {
-                    println!("Failed to create NSImage from NSData");
-                    return get_app_icon_fallback(app_path, app_name);
-                }
-
-                // Resize the image to 32x32 for better performance
-                let size = NSSize::new(32.0, 32.0);
-                let _: () = msg_send![ns_image, setSize:size];
-
-                // Convert to PNG representation - first get the TIFF representation
-                let tiff_data: id = msg_send![ns_image, TIFFRepresentation];
-                if tiff_data.is_null() {
-                    println!("Failed to get TIFF representation");
-                    return get_app_icon_fallback(app_path, app_name);
-                }
-
-                // Then create the bitmap representation from the TIFF data
-                let bitmap_rep: id =
-                    msg_send![class!(NSBitmapImageRep), imageRepWithData:tiff_data];
-
-                if bitmap_rep.is_null() {
-                    println!("Failed to create bitmap representation");
-                    return get_app_icon_fallback(app_path, app_name);
-                }
-
-                let properties: id = msg_send![class!(NSDictionary), dictionary];
-                let png_data: id = msg_send![bitmap_rep, representationUsingType:NSPNGFileType properties:properties];
-
-                if png_data.is_null() {
-                    println!("Failed to create PNG data");
-                    return get_app_icon_fallback(app_path, app_name);
-                }
-
-                // Get raw bytes from NSData for base64 encoding
-                let length: usize = msg_send![png_data, length];
-                let bytes: *const u8 = msg_send![png_data, bytes];
-                let data_slice = std::slice::from_raw_parts(bytes, length);
-
-                // Base64 encode
-                let base64_result = format!(
-                    "data:image/png;base64,{}",
-                    BASE64_STANDARD.encode(data_slice)
-                );
-
-                pool.drain();
-
-                if let Ok(mut cache) = ICON_CACHE.lock() {
-                    cache.insert(app_path.to_string(), Some(base64_result.clone()));
-                }
-                return Some(base64_result);
+            
+            // Create NSBitmapImageRep from CGImage
+            let bitmap_rep: id = msg_send![class!(NSBitmapImageRep), alloc];
+            let bitmap_rep: id = msg_send![bitmap_rep, initWithCGImage:cg_image];
+            if bitmap_rep.is_null() {
+                return None;
             }
-        } else {
-            println!("Failed to read icon file: {}", path);
-        }
+            
+            // Set the size of the bitmap representation to match the NSImage size
+            let size: NSSize = msg_send![ns_image, size];
+            let _: () = msg_send![bitmap_rep, setSize:size];
+            
+            // Get PNG representation
+            let png_type = NSBitmapImageFileType::PNG;
+            let empty_properties: id = msg_send![class!(NSDictionary), dictionary];
+            let png_data: id = msg_send![bitmap_rep, representationUsingType:png_type.0 properties:empty_properties];
+        
+            if png_data.is_null() {
+                let _: () = msg_send![bitmap_rep, release];
+                return None;
+            }
+            
+            // Get data length and bytes
+            let length = ns_data_length(png_data);
+            let bytes = ns_data_bytes(png_data);
+            
+            if bytes.is_null() || length == 0 {
+                let _: () = msg_send![bitmap_rep, release];
+                return None;
+            }
+            
+            let mut data = Vec::with_capacity(length);
+            std::ptr::copy_nonoverlapping(bytes, data.as_mut_ptr(), length);
+            data.set_len(length);
+            
+            // Clean up the bitmap rep, but not the png_data yet as we're using its bytes
+            let _: () = msg_send![bitmap_rep, release];
+            
+            Some(data)
+        })();
+        
+        // Drain the autorelease pool to clean up any Objective-C objects
+        pool.drain();
+        
+        result
     }
+}
 
-    // Use our fast fallback if we couldn't find or process an icon
-    println!("No .icns file found, using fast fallback for {}", app_path);
-    get_app_icon_fallback(app_path, app_name)
+fn ns_data_length(data: id) -> usize {
+    unsafe {
+        if data.is_null() {
+            return 0;
+        }
+        
+        let result: NSUInteger = msg_send![data, length];
+        result as usize
+    }
+}
+
+fn ns_data_bytes(data: id) -> *const u8 {
+    unsafe {
+        if data.is_null() {
+            return std::ptr::null();
+        }
+        
+        let result: *const std::ffi::c_void = msg_send![data, bytes];
+        result as *const u8
+    }
 }
 
 // create custom svg image if we can't get the app icon in a reasonable amount of time
@@ -545,32 +528,4 @@ pub async fn restart_application(
     });
 
     Ok(())
-}
-
-
-fn get_icon_from_app_icons_folder(icon_name: &str, app_path: &str, app_name: &str) -> Option<String> {
-    let app_dir = std::env::current_dir()
-    .unwrap_or_default()
-        .join("src")
-        .join("app_icons")
-        .join(format!("{}.svg", icon_name));
-    
-    if app_dir.exists() {
-        if let Ok(icon_data) = std::fs::read_to_string(&app_dir) {
-
-    let base64_svg = format!(
-        "data:image/svg+xml;base64,{}",
-        BASE64_STANDARD.encode(icon_data.as_bytes())
-    );
-
-    // Cache the result
-    if let Ok(mut cache) = ICON_CACHE.lock() {
-        cache.insert(app_path.to_string(), Some(base64_svg.clone()));
-    }
-            return Some(icon_data);
-        }
-    }
-
-    // Fall back to the original function if file doesn't exist
-    get_app_icon_fallback(app_path, app_name)
 }
