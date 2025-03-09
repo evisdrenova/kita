@@ -10,6 +10,7 @@ use libproc::libproc::proc_pid;
 use libproc::processes;
 use objc::runtime::Object;
 use objc::{class, msg_send, sel, sel_impl};
+use objc2_app_kit::NSBitmapImageFileType;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -20,8 +21,6 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
 use tauri::Emitter;
-use objc2_app_kit::NSBitmapImageFileType;
-
 
 use crate::resource_monitor::AppResourceUsage;
 
@@ -293,7 +292,6 @@ pub fn process_icons_in_parallel(apps: &mut Vec<AppMetadata>) {
 }
 
 pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
-
     if let Ok(cache) = ICON_CACHE.lock() {
         if let Some(cached_icon) = cache.get(app_path) {
             return cached_icon.clone();
@@ -332,7 +330,7 @@ pub fn get_app_icon(app_path: &str, app_name: &str) -> Option<String> {
             "data:image/png;base64,{}",
             BASE64_STANDARD.encode(&png_data)
         );
-        
+
         pool.drain();
 
         if let Ok(mut cache) = ICON_CACHE.lock() {
@@ -347,58 +345,59 @@ fn nsimage_to_png_data(ns_image: id) -> Option<Vec<u8>> {
     unsafe {
         // Set up an autorelease pool to catch any Objective-C exceptions
         let pool = NSAutoreleasePool::new(nil);
-        
+
         // Wrap everything in a closure to ensure cleanup happens
         let result = (|| {
             // Get CGImage from NSImage
-            let cg_image: id = msg_send![ns_image, CGImageForProposedRect:nil context:nil hints:nil];
+            let cg_image: id =
+                msg_send![ns_image, CGImageForProposedRect:nil context:nil hints:nil];
             if cg_image.is_null() {
                 return None;
             }
-            
+
             // Create NSBitmapImageRep from CGImage
             let bitmap_rep: id = msg_send![class!(NSBitmapImageRep), alloc];
             let bitmap_rep: id = msg_send![bitmap_rep, initWithCGImage:cg_image];
             if bitmap_rep.is_null() {
                 return None;
             }
-            
+
             // Set the size of the bitmap representation to match the NSImage size
             let size: NSSize = msg_send![ns_image, size];
             let _: () = msg_send![bitmap_rep, setSize:size];
-            
+
             // Get PNG representation
             let png_type = NSBitmapImageFileType::PNG;
             let empty_properties: id = msg_send![class!(NSDictionary), dictionary];
             let png_data: id = msg_send![bitmap_rep, representationUsingType:png_type.0 properties:empty_properties];
-        
+
             if png_data.is_null() {
                 let _: () = msg_send![bitmap_rep, release];
                 return None;
             }
-            
+
             // Get data length and bytes
             let length = ns_data_length(png_data);
             let bytes = ns_data_bytes(png_data);
-            
+
             if bytes.is_null() || length == 0 {
                 let _: () = msg_send![bitmap_rep, release];
                 return None;
             }
-            
+
             let mut data = Vec::with_capacity(length);
             std::ptr::copy_nonoverlapping(bytes, data.as_mut_ptr(), length);
             data.set_len(length);
-            
+
             // Clean up the bitmap rep, but not the png_data yet as we're using its bytes
             let _: () = msg_send![bitmap_rep, release];
-            
+
             Some(data)
         })();
-        
+
         // Drain the autorelease pool to clean up any Objective-C objects
         pool.drain();
-        
+
         result
     }
 }
@@ -408,7 +407,7 @@ fn ns_data_length(data: id) -> usize {
         if data.is_null() {
             return 0;
         }
-        
+
         let result: NSUInteger = msg_send![data, length];
         result as usize
     }
@@ -419,7 +418,7 @@ fn ns_data_bytes(data: id) -> *const u8 {
         if data.is_null() {
             return std::ptr::null();
         }
-        
+
         let result: *const std::ffi::c_void = msg_send![data, bytes];
         result as *const u8
     }

@@ -1,16 +1,15 @@
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Semaphore;
 use tokio::task;
 use walkdir::WalkDir;
-use std::process::Command;
 
-use crate::tokenizer::{build_doc_text,build_trigrams};
-
+use crate::tokenizer::{build_doc_text, build_trigrams};
 
 use crate::utils::get_category_from_extension;
 
@@ -90,7 +89,7 @@ pub enum FileProcessorError {
 
 #[derive(Clone)]
 pub struct FileProcessor {
-    pub db_path: PathBuf,         // sqlite db path - TODO, i think we may want to convert this to a db pool and manage a pool of connections using r2d2_rusqlite
+    pub db_path: PathBuf, // sqlite db path - TODO, i think we may want to convert this to a db pool and manage a pool of connections using r2d2_rusqlite
     pub concurrency_limit: usize, // max concurrency limit
 }
 impl FileProcessor {
@@ -139,7 +138,7 @@ impl FileProcessor {
             let db_path = self.db_path.clone();
             move || -> Result<(), FileProcessorError> {
                 let conn = Connection::open(db_path)?;
-    
+
                 // Set pragmas for better performance
                 conn.execute_batch(
                     r#"
@@ -147,7 +146,7 @@ impl FileProcessor {
                     PRAGMA synchronous = NORMAL;
                     "#,
                 )?;
-    
+
                 // Insert file metadata
                 conn.execute(
                     r#"
@@ -162,21 +161,17 @@ impl FileProcessor {
                         get_category_from_extension(&file.extension)
                     ],
                 )?;
-                
+
                 // Get the file ID for FTS insertion
                 let file_id: i64 = conn.query_row(
                     "SELECT id FROM files WHERE path = ?1",
                     [file.base.path.clone()],
                     |row| row.get(0),
                 )?;
-    
+
                 // Build document text from file metadata for search indexing
-                let doc_text = build_doc_text(
-                    &file.base.name,
-                    &file.base.path,
-                    &file.extension
-                );
-    
+                let doc_text = build_doc_text(&file.base.name, &file.base.path, &file.extension);
+
                 // Insert into full-text search table
                 conn.execute(
                     r#"
@@ -185,11 +180,11 @@ impl FileProcessor {
                     "#,
                     params![file_id, doc_text],
                 )?;
-                
+
                 Ok(())
             }
         });
-    
+
         handle
             .await
             .map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?
@@ -204,7 +199,6 @@ impl FileProcessor {
         paths: Vec<String>,
         on_progress: impl Fn(ProcessingStatus) + Send + Sync + Clone + 'static,
     ) -> Result<serde_json::Value, FileProcessorError> {
-
         println!("The paths {:?}", paths);
 
         // 1) gather all files
@@ -265,7 +259,6 @@ impl FileProcessor {
         });
         Ok(result)
     }
-    
 }
 
 pub fn process_file(
@@ -344,20 +337,26 @@ pub async fn process_paths_command(
 }
 
 #[tauri::command]
-pub fn get_files_data(query: String, state: State<'_, FileProcessorState>) -> Result<Vec<FileMetadata>, String> {
+pub fn get_files_data(
+    query: String,
+    state: State<'_, FileProcessorState>,
+) -> Result<Vec<FileMetadata>, String> {
     let processor = {
         let guard = state.0.lock().map_err(|e| e.to_string())?;
-        guard.as_ref().ok_or("File processor not initialized".to_string())?.clone()
+        guard
+            .as_ref()
+            .ok_or("File processor not initialized".to_string())?
+            .clone()
     };
 
-    let conn = Connection::open(processor.db_path)
-        .map_err(|e| format!("Failed to open database: {e}"))?;
+    let conn =
+        Connection::open(processor.db_path).map_err(|e| format!("Failed to open database: {e}"))?;
 
     // If user typed nothing, return first 50 files but we can be smarter here and check based on recents
     if query.trim().is_empty() {
-println!("the query is empty");
-    let mut stmt = conn.prepare(
-        r#"
+        let mut stmt = conn
+            .prepare(
+                r#"
              SELECT
               id,
               name,
@@ -368,11 +367,11 @@ println!("the query is empty");
               updated_at
             FROM files
             LIMIT 50
-        "#
-    ).map_err(|e| format!("Failed to prepare statement: {e}"))?;
+        "#,
+            )
+            .map_err(|e| format!("Failed to prepare statement: {e}"))?;
 
-    let mut rows = stmt.query([]).map_err(|e| format!("Query error: {e}"))?;
-
+        let mut rows = stmt.query([]).map_err(|e| format!("Query error: {e}"))?;
 
         let mut files = Vec::new();
         while let Some(row) = rows.next().map_err(|e| format!("Row error: {e}"))? {
@@ -393,12 +392,11 @@ println!("the query is empty");
     }
 
     if query.len() < 3 {
-        println!("the query is less than 3");
-        
         let like_pattern = format!("%{}%", query);
-        
-        let mut stmt = conn.prepare(
-            r#"
+
+        let mut stmt = conn
+            .prepare(
+                r#"
             SELECT
               id,
               name,
@@ -410,11 +408,13 @@ println!("the query is empty");
             FROM files
             WHERE name LIKE ?1 OR path LIKE ?2 OR extension LIKE ?3
             LIMIT 50
-            "#
-        ).map_err(|e| format!("Failed to prepare statement: {e}"))?;
-    
+            "#,
+            )
+            .map_err(|e| format!("Failed to prepare statement: {e}"))?;
+
         // Provide all three parameters the query expects
-        let mut rows = stmt.query(params![&like_pattern, &like_pattern, &like_pattern])
+        let mut rows = stmt
+            .query(params![&like_pattern, &like_pattern, &like_pattern])
             .map_err(|e| format!("Query error: {e}"))?;
 
         let mut files = Vec::new();
@@ -435,12 +435,16 @@ println!("the query is empty");
         return Ok(files);
     }
 
-    let search_trigrams = build_trigrams(&query); 
-    println!("more than 3 in search query, the search trigrams: {}", search_trigrams);
+    let search_trigrams = build_trigrams(&query);
+    println!(
+        "more than 3 in search query, the search trigrams: {}",
+        search_trigrams
+    );
 
     // do an FTS search on doc_text
-    let mut stmt = conn.prepare(
-        r#"
+    let mut stmt = conn
+        .prepare(
+            r#"
         SELECT
           f.id,
           f.name,
@@ -453,11 +457,13 @@ println!("the query is empty");
         JOIN files f ON ft.rowid = f.id
         WHERE ft.doc_text MATCH ?1
         LIMIT 50
-        "#
-    ).map_err(|e| format!("Failed to prepare statement: {e}"))?;
+        "#,
+        )
+        .map_err(|e| format!("Failed to prepare statement: {e}"))?;
 
     // Fix: Use search_trigrams instead of raw query
-    let mut rows = stmt.query([search_trigrams.as_str()])
+    let mut rows = stmt
+        .query([search_trigrams.as_str()])
         .map_err(|e| format!("Query error: {e}"))?;
 
     let mut files = Vec::new();
@@ -479,19 +485,20 @@ println!("the query is empty");
     Ok(files)
 }
 
-
 #[tauri::command]
 pub fn open_file(file_path: &str) -> Result<(), String> {
-
     let status = Command::new("open")
         .arg(file_path)
         .status()
         .map_err(|e| format!("Failed to open file: {}", e))?;
-    
+
     if status.success() {
         Ok(())
     } else {
-        Err(format!("Failed to open file, exit code: {:?}", status.code()))
+        Err(format!(
+            "Failed to open file, exit code: {:?}",
+            status.code()
+        ))
     }
 }
 
@@ -499,41 +506,46 @@ pub fn open_file(file_path: &str) -> Result<(), String> {
 pub fn check_fts_table(state: State<'_, FileProcessorState>) -> Result<String, String> {
     let processor = {
         let guard = state.0.lock().map_err(|e| e.to_string())?;
-        guard.as_ref().ok_or("File processor not initialized".to_string())?.clone()
+        guard
+            .as_ref()
+            .ok_or("File processor not initialized".to_string())?
+            .clone()
     };
 
-    let conn = Connection::open(processor.db_path)
-        .map_err(|e| format!("Failed to open database: {e}"))?;
-    
+    let conn =
+        Connection::open(processor.db_path).map_err(|e| format!("Failed to open database: {e}"))?;
+
     let mut result = String::new();
-    
+
     // Check total count of entries in files_fts table
     let count: i64 = conn
         .query_row("SELECT COUNT(*) FROM files_fts", [], |row| row.get(0))
         .map_err(|e| format!("Failed to count FTS rows: {e}"))?;
-    
+
     result.push_str(&format!("Total entries in files_fts table: {}\n\n", count));
-    
+
     // If there are entries, check some examples
     if count > 0 {
         // Get a sample of the entries
-        let mut stmt = conn.prepare(
-            "SELECT rowid, doc_text FROM files_fts LIMIT 5"
-        ).map_err(|e| format!("Failed to prepare statement: {e}"))?;
-        
-        let rows = stmt.query_map([], |row| {
-            let rowid: i64 = row.get(0)?;
-            let doc_text: String = row.get(1)?;
-            Ok((rowid, doc_text))
-        }).map_err(|e| format!("Query error: {e}"))?;
-        
+        let mut stmt = conn
+            .prepare("SELECT rowid, doc_text FROM files_fts LIMIT 5")
+            .map_err(|e| format!("Failed to prepare statement: {e}"))?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                let rowid: i64 = row.get(0)?;
+                let doc_text: String = row.get(1)?;
+                Ok((rowid, doc_text))
+            })
+            .map_err(|e| format!("Query error: {e}"))?;
+
         result.push_str("Sample entries from files_fts:\n");
         for entry in rows {
             if let Ok((rowid, doc_text)) = entry {
                 result.push_str(&format!("rowid: {}, doc_text: {}\n", rowid, doc_text));
             }
         }
-        
+
         // Get and check a "notes" file if one exists
         if let Ok((rowid, doc_text)) = conn.query_row(
             "SELECT ft.rowid, ft.doc_text FROM files_fts ft JOIN files f ON ft.rowid = f.id WHERE f.name LIKE '%notes%' LIMIT 1",
@@ -553,16 +565,16 @@ pub fn check_fts_table(state: State<'_, FileProcessorState>) -> Result<String, S
             result.push_str(&format!("\nFiles matching 'note' trigrams ({}): {}\n", trigram_search, count_match));
         }
     }
-    
+
     // Check the configuration of the FTS table
     result.push_str("\nFTS5 table configuration:\n");
     if let Ok(config) = conn.query_row(
         "SELECT sql FROM sqlite_master WHERE name = 'files_fts'",
         [],
-        |row| row.get::<_, String>(0)
+        |row| row.get::<_, String>(0),
     ) {
         result.push_str(&format!("Table SQL: {}\n", config));
     }
-    
+
     Ok(result)
 }

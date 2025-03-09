@@ -15,7 +15,9 @@
         "title": "kita",
         "width": 600,
         "height": 600,
-        "resizable": true
+        "resizable": true,
+        "decorations": false
+        
       }
     ],
     "security": {

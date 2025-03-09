@@ -20,6 +20,12 @@ import AppTable from "./AppTable";
 import FilesTable from "./FilesTable";
 import SectionNav from "./SectionNav";
 import { Command, File } from "lucide-react";
+import { register } from "@tauri-apps/plugin-global-shortcut";
+import { handleShortcut } from "./globalShortcut";
+
+await register("CommandOrControl+Shift+C", handleShortcut).then(() =>
+  console.log("shortcut successfully registered")
+);
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -489,8 +495,8 @@ export default function App() {
     return filteredApps.length + filteredFiles.length;
   }, [filteredApps.length, filteredFiles.length]);
 
-  console.log("files", filesData);
-  console.log("get apps data", appsData);
+  // console.log("files", filesData);
+  // console.log("get apps data", appsData);
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
