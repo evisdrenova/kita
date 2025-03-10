@@ -1,16 +1,17 @@
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{error, info, instrument, warn};
 
-pub mod code;
-pub mod docx;
-pub mod pdf;
+// pub mod code;
+// pub mod docx;
+// pub mod pdf;
 pub mod txt;
-pub mod xls;
+// pub mod xls;
 
 pub use self::common::{ParsedChunk, ParserConfig, ParserError, ParserResult};
 
@@ -80,6 +81,7 @@ pub mod common {
 }
 
 // Trait that all file parsers must implement
+#[async_trait]
 pub trait Parser: Send + Sync {
     // returns a vector of MIME types this parser can handle
     fn supported_mime_types(&self) -> Vec<&str>;
@@ -105,10 +107,10 @@ impl ParsingOrchestrator {
         };
 
         orchestrator.register_parser(Box::new(txt::TxtParser::default()));
-        orchestrator.register_parser(Box::new(pdf::PdfParser::default()));
-        orchestrator.register_parser(Box::new(docx::DocxParser::default()));
-        orchestrator.register_parser(Box::new(xls::XlsParser::default()));
-        orchestrator.register_parser(Box::new(code::CodeParser::default()));
+        // orchestrator.register_parser(Box::new(pdf::PdfParser::default()));
+        // orchestrator.register_parser(Box::new(docx::DocxParser::default()));
+        // orchestrator.register_parser(Box::new(xls::XlsParser::default()));
+        // orchestrator.register_parser(Box::new(code::CodeParser::default()));
 
         orchestrator
     }
@@ -120,14 +122,14 @@ impl ParsingOrchestrator {
     // find the right parser given a file type
     fn find_parser_for_file(&self, path: &Path) -> Option<&dyn Parser> {
         for parser in &self.parsers {
-            if parser.can_parse_file_type(path) {
+            if parser.can_handle(path) {
                 return Some(parser.as_ref());
             }
         }
         None
     }
 
-    // parse a single file and return a vector of chunks
+    /// Parse a single file and return chunks
     #[instrument(skip(self))]
     pub async fn parse_file(&self, path: &Path) -> ParserResult<Vec<ParsedChunk>> {
         let parser = self.find_parser_for_file(path).ok_or_else(|| {
@@ -256,10 +258,10 @@ impl Clone for ParsingOrchestrator {
 
         // Re-register the default parsers
         new_instance.register_parser(Box::new(txt::TxtParser::default()));
-        new_instance.register_parser(Box::new(pdf::PdfParser::default()));
-        new_instance.register_parser(Box::new(docx::DocxParser::default()));
-        new_instance.register_parser(Box::new(xls::XlsParser::default()));
-        new_instance.register_parser(Box::new(code::CodeParser::default()));
+        // new_instance.register_parser(Box::new(pdf::PdfParser::default()));
+        // new_instance.register_parser(Box::new(docx::DocxParser::default()));
+        // new_instance.register_parser(Box::new(xls::XlsParser::default()));
+        // new_instance.register_parser(Box::new(code::CodeParser::default()));
 
         new_instance
     }
