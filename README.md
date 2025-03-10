@@ -30,9 +30,25 @@ We register that tokenizer with SQLite’s FTS5 engine.
 We store each filename/path as a series of these 3‑char tokens in the files_fts table.
 When the user searches for, e.g., "exa", that becomes an FTS search for the exa token—matching anywhere that has those three characters consecutively.
 
-## Roadmap
+## Roadmap / Issues
 
-// optimize the get_app_icon to be faster, the icon conversion is taking way too long
 // i might be able to use the sysinfo crate to replace all of the libproc functions - investigate further
 
 // optimize the app list rendering it's a little slow - coudl use virtualization for the table or somethign else
+
+// Fast, local Emebdding creation and RAG
+
+1. Parse files (txt, pdf, etc. ), normalize, then chunk large files to convert into a normalized internal representation
+2. Transform chunks into embeddings for semantic search (find a local, oss model), consider quantized model using 4-bit or 8-bit, can check out rust-bert or tch-rs (use GPU if possible, fallback to CPU), load model once
+3. Store the embeddings in a structure that allows for fast ANN queries like Qdrant, or even hnswlib. Store embeddings on disk and then load indexes to memory. Mayube store vectors on disk and indexes in memory
+4. Pick a local LLM that can run in quantized mode and 16gb of ram, maybe llama or deepseek or qwen., Use rust-bindings in llama.cpp or ggml?? Make sure the context window i slarge enough to handle chunks/indexes
+
+text chunking -> line by line chunking basesd '\n'
+pdf chunking -> find some rust pdf parser, images??
+xls -> read row by row or cell ranges
+
+// Process
+
+1. Parse files → chunk → embed → index in vector store.
+2. Embed query → retrieve top-k relevant chunks → assemble prompt → run local LLM → return answer.
+3. Re-index or add new files by repeating ingestion steps.
