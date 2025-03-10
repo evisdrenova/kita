@@ -578,3 +578,4 @@ pub fn check_fts_table(state: State<'_, FileProcessorState>) -> Result<String, S
 
     Ok(result)
 }
+

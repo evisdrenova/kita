@@ -4,6 +4,7 @@ mod file_processor;
 mod resource_monitor;
 mod tokenizer;
 mod utils;
+mod parser;
 
 use file_processor::FileProcessorState;
 use tauri::Manager;
