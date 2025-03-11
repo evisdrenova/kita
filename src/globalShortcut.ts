@@ -1,9 +1,8 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
-// Debounce flag to prevent multiple rapid triggers
 let isHandlingShortcut = false;
 let lastActionTimestamp = 0;
-const DEBOUNCE_TIMEOUT = 300; // milliseconds
+const DEBOUNCE_TIMEOUT = 100; // milliseconds
 
 export async function handleShortcut() {
   const now = Date.now();
