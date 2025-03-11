@@ -1,4 +1,4 @@
-// src/parser/txt.rs
+use async_trait::async_trait;
 use std::path::{Path, PathBuf};
 use tokio::fs::File;
 use tokio::io::{self, AsyncBufReadExt, BufReader};
@@ -12,6 +12,7 @@ use super::Parser;
 #[derive(Default)]
 pub struct TxtParser;
 
+#[async_trait]
 impl Parser for TxtParser {
     fn supported_mime_types(&self) -> Vec<&str> {
         vec!["text/plain"]
@@ -31,16 +32,15 @@ impl Parser for TxtParser {
         }
     }
 
-    #[instrument(skip(self, config))]
     async fn parse(&self, path: &Path, config: &ParserConfig) -> ParserResult<Vec<ParsedChunk>> {
         debug!("Parsing text file: {}", path.display());
 
         // Open the file
-        let file = File::open(path).await?;
-        let reader = BufReader::new(file);
+        let file: File = File::open(path).await?;
+        let reader: BufReader<File> = BufReader::new(file);
 
         // Read the entire file content
-        let mut lines = reader.lines();
+        let mut lines: io::Lines<BufReader<File>> = reader.lines();
         let mut content = String::new();
 
         while let Some(line) = lines.next_line().await? {
@@ -49,7 +49,7 @@ impl Parser for TxtParser {
         }
 
         // Normalize text if configured
-        let processed_content = if config.normalize_text {
+        let processed_content: String = if config.normalize_text {
             util::normalize_text(&content)
         } else {
             content

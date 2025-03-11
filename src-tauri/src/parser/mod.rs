@@ -80,7 +80,7 @@ pub mod common {
     }
 }
 
-// Trait that all file parsers must implement
+// parser trait (essentially an interface)
 #[async_trait]
 pub trait Parser: Send + Sync {
     // returns a vector of MIME types this parser can handle
@@ -89,7 +89,7 @@ pub trait Parser: Send + Sync {
     // check if this parser can handle a given file type
     fn can_parse_file_type(&self, path: &Path) -> bool;
 
-    #[instrument(skip(self, config))]
+    // parse the file
     async fn parse(&self, path: &Path, config: &ParserConfig) -> ParserResult<Vec<ParsedChunk>>;
 }
 
@@ -129,7 +129,7 @@ impl ParsingOrchestrator {
         None
     }
 
-    /// Parse a single file and return chunks
+    // Parse a single file and return chunks
     #[instrument(skip(self))]
     pub async fn parse_file(&self, path: &Path) -> ParserResult<Vec<ParsedChunk>> {
         let parser = self.find_parser_for_file(path).ok_or_else(|| {
@@ -167,7 +167,6 @@ impl ParsingOrchestrator {
         for path in paths {
             let path_clone = path.clone();
             let sender_clone = chunk_sender.clone();
-            let config_clone = config.clone();
             let semaphore_clone = semaphore.clone();
             let orchestrator = Arc::new(self.clone());
 
@@ -275,9 +274,9 @@ pub mod util {
 
     /// Detect MIME type by reading magic bytes
     pub fn detect_mime_type(path: &Path) -> ParserResult<String> {
-        let mut file = std::fs::File::open(path)?;
-        let mut buffer = [0u8; 8192]; // Read 8KB for signature detection
-        let bytes_read = file.read(&mut buffer)?;
+        let mut file: std::fs::File = std::fs::File::open(path)?;
+        let mut buffer: [u8; 8192] = [0u8; 8192]; // Read 8KB for signature detection
+        let bytes_read: usize = file.read(&mut buffer)?;
 
         let infer = Infer::new();
         if let Some(kind) = infer.get(&buffer[..bytes_read]) {
