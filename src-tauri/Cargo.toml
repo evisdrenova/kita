@@ -44,6 +44,7 @@ tauri-plugin-dialog = "2"
 tracing = "0.1.41"
 infer = "0.19.0"
 async-trait = "0.1.87"
+tokio-stream = "0.1.17"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"

@@ -1,8 +1,11 @@
 use async_trait::async_trait;
+use futures::stream::StreamExt;
+use futures::Stream;
 use std::path::{Path, PathBuf};
 use tokio::fs::File;
 use tokio::io::{self, AsyncBufReadExt, BufReader};
-use tracing::{debug, instrument};
+use tokio_stream::wrappers::LinesStream;
+use tracing::debug;
 
 use super::common::{ChunkMetadata, ParsedChunk, ParserConfig, ParserError, ParserResult};
 use super::util;
@@ -92,12 +95,11 @@ impl Parser for TxtParser {
 }
 
 // Implement a streaming version for better memory efficiency with large files
-pub async fn stream_text_file(
-    path: &Path,
-) -> ParserResult<impl tokio::stream::Stream<Item = io::Result<String>>> {
+pub async fn stream_text_file(path: &Path) -> ParserResult<impl Stream<Item = io::Result<String>>> {
     let file = File::open(path).await?;
     let reader = BufReader::new(file);
-    Ok(reader.lines())
+    let lines = reader.lines();
+    Ok(LinesStream::new(lines))
 }
 
 // Function to read text files with very large content in a memory-efficient way
