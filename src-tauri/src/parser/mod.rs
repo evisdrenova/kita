@@ -46,7 +46,7 @@ pub mod common {
 
     pub type ParserResult<T> = Result<T, ParserError>;
 
-    #[derive(Error, Debug)]
+    #[derive(Error, Debug, Clone)]
     pub enum ParserError {
         #[error("IO error: {0}")]
         Io(#[from] std::io::Error),
