@@ -8,10 +8,15 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Semaphore;
 use tokio::task;
 use walkdir::WalkDir;
+use tracing::{error, info, warn, Level};
 
 use crate::tokenizer::{build_doc_text, build_trigrams};
 
 use crate::utils::get_category_from_extension;
+
+use crate::parser::{ParsedChunk, ParsingOrchestrator, ParserConfig};
+
+use crate::parser::runner::parse_with_tokio;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -220,6 +225,7 @@ impl FileProcessor {
             let err_sender = err_tx.clone();
             let this = self.clone();
             let progress_fn = on_progress.clone(); // Clone the progress function for each task
+            let pb = PathBuf::from(file.base.path.clone());
 
             let handle = tokio::spawn(async move {
                 let _permit = permit.acquire().await.unwrap(); // concurrency gate
@@ -239,6 +245,60 @@ impl FileProcessor {
                 }
             });
             handles.push(handle);
+
+            let config = ParserConfig {
+                chunk_size: 100,
+                chunk_overlap: 2,
+                normalize_text: true,
+                extract_metadata: true,
+                max_concurrent_files: 4,
+                use_gpu_acceleration: true,
+            };
+
+
+            // Create parsing orchestrator
+            let orchestrator = ParsingOrchestrator::new(config);
+
+            // Collect all files to parse
+            // let files = collect_files(inputs)?;
+            // info!("Found {} files to parse", files.len());
+
+            // // Parse files
+            // let chunks = if rayon {
+            //     // Use Rayon for CPU parallelization
+            //     parse_with_rayon(&orchestrator, files).await?
+            // } else {
+
+            // let mut chunksVec: Vec<PathBuf> = Vec::new();
+
+            // for path in files.iter() {
+            //     let pb: PathBuf = PathBuf::from(&path.base.path);
+            //     chunksVec.push(pb)
+            // }
+
+
+            // let pb = PathBuf::from(file.base.path.clone());
+
+               // Use Tokio for async parallelization
+                let chunks = parse_with_tokio(&orchestrator, vec![pb]).await.map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?;
+            // };
+
+            info!("Parsed {} chunks", chunks.len());
+
+            // Output chunks
+
+                // Print summary to stdout
+                for (i, chunk) in chunks.iter().enumerate().take(5) {
+                    println!(
+                        "Chunk {}: {} bytes, from {}",
+                        i,
+                        chunk.content.len(),
+                        chunk.metadata.source_path.display()
+                    );
+                }
+                if chunks.len() > 5 {
+                    println!("... and {} more chunks", chunks.len() - 5);
+                }
         }
         drop(err_tx);
 
@@ -578,4 +638,3 @@ pub fn check_fts_table(state: State<'_, FileProcessorState>) -> Result<String, S
 
     Ok(result)
 }
-

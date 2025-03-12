@@ -1,10 +1,11 @@
 mod app_handler;
 mod database_handler;
 mod file_processor;
+mod parser;
 mod resource_monitor;
 mod tokenizer;
 mod utils;
-mod parser;
+pub use parser::runner;
 
 use file_processor::FileProcessorState;
 use tauri::Manager;

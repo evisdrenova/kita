@@ -85,20 +85,25 @@ const SectionNav = (props: SectionNavProps) => {
         {/* When "All" is selected (activeSection is null), render all components with pagination */}
         {activeSection === null ? (
           <div className="flex flex-col gap-4">
-            {sections.map((section, index) => (
-              <div key={section.id}>
-                <h2 className="text-sm font-medium text-gray-400 mb-2">
-                  {section.name}
-                  {section.counts !== undefined && (
-                    <span className="ml-2 text-gray-500">
-                      ({section.counts})
-                    </span>
-                  )}
-                </h2>
-                <PaginatedSection section={section} searchQuery={searchQuery} />
-                {index != sections.length - 1 && <Separator />}
-              </div>
-            ))}
+            {sections
+              .filter((sect) => sect.counts && sect.counts > 0)
+              .map((section, index) => (
+                <div key={section.id}>
+                  <h2 className="text-sm font-medium text-gray-400 mb-2">
+                    {section.name}
+                    {section.counts !== undefined && (
+                      <span className="ml-2 text-gray-500">
+                        ({section.counts})
+                      </span>
+                    )}
+                  </h2>
+                  <PaginatedSection
+                    section={section}
+                    searchQuery={searchQuery}
+                  />
+                  {index != sections.length - 1 && <Separator />}
+                </div>
+              ))}
           </div>
         ) : (
           activeComponent

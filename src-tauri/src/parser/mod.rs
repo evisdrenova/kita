@@ -7,6 +7,8 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tracing::{error, info, instrument, warn};
 
+pub mod runner;
+
 // pub mod code;
 // pub mod docx;
 // pub mod pdf;
@@ -46,7 +48,7 @@ pub mod common {
 
     pub type ParserResult<T> = Result<T, ParserError>;
 
-    #[derive(Error, Debug, Clone)]
+    #[derive(Error, Debug)]
     pub enum ParserError {
         #[error("IO error: {0}")]
         Io(#[from] std::io::Error),
@@ -122,14 +124,14 @@ impl ParsingOrchestrator {
     // find the right parser given a file type
     fn find_parser_for_file(&self, path: &Path) -> Option<&dyn Parser> {
         for parser in &self.parsers {
-            if parser.can_handle(path) {
+            if parser.can_parse_file_type(path) {
                 return Some(parser.as_ref());
             }
         }
         None
     }
 
-    // Parse a single file and return chunks
+    /// Parse a single file and return chunks
     #[instrument(skip(self))]
     pub async fn parse_file(&self, path: &Path) -> ParserResult<Vec<ParsedChunk>> {
         let parser = self.find_parser_for_file(path).ok_or_else(|| {
@@ -188,7 +190,9 @@ impl ParsingOrchestrator {
                     Err(e) => {
                         error!("Failed to parse file {}: {:?}", path_clone.display(), e);
                         // Send the error through the channel too
-                        if sender_clone.send(Err(e.clone())).await.is_err() {
+                        let channel_error =
+                            ParserError::Other(format!("Failed to parse file: {}", e));
+                        if sender_clone.send(Err(channel_error)).await.is_err() {
                             return Err(ParserError::ChannelError);
                         }
                         Err(e)
