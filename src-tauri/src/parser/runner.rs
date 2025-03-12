@@ -1,54 +1,11 @@
-use rayon::prelude::*;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tokio::sync::mpsc;
-use tracing::{error, info, warn, Level};
+use tracing::{error, info};
 
 use crate::parser::{
-    common::{ParsedChunk, ParserConfig, ParserError, ParserResult},
+    common::{ParsedChunk, ParserResult},
     ParsingOrchestrator,
 };
-
-// #[tokio::main]
-// async fn runner() -> Result<(), Box<dyn std::error::Error>> {
-//     // Create parsing orchestrator
-//     let orchestrator = ParsingOrchestrator::new(config);
-
-//     // Collect all files to parse
-//     let files = collect_files(inputs)?;
-//     info!("Found {} files to parse", files.len());
-
-//     // Parse files
-//     let chunks = if rayon {
-//         // Use Rayon for CPU parallelization
-//         parse_with_rayon(&orchestrator, files).await?
-//     } else {
-//         // Use Tokio for async parallelization
-//         parse_with_tokio(&orchestrator, files).await?
-//     };
-
-//     info!("Parsed {} chunks from {} files", chunks.len(), files.len());
-
-//     // Output chunks
-//     if let Some(output_dir) = output {
-//         save_chunks_to_directory(&chunks, &output_dir).await?;
-//     } else {
-//         // Print summary to stdout
-//         println!("Parsed {} chunks from {} files", chunks.len(), files.len());
-//         for (i, chunk) in chunks.iter().enumerate().take(5) {
-//             println!(
-//                 "Chunk {}: {} bytes, from {}",
-//                 i,
-//                 chunk.content.len(),
-//                 chunk.metadata.source_path.display()
-//             );
-//         }
-//         if chunks.len() > 5 {
-//             println!("... and {} more chunks", chunks.len() - 5);
-//         }
-//     }
-
-//     Ok(())
-// }
 
 /// Parse files using Tokio for async parallelization
 pub async fn parse_with_tokio(
