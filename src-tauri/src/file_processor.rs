@@ -269,7 +269,7 @@ pub async fn process_paths(
                             let embedding = tokio::task::spawn_blocking(move || {
                                 embedder_ref.embed_text(&chunk_text)
                             }).await.unwrap_or_default();
-                            
+                     
                             chunk_embeddings.push(embedding);
                         }
                         
