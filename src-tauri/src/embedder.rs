@@ -1,4 +1,4 @@
-use fastembed_rs::{EmbeddingModel, TextEmbedding};
+use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use std::sync::Arc;
 
 // struct to hold your embedding model
@@ -8,8 +8,11 @@ pub struct Embedder {
 
 impl Embedder {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        // Initialize the model once - this loads it into memory
-        let model = TextEmbedding::try_new(EmbeddingModel::BGESmallEN)?;
+        let init_options =
+            InitOptions::new(EmbeddingModel::BGESmallENV15).with_show_download_progress(true);
+
+        let model = TextEmbedding::try_new(init_options)?;
+
         Ok(Self {
             model: Arc::new(model),
         })
@@ -17,7 +20,7 @@ impl Embedder {
 
     // Get embeddings for a single text
     pub fn embed_text(&self, text: &str) -> Vec<f32> {
-        match self.model.embed(text, None) {
+        match self.model.embed(vec![text], None) {
             Ok(embeddings) => {
                 if !embeddings.is_empty() {
                     embeddings[0].clone()
@@ -29,11 +32,11 @@ impl Embedder {
         }
     }
 
-    // Get embeddings for a batch of texts
-    pub fn embed_batch(&self, texts: &[String]) -> Vec<Vec<f32>> {
-        match self.model.embed_batch(texts, None) {
-            Ok(embeddings) => embeddings,
-            Err(_) => vec![Vec::new(); texts.len()],
-        }
-    }
+    // // Get embeddings for a batch of texts
+    // pub fn embed_batch(&self, texts: &[String]) -> Vec<Vec<f32>> {
+    //     match self.model.embed_batch(texts, None) {
+    //         Ok(embeddings) => embeddings,
+    //         Err(_) => vec![Vec::new(); texts.len()],
+    //     }
+    // }
 }

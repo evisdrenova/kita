@@ -46,7 +46,7 @@ infer = "0.19.0"
 async-trait = "0.1.87"
 tokio-stream = "0.1.17"
 clap = "4.5.32"
-fastembed-rs = "0.1"
+fastembed = "4.6.0"
 
 
 
