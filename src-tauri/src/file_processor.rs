@@ -18,6 +18,8 @@ use crate::parser::{ParsedChunk, ParsingOrchestrator, ParserConfig};
 
 use crate::parser::runner::parse_with_tokio;
 
+use crate::embedder::{Embedder};
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -200,7 +202,7 @@ impl FileProcessor {
     /// 1) collect files
     /// 2) spawn tasks with concurrency limit
     /// 3) track progress and optionally emit Tauri events
-    pub async fn process_paths(
+pub async fn process_paths(
         &self,
         paths: Vec<String>,
         on_progress: impl Fn(ProcessingStatus) + Send + Sync + Clone + 'static,
@@ -230,7 +232,6 @@ impl FileProcessor {
             let pb = PathBuf::from(file.base.path.clone());
             let embedder_clone = embedder.clone();
             
-            // Your task spawning
             let handle = tokio::spawn(async move {
                 let _permit = permit.acquire().await.unwrap();
                 
@@ -256,30 +257,24 @@ impl FileProcessor {
                     Ok(chunks) => {
                         info!("Parsed {} chunks", chunks.len());
                         
-                        // Extract the texts to embed
-                        let texts: Vec<String> = chunks.iter()
-                            .map(|chunk| chunk.content.clone())
-                            .collect();
+                        // Process each chunk individually
+                        let mut chunk_embeddings = Vec::with_capacity(chunks.len());
                         
-                        // Generate embeddings in batches (to avoid OOM)
-                        const BATCH_SIZE: usize = 32;
-                        let mut all_embeddings = Vec::with_capacity(texts.len());
-                        
-                        for batch in texts.chunks(BATCH_SIZE) {
+                        for chunk in &chunks {
                             // Use a blocking task for CPU-intensive embedding
-                            let batch_vec = batch.to_vec();
+                            let chunk_text = chunk.content.clone();
                             let embedder_ref = embedder_clone.clone();
                             
-                            let batch_embeddings = tokio::task::spawn_blocking(move || {
-                                embedder_ref.embed_batch(&batch_vec)
+                            // Process embedding in a CPU pool
+                            let embedding = tokio::task::spawn_blocking(move || {
+                                embedder_ref.embed_text(&chunk_text)
                             }).await.unwrap_or_default();
                             
-                            all_embeddings.extend(batch_embeddings);
+                            chunk_embeddings.push(embedding);
                         }
                         
                         // Now you have chunks and their embeddings
-                        // Here you would store them in your vector DB
-                        for (i, (chunk, embedding)) in chunks.iter().zip(all_embeddings.iter()).enumerate().take(5) {
+                        for (i, (chunk, embedding)) in chunks.iter().zip(chunk_embeddings.iter()).enumerate().take(5) {
                             println!(
                                 "Chunk {}: {} bytes, embedding dims: {}",
                                 i,
@@ -287,6 +282,14 @@ impl FileProcessor {
                                 embedding.len()
                             );
                         }
+                        
+                        // Here you would store them in your vector DB
+                        // For example:
+                        // for (chunk, embedding) in chunks.iter().zip(chunk_embeddings.iter()) {
+                        //     db.insert(chunk.metadata.source_path.to_string_lossy().to_string(), 
+                        //               chunk.content.clone(), 
+                        //               embedding.clone()).await?;
+                        // }
                         
                         // Update progress
                         let done = pc.fetch_add(1, Ordering::SeqCst) + 1;
@@ -308,7 +311,7 @@ impl FileProcessor {
             handles.push(handle);
         }
         
-        // Wait for all tasks and process results as before
+        // Wait for all tasks and process results
         drop(err_tx);
         futures::future::join_all(handles).await;
         
