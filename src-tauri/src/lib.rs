@@ -1,5 +1,6 @@
 mod app_handler;
 mod database_handler;
+mod embedder;
 mod file_processor;
 mod parser;
 mod resource_monitor;

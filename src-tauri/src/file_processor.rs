@@ -18,6 +18,7 @@ use crate::parser::{ParsedChunk, ParsingOrchestrator, ParserConfig};
 
 use crate::parser::runner::parse_with_tokio;
 
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SearchSectionType {
@@ -205,112 +206,118 @@ impl FileProcessor {
         on_progress: impl Fn(ProcessingStatus) + Send + Sync + Clone + 'static,
     ) -> Result<serde_json::Value, FileProcessorError> {
         println!("The paths {:?}", paths);
-
-        // 1) gather all files
+    
+        // Initialize the embedder once
+        let embedder = match Embedder::new() {
+            Ok(emb) => Arc::new(emb),
+            Err(e) => return Err(FileProcessorError::Other(format!("Failed to initialize embedder: {}", e))),
+        };
+        
         let files = self.collect_all_files(&paths).await?;
         let total = files.len();
-
-        // concurrency
+        
         let sem = Arc::new(Semaphore::new(self.concurrency_limit));
         let processed = Arc::new(AtomicUsize::new(0));
-
-        // channel for collecting errors
         let (err_tx, mut err_rx) = tokio::sync::mpsc::unbounded_channel();
-
-        // spawn tasks
+        
         let mut handles = Vec::with_capacity(total);
         for file in files {
             let permit = sem.clone();
             let pc = processed.clone();
             let err_sender = err_tx.clone();
             let this = self.clone();
-            let progress_fn = on_progress.clone(); // Clone the progress function for each task
+            let progress_fn = on_progress.clone();
             let pb = PathBuf::from(file.base.path.clone());
-
+            let embedder_clone = embedder.clone();
+            
+            // Your task spawning
             let handle = tokio::spawn(async move {
-                let _permit = permit.acquire().await.unwrap(); // concurrency gate
+                let _permit = permit.acquire().await.unwrap();
+                
+                // Process the file first
                 if let Err(e) = this.process_one_file(file).await {
                     let _ = err_sender.send(e);
+                    return;
                 }
-                let done = pc.fetch_add(1, Ordering::SeqCst) + 1;
-                // report progress
-                if total > 0 {
-                    let percentage = ((done as f64 / total as f64) * 100.0).round() as usize;
-                    let status = ProcessingStatus {
-                        total,
-                        processed: done,
-                        percentage,
-                    };
-                    progress_fn(status);
+                
+                // Parse and chunk the file
+                let config = ParserConfig {
+                    chunk_size: 100,
+                    chunk_overlap: 2,
+                    normalize_text: true,
+                    extract_metadata: true,
+                    max_concurrent_files: 4,
+                    use_gpu_acceleration: true,
+                };
+                
+                let orchestrator = ParsingOrchestrator::new(config);
+                
+                match parse_with_tokio(&orchestrator, vec![pb]).await {
+                    Ok(chunks) => {
+                        info!("Parsed {} chunks", chunks.len());
+                        
+                        // Extract the texts to embed
+                        let texts: Vec<String> = chunks.iter()
+                            .map(|chunk| chunk.content.clone())
+                            .collect();
+                        
+                        // Generate embeddings in batches (to avoid OOM)
+                        const BATCH_SIZE: usize = 32;
+                        let mut all_embeddings = Vec::with_capacity(texts.len());
+                        
+                        for batch in texts.chunks(BATCH_SIZE) {
+                            // Use a blocking task for CPU-intensive embedding
+                            let batch_vec = batch.to_vec();
+                            let embedder_ref = embedder_clone.clone();
+                            
+                            let batch_embeddings = tokio::task::spawn_blocking(move || {
+                                embedder_ref.embed_batch(&batch_vec)
+                            }).await.unwrap_or_default();
+                            
+                            all_embeddings.extend(batch_embeddings);
+                        }
+                        
+                        // Now you have chunks and their embeddings
+                        // Here you would store them in your vector DB
+                        for (i, (chunk, embedding)) in chunks.iter().zip(all_embeddings.iter()).enumerate().take(5) {
+                            println!(
+                                "Chunk {}: {} bytes, embedding dims: {}",
+                                i,
+                                chunk.content.len(),
+                                embedding.len()
+                            );
+                        }
+                        
+                        // Update progress
+                        let done = pc.fetch_add(1, Ordering::SeqCst) + 1;
+                        if total > 0 {
+                            let percentage = ((done as f64 / total as f64) * 100.0).round() as usize;
+                            let status = ProcessingStatus {
+                                total,
+                                processed: done,
+                                percentage,
+                            };
+                            progress_fn(status);
+                        }
+                    },
+                    Err(e) => {
+                        let _ = err_sender.send(FileProcessorError::Other(format!("Parsing error: {:?}", e)));
+                    }
                 }
             });
             handles.push(handle);
-
-            let config = ParserConfig {
-                chunk_size: 100,
-                chunk_overlap: 2,
-                normalize_text: true,
-                extract_metadata: true,
-                max_concurrent_files: 4,
-                use_gpu_acceleration: true,
-            };
-
-
-            // Create parsing orchestrator
-            let orchestrator = ParsingOrchestrator::new(config);
-
-            // Collect all files to parse
-            // let files = collect_files(inputs)?;
-            // info!("Found {} files to parse", files.len());
-
-            // // Parse files
-            // let chunks = if rayon {
-            //     // Use Rayon for CPU parallelization
-            //     parse_with_rayon(&orchestrator, files).await?
-            // } else {
-
-            // let mut chunksVec: Vec<PathBuf> = Vec::new();
-
-            // for path in files.iter() {
-            //     let pb: PathBuf = PathBuf::from(&path.base.path);
-            //     chunksVec.push(pb)
-            // }
-
-
-            // let pb = PathBuf::from(file.base.path.clone());
-
-               // Use Tokio for async parallelization
-                let chunks = parse_with_tokio(&orchestrator, vec![pb]).await.map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?;
-            // };
-
-            info!("Parsed {} chunks", chunks.len());
-
-            // Output chunks
-
-                // Print summary to stdout
-                for (i, chunk) in chunks.iter().enumerate().take(5) {
-                    println!(
-                        "Chunk {}: {} bytes, from {}",
-                        i,
-                        chunk.content.len(),
-                        chunk.metadata.source_path.display()
-                    );
-                }
-                if chunks.len() > 5 {
-                    println!("... and {} more chunks", chunks.len() - 5);
-                }
         }
+        
+        // Wait for all tasks and process results as before
         drop(err_tx);
-
-        // wait for all tasks
         futures::future::join_all(handles).await;
-
+        
         // gather errors
         let mut errors = Vec::new();
         while let Ok(e) = err_rx.try_recv() {
             errors.push(format!("{:?}", e));
         }
-
+        
         let success = errors.is_empty();
         let result = serde_json::json!({
             "success": success,
