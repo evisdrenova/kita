@@ -7,6 +7,7 @@
 /src-tauri/target/
 /src-tauri/WixTools
 /src-tauri/Cargo.lock
+/src-tauri/.fastembed_cache/
 
 # Testing
 /coverage
@@ -48,6 +49,3 @@ pnpm-debug.log*
 .tsbuildinfo
 .turbo
 .cache/
-
-
-.fastembed_cache/
