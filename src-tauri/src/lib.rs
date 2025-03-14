@@ -1,12 +1,11 @@
 mod app_handler;
+mod chunker;
 mod database_handler;
 mod embedder;
 mod file_processor;
-mod parser;
 mod resource_monitor;
 mod tokenizer;
 mod utils;
-pub use parser::runner;
 
 use file_processor::FileProcessorState;
 use tauri::Manager;
@@ -69,7 +68,6 @@ pub fn run() {
             file_processor::process_paths_command,
             file_processor::get_files_data,
             file_processor::open_file,
-            file_processor::check_fts_table
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

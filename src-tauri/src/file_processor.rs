@@ -1,3 +1,4 @@
+use rayon::prelude::*;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -5,21 +6,19 @@ use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Semaphore;
 use tokio::task;
+use tracing::error;
 use walkdir::WalkDir;
-use tracing::{error, info, warn, Level};
 
 use crate::tokenizer::{build_doc_text, build_trigrams};
 
 use crate::utils::get_category_from_extension;
 
-use crate::parser::{ParsedChunk, ParsingOrchestrator, ParserConfig};
+use crate::chunker::{Chunk, ChunkerConfig, ChunkerOrchestrator};
 
-use crate::parser::runner::parse_with_tokio;
-
-use crate::embedder::{Embedder};
-
+use crate::embedder::Embedder;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -97,24 +96,130 @@ pub enum FileProcessorError {
 
 #[derive(Clone)]
 pub struct FileProcessor {
-    pub db_path: PathBuf, // sqlite db path - TODO, i think we may want to convert this to a db pool and manage a pool of connections using r2d2_rusqlite
-    pub concurrency_limit: usize, // max concurrency limit
+    pub db_path: PathBuf, // sqlite db path - TODO: convert to db pool using r2d2_rusqlite
+    pub concurrency_limit: usize,
 }
+
 impl FileProcessor {
-    // gathers file metadata from the given path
-    // uses blocking  i/o, so we do spawn_blocking to run the file processing
+    /// Main async method to process all the given paths:
+    /// 1) collect files
+    /// 2) spawn tasks with concurrency limit
+    /// 3) process files by storing them, creating chunks, embeddings and storing in qrant
+    /// 4) track progress and optionally emit Tauri events
+    /// If successful then this function doesn't return anything
+    /// If error, then it returns the number of errors, the file path that caused it and the error
+    pub async fn process_paths(
+        &self,
+        paths: Vec<String>,
+        on_progress: impl Fn(ProcessingStatus) + Send + Sync + Clone + 'static,
+    ) -> Result<serde_json::Value, FileProcessorError> {
+        println!("The paths {:?}", paths);
+
+        // Initialize the embedder once
+        let embedder: Arc<Embedder> = match Embedder::new() {
+            Ok(emb) => Arc::new(emb),
+            Err(e) => {
+                return Err(FileProcessorError::Other(format!(
+                    "Failed to initialize embedder: {}",
+                    e
+                )))
+            }
+        };
+
+        // TODO: we might want to  parallelize this and the chunking instead of doing it sequentlly, essentially walk the tree, get to leaves, chunk and embed them and keep going
+
+        // get all file paths that need to be processed
+        let files: Vec<FileMetadata> = self.collect_all_files(&paths).await?;
+        let total_files: usize = files.len();
+
+        // early return if no files
+        if total_files == 0 {
+            return Ok(serde_json::json!({
+                "success": true,
+                "totalFiles": 0,
+                "errors": []
+            }));
+        }
+
+        // create new semaphore to handle concurrency limits
+        let sem = Arc::new(Semaphore::new(self.concurrency_limit));
+
+        let num_processed_files = Arc::new(AtomicUsize::new(0));
+
+        // channel to collect errors
+        let (err_tx, mut err_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let mut task_handles = Vec::with_capacity(total_files);
+
+        for file in &files {
+            // semaphore is shared but each task needs its own reference for concurrency limit
+            let permit = sem.clone();
+            // each task needs a reference to the current process files so it can update it
+            let pc = num_processed_files.clone();
+            // task needs its own channel sender for errors
+            let err_sender: UnboundedSender<(String, String)> = err_tx.clone();
+            // each task needs a reference to the processor object to call process function
+            let this = self.clone();
+            // each task needs its own reference to the progress function to update it
+            let progress_fn = on_progress.clone();
+            // each task needs access to the embedder
+            let embedder_clone = embedder.clone();
+
+            let task_handle: task::JoinHandle<()> = create_path_embedding(
+                this.db_path,
+                file,
+                embedder_clone,
+                permit,
+                err_sender,
+                total_files,
+                pc,
+                progress_fn,
+            );
+
+            task_handles.push(task_handle);
+        }
+
+        // Wait for all tasks and process results
+        drop(err_tx);
+        futures::future::join_all(task_handles).await;
+
+        // Collect errors with file paths
+        let mut detailed_errors = Vec::new();
+        while let Ok((file_path, error_msg)) = err_rx.try_recv() {
+            detailed_errors.push(serde_json::json!({
+                "path": file_path,
+                "error": error_msg
+            }));
+        }
+
+        let success = detailed_errors.is_empty();
+        let processed_count = num_processed_files.load(Ordering::SeqCst);
+
+        let result = serde_json::json!({
+            "success": success,
+            "totalFiles": total_files,
+            "processedFiles": processed_count,
+            "errors": detailed_errors
+        });
+
+        Ok(result)
+    }
+
+    /// Given a vector of paths, this walks the tree and collects all children paths
     async fn collect_all_files(
         &self,
         paths: &[String],
     ) -> Result<Vec<FileMetadata>, FileProcessorError> {
-        let pvec = paths.to_vec();
-        let outer = task::spawn_blocking(move || {
-            let mut all_files = Vec::new();
-            for path_str in pvec {
-                let path = Path::new(&path_str);
+        let path_vec: Vec<String> = paths.to_vec();
+        // use tokio here since we're mainly doing i/o operations which tokio handles nicely
+        // rayon isn't as good of a choice here as it's mainly for cpu-intensive operations like processing data
+        task::spawn_blocking(move || {
+            let mut all_files: Vec<FileMetadata> = Vec::new();
+            for path_str in path_vec {
+                let path: &Path = Path::new(&path_str);
                 if path.is_dir() {
                     for entry in WalkDir::new(path) {
-                        let entry = match entry {
+                        let entry: walkdir::DirEntry = match entry {
                             Ok(e) => e,
                             Err(e) => {
                                 eprintln!("Error walking dir: {e}");
@@ -122,216 +227,268 @@ impl FileProcessor {
                             }
                         };
                         if entry.file_type().is_file() {
-                            let _ = process_file(entry.path(), &mut all_files);
+                            let _ = get_file_metadata(entry.path(), &mut all_files);
                         }
                     }
                 } else {
-                    let _ = process_file(path, &mut all_files);
+                    let _ = get_file_metadata(path, &mut all_files);
                 }
             }
             Ok::<_, FileProcessorError>(all_files)
         })
         .await
-        .map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?;
-
-        let files: Vec<FileMetadata> = outer?;
-
-        Ok(files)
-    }
-
-    /// Process a single file: do DB writes, text extraction, embedding, etc.
-    /// We'll do this in a blocking task because rusqlite is blocking.
-    async fn process_one_file(&self, file: FileMetadata) -> Result<(), FileProcessorError> {
-        let handle = task::spawn_blocking({
-            let db_path = self.db_path.clone();
-            move || -> Result<(), FileProcessorError> {
-                let conn = Connection::open(db_path)?;
-
-                // Set pragmas for better performance
-                conn.execute_batch(
-                    r#"
-                    PRAGMA journal_mode = WAL;
-                    PRAGMA synchronous = NORMAL;
-                    "#,
-                )?;
-
-                // Insert file metadata
-                conn.execute(
-                    r#"
-                    INSERT OR IGNORE INTO files (path, name, extension, size, category, created_at, updated_at)
-                    VALUES (?1, ?2, ?3, ?4, ?5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
-                    "#,
-                    params![
-                        file.base.path,
-                        file.base.name,
-                        file.extension,
-                        file.size,
-                        get_category_from_extension(&file.extension)
-                    ],
-                )?;
-
-                // Get the file ID for FTS insertion
-                let file_id: i64 = conn.query_row(
-                    "SELECT id FROM files WHERE path = ?1",
-                    [file.base.path.clone()],
-                    |row| row.get(0),
-                )?;
-
-                // Build document text from file metadata for search indexing
-                let doc_text = build_doc_text(&file.base.name, &file.base.path, &file.extension);
-
-                // Insert into full-text search table
-                conn.execute(
-                    r#"
-                    INSERT INTO files_fts(rowid, doc_text)
-                    VALUES (?1, ?2)
-                    "#,
-                    params![file_id, doc_text],
-                )?;
-
-                Ok(())
-            }
-        });
-
-        handle
-            .await
-            .map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?
-    }
-
-    /// Main async method to process all the given paths:
-    /// 1) collect files
-    /// 2) spawn tasks with concurrency limit
-    /// 3) track progress and optionally emit Tauri events
-pub async fn process_paths(
-        &self,
-        paths: Vec<String>,
-        on_progress: impl Fn(ProcessingStatus) + Send + Sync + Clone + 'static,
-    ) -> Result<serde_json::Value, FileProcessorError> {
-        println!("The paths {:?}", paths);
-    
-        // Initialize the embedder once
-        let embedder = match Embedder::new() {
-            Ok(emb) => Arc::new(emb),
-            Err(e) => return Err(FileProcessorError::Other(format!("Failed to initialize embedder: {}", e))),
-        };
-        
-        let files = self.collect_all_files(&paths).await?;
-        let total = files.len();
-        
-        let sem = Arc::new(Semaphore::new(self.concurrency_limit));
-        let processed = Arc::new(AtomicUsize::new(0));
-        let (err_tx, mut err_rx) = tokio::sync::mpsc::unbounded_channel();
-        
-        let mut handles = Vec::with_capacity(total);
-        for file in files {
-            let permit = sem.clone();
-            let pc = processed.clone();
-            let err_sender = err_tx.clone();
-            let this = self.clone();
-            let progress_fn = on_progress.clone();
-            let pb = PathBuf::from(file.base.path.clone());
-            let embedder_clone = embedder.clone();
-            
-            let handle = tokio::spawn(async move {
-                let _permit = permit.acquire().await.unwrap();
-                
-                // Process the file first
-                if let Err(e) = this.process_one_file(file).await {
-                    let _ = err_sender.send(e);
-                    return;
-                }
-                
-                // Parse and chunk the file
-                let config = ParserConfig {
-                    chunk_size: 100,
-                    chunk_overlap: 2,
-                    normalize_text: true,
-                    extract_metadata: true,
-                    max_concurrent_files: 4,
-                    use_gpu_acceleration: true,
-                };
-                
-                let orchestrator = ParsingOrchestrator::new(config);
-                
-                match parse_with_tokio(&orchestrator, vec![pb]).await {
-                    Ok(chunks) => {
-                        info!("Parsed {} chunks", chunks.len());
-                        
-                        // Process each chunk individually
-                        let mut chunk_embeddings = Vec::with_capacity(chunks.len());
-                        
-                        for chunk in &chunks {
-                            // Use a blocking task for CPU-intensive embedding
-                            let chunk_text = chunk.content.clone();
-                            let embedder_ref = embedder_clone.clone();
-                            
-                            // Process embedding in a CPU pool
-                            let embedding = tokio::task::spawn_blocking(move || {
-                                embedder_ref.embed_text(&chunk_text)
-                            }).await.unwrap_or_default();
-                     
-                            chunk_embeddings.push(embedding);
-                        }
-                        
-                        // Now you have chunks and their embeddings
-                        for (i, (chunk, embedding)) in chunks.iter().zip(chunk_embeddings.iter()).enumerate().take(5) {
-                            println!(
-                                "Chunk {}: {} bytes, embedding dims: {}",
-                                i,
-                                chunk.content.len(),
-                                embedding.len()
-                            );
-                        }
-                        
-                        // Here you would store them in your vector DB
-                        // For example:
-                        // for (chunk, embedding) in chunks.iter().zip(chunk_embeddings.iter()) {
-                        //     db.insert(chunk.metadata.source_path.to_string_lossy().to_string(), 
-                        //               chunk.content.clone(), 
-                        //               embedding.clone()).await?;
-                        // }
-                        
-                        // Update progress
-                        let done = pc.fetch_add(1, Ordering::SeqCst) + 1;
-                        if total > 0 {
-                            let percentage = ((done as f64 / total as f64) * 100.0).round() as usize;
-                            let status = ProcessingStatus {
-                                total,
-                                processed: done,
-                                percentage,
-                            };
-                            progress_fn(status);
-                        }
-                    },
-                    Err(e) => {
-                        let _ = err_sender.send(FileProcessorError::Other(format!("Parsing error: {:?}", e)));
-                    }
-                }
-            });
-            handles.push(handle);
-        }
-        
-        // Wait for all tasks and process results
-        drop(err_tx);
-        futures::future::join_all(handles).await;
-        
-        // gather errors
-        let mut errors = Vec::new();
-        while let Ok(e) = err_rx.try_recv() {
-            errors.push(format!("{:?}", e));
-        }
-        
-        let success = errors.is_empty();
-        let result = serde_json::json!({
-            "success": success,
-            "totalFiles": processed.load(Ordering::SeqCst),
-            "errors": errors
-        });
-        Ok(result)
+        .map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?
     }
 }
 
-pub fn process_file(
+fn create_path_embedding(
+    db_path: PathBuf,
+    file_metadata: &FileMetadata,
+    embedder: Arc<Embedder>,
+    permit: Arc<Semaphore>,
+    err_sender: UnboundedSender<(String, String)>,
+    total_files: usize,
+    pc: Arc<AtomicUsize>,
+    progress_fn: impl Fn(ProcessingStatus) + Send + Sync + Clone + 'static,
+) -> tokio::task::JoinHandle<()> {
+    let file_path = file_metadata.base.path;
+
+    tokio::spawn(async move {
+        // Acquire concurrency permit to start doing some work
+        let _permit = match permit.acquire().await {
+            Ok(permit) => permit,
+            Err(_) => {
+                let _ =
+                    err_sender.send((file_path, "Failed to acquire semaphore permit".to_string()));
+                return;
+            }
+        };
+
+        //process and save the file to the database for searching and full text searching
+        if let Err(e) = save_file_to_fts(db_path, file_metadata).await {
+            let _ = err_sender.send((file_path, format!("File processing error: {:?}", e)));
+            return;
+        }
+
+        if file_metadata.size == 0 {
+            // we still want to index it but skip trying to chunk the file if it's empty
+            return;
+        }
+
+        // Configure the chunker
+        let config = ChunkerConfig {
+            chunk_size: 100,
+            chunk_overlap: 2,
+            normalize_text: true,
+            extract_metadata: true,
+            max_concurrent_files: 4,
+            use_gpu_acceleration: true,
+        };
+
+        let orchestrator = ChunkerOrchestrator::new(config);
+
+        match tokio::task::spawn_blocking(move || {
+            let chunks = orchestrator.chunk_file(file_metadata);
+
+            let chunks_with_embeddings: Vec<(Chunk, Vec<f32>)> = chunks
+                .into_par_iter()
+                .filter_map(|chunk| {
+                    let embedding = embedder.embed_text(&chunk.content);
+                    if embedding.is_empty() {
+                        None
+                    } else {
+                        Some((chunk, embedding))
+                    }
+                })
+                .collect();
+
+            if chunks_with_embeddings.is_empty() {
+                return Err("All embeddings failed for this file".to_string());
+            }
+
+            Ok(chunks_with_embeddings)
+        })
+        .await
+        {
+            Ok(Ok(pairs)) => {
+                // Save to vector database
+                for (chunk, embedding) in pairs {
+                    // Insert into database
+                    // Using your database library of choice
+                }
+
+                // Update progress
+                let processed = pc.fetch_add(1, Ordering::SeqCst) + 1;
+                let percentage = ((processed as f64 / total_files as f64) * 100.0).round() as usize;
+                progress_fn(ProcessingStatus {
+                    total: total_files,
+                    processed,
+                    percentage,
+                });
+            }
+            Ok(Err(e)) => {
+                let _ = err_sender.send((file_path, e));
+            }
+            Err(e) => {
+                let _ = err_sender.send((file_path, format!("Processing error: {}", e)));
+            }
+        }
+    })
+
+    //     let mut chunks = chunk_file(file);
+
+    //     // match file.extension {
+    //     //     ".txt" => {
+    //     //         Ok() => {
+    //     //             chunk_file()
+    //     //         }
+    //     //     }
+    //     // }
+
+    //     // Parse and chunk the file
+    //     match parse_with_tokio(&orchestrator, vec![path_buf]).await {
+    //         Ok(chunks) => {
+    //             if chunks.is_empty() {
+    //                 let _ =
+    //                     err_sender.send((file_path, "No chunks extracted from file".to_string()));
+    //                 return;
+    //             }
+
+    //             info!("Parsed {} chunks from {}", chunks.len(), file_path);
+
+    //             // Extract chunk texts for parallel processing
+    //             let chunk_texts: Vec<String> =
+    //                 chunks.iter().map(|chunk| chunk.content.clone()).collect();
+
+    //             let embedder_ref = embedder.clone();
+    //             let file_path_ref = file_path.clone();
+
+    //             // Use a single spawn_blocking call with Rayon inside
+    //             // This avoids the overhead of multiple spawn_blocking calls
+    //             let chunk_embeddings = match tokio::task::spawn_blocking(move || {
+    //                 use rayon::prelude::*;
+
+    //                 // Process embeddings in parallel using Rayon
+    //                 chunk_texts
+    //                     .par_iter()
+    //                     .map(|text| embedder_ref.embed_text(text))
+    //                     .collect::<Vec<_>>()
+    //             })
+    //             .await
+    //             {
+    //                 Ok(embeddings) => embeddings,
+    //                 Err(e) => {
+    //                     let _ = err_sender
+    //                         .send((file_path, format!("Failed to generate embeddings: {:?}", e)));
+    //                     return;
+    //                 }
+    //             };
+
+    //             // Check for empty embeddings
+    //             let empty_embeddings: Vec<usize> = chunk_embeddings
+    //                 .iter()
+    //                 .enumerate()
+    //                 .filter(|(_, emb)| emb.is_empty())
+    //                 .map(|(idx, _)| idx)
+    //                 .collect();
+
+    //             if !empty_embeddings.is_empty() {
+    //                 let _ = err_sender.send((
+    //                     file_path_ref,
+    //                     format!("Empty embeddings for chunks: {:?}", empty_embeddings),
+    //                 ));
+    //                 // Continue processing anyway
+    //             }
+
+    //             // Create chunk-embedding pairs - filter out empty embeddings
+    //             let valid_pairs: Vec<(&Chunk, &Vec<f32>)> = chunks
+    //                 .iter()
+    //                 .zip(chunk_embeddings.iter())
+    //                 .filter(|(_, emb)| !emb.is_empty())
+    //                 .collect();
+
+    //             // Store embeddings in database here
+    //             // for (chunk, embedding) in &valid_pairs {
+    //             //     db.insert(...)
+    //             // }
+
+    //             // Update progress
+    //             let processed = pc.fetch_add(1, Ordering::SeqCst) + 1;
+    //             if total_files > 0 {
+    //                 let percentage =
+    //                     ((processed as f64 / total_files as f64) * 100.0).round() as usize;
+    //                 progress_fn(ProcessingStatus {
+    //                     total: total_files,
+    //                     processed,
+    //                     percentage,
+    //                 });
+    //             }
+    //         }
+    //         Err(e) => {
+    //             let _ = err_sender.send((file_path, format!("Parsing error: {:?}", e)));
+    //         }
+    //     }
+    // })
+}
+
+/// Process a single file in a blocking task because rusqlite is blocking.
+async fn save_file_to_fts(db_path: PathBuf, file: &FileMetadata) -> Result<(), FileProcessorError> {
+    let file = file.clone();
+
+    task::spawn_blocking({
+        let db_path = db_path;
+        move || -> Result<(), FileProcessorError> {
+            let conn = Connection::open(db_path)?;
+
+            // Set pragmas for better performance
+            conn.execute_batch(
+                r#"
+                PRAGMA journal_mode = WAL;
+                PRAGMA synchronous = NORMAL;
+                "#,
+            )?;
+
+            // Insert file metadata
+            conn.execute(
+                r#"
+                INSERT OR IGNORE INTO files (path, name, extension, size, category, created_at, updated_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                "#,
+                params![
+                    file.base.path,
+                    file.base.name,
+                    file.extension,
+                    file.size,
+                    get_category_from_extension(&file.extension)
+                ],
+            )?;
+
+            // Get the file ID for FTS insertion
+            let file_id: i64 = conn.query_row(
+                "SELECT id FROM files WHERE path = ?1",
+                [file.base.path.clone()],
+                |row| row.get(0),
+            )?;
+
+            // Build document text from file metadata for search indexing
+            let doc_text = build_doc_text(&file.base.name, &file.base.path, &file.extension);
+
+            // Insert into full-text search table
+            conn.execute(
+                r#"
+                INSERT INTO files_fts(rowid, doc_text)
+                VALUES (?1, ?2)
+                "#,
+                params![file_id, doc_text],
+            )?;
+
+            Ok(())
+        }
+    }).await.map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?
+}
+
+/// Get metadata for a given file path
+pub fn get_file_metadata(
     path: &Path,
     all_files: &mut Vec<FileMetadata>,
 ) -> Result<(), FileProcessorError> {
@@ -364,14 +521,13 @@ pub fn process_file(
 #[derive(Default)]
 pub struct FileProcessorState(Mutex<Option<FileProcessor>>);
 
-// sets up initialize file processor state and store in the tauri instance
 #[tauri::command]
 pub fn initialize_file_processor(
     db_path: String,
     concurrency: usize,
     app_handle: AppHandle,
 ) -> Result<(), String> {
-    let state = app_handle.state::<FileProcessorState>();
+    let state: State<'_, FileProcessorState> = app_handle.state::<FileProcessorState>();
     let mut processor_guard = state.0.lock().map_err(|e| e.to_string())?;
     *processor_guard = Some(FileProcessor {
         db_path: PathBuf::from(db_path),
@@ -387,8 +543,9 @@ pub async fn process_paths_command(
     app_handle: AppHandle,
 ) -> Result<serde_json::Value, String> {
     // Create a cloned instance of the processor
-    let processor = {
-        let guard = state.0.lock().map_err(|e| e.to_string())?;
+    let processor: FileProcessor = {
+        let guard: std::sync::MutexGuard<'_, Option<FileProcessor>> =
+            state.0.lock().map_err(|e| e.to_string())?;
         match guard.as_ref() {
             Some(p) => p.clone(),
             None => return Err("File processor not initialized".to_string()),
@@ -403,7 +560,7 @@ pub async fn process_paths_command(
     processor
         .process_paths(paths, progress_handler)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e: FileProcessorError| e.to_string())
 }
 
 #[tauri::command]
@@ -411,8 +568,9 @@ pub fn get_files_data(
     query: String,
     state: State<'_, FileProcessorState>,
 ) -> Result<Vec<FileMetadata>, String> {
-    let processor = {
-        let guard = state.0.lock().map_err(|e| e.to_string())?;
+    let processor: FileProcessor = {
+        let guard: std::sync::MutexGuard<'_, Option<FileProcessor>> =
+            state.0.lock().map_err(|e| e.to_string())?;
         guard
             .as_ref()
             .ok_or("File processor not initialized".to_string())?
@@ -482,7 +640,6 @@ pub fn get_files_data(
             )
             .map_err(|e| format!("Failed to prepare statement: {e}"))?;
 
-        // Provide all three parameters the query expects
         let mut rows = stmt
             .query(params![&like_pattern, &like_pattern, &like_pattern])
             .map_err(|e| format!("Query error: {e}"))?;
@@ -572,79 +729,30 @@ pub fn open_file(file_path: &str) -> Result<(), String> {
     }
 }
 
-#[tauri::command]
-pub fn check_fts_table(state: State<'_, FileProcessorState>) -> Result<String, String> {
-    let processor = {
-        let guard = state.0.lock().map_err(|e| e.to_string())?;
-        guard
-            .as_ref()
-            .ok_or("File processor not initialized".to_string())?
-            .clone()
-    };
-
-    let conn =
-        Connection::open(processor.db_path).map_err(|e| format!("Failed to open database: {e}"))?;
-
-    let mut result = String::new();
-
-    // Check total count of entries in files_fts table
-    let count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM files_fts", [], |row| row.get(0))
-        .map_err(|e| format!("Failed to count FTS rows: {e}"))?;
-
-    result.push_str(&format!("Total entries in files_fts table: {}\n\n", count));
-
-    // If there are entries, check some examples
-    if count > 0 {
-        // Get a sample of the entries
-        let mut stmt = conn
-            .prepare("SELECT rowid, doc_text FROM files_fts LIMIT 5")
-            .map_err(|e| format!("Failed to prepare statement: {e}"))?;
-
-        let rows = stmt
-            .query_map([], |row| {
-                let rowid: i64 = row.get(0)?;
-                let doc_text: String = row.get(1)?;
-                Ok((rowid, doc_text))
-            })
-            .map_err(|e| format!("Query error: {e}"))?;
-
-        result.push_str("Sample entries from files_fts:\n");
-        for entry in rows {
-            if let Ok((rowid, doc_text)) = entry {
-                result.push_str(&format!("rowid: {}, doc_text: {}\n", rowid, doc_text));
-            }
-        }
-
-        // Get and check a "notes" file if one exists
-        if let Ok((rowid, doc_text)) = conn.query_row(
-            "SELECT ft.rowid, ft.doc_text FROM files_fts ft JOIN files f ON ft.rowid = f.id WHERE f.name LIKE '%notes%' LIMIT 1",
-            [],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-        ) {
-            result.push_str(&format!("\nFound 'notes' file - rowid: {}, doc_text: {}\n", rowid, doc_text));
-            
-            // Test a search that should match this "notes" file
-            let trigram_search = build_trigrams("note");
-            let count_match: i64 = conn.query_row(
-                "SELECT COUNT(*) FROM files_fts WHERE doc_text MATCH ?",
-                [trigram_search.as_str()],
-                |row| row.get(0)
-            ).unwrap_or(0);
-            
-            result.push_str(&format!("\nFiles matching 'note' trigrams ({}): {}\n", trigram_search, count_match));
-        }
+fn read_file_content(path: &PathBuf, extension: &str) -> Result<String, String> {
+    // This function runs in a blocking context
+    match extension.to_lowercase().as_str() {
+        ".txt" => match std::fs::read_to_string(path) {
+            Ok(content) => Ok(content),
+            Err(e) => Err(format!("Failed to read text file: {}", e)),
+        },
+        // ".pdf" => {
+        //     // PDF extraction logic using appropriate library
+        //     // (e.g., pdf-extract or similar)
+        //     // For example:
+        //     match extract_pdf_text(path) {
+        //         Ok(text) => Ok(text),
+        //         Err(e) => Err(format!("Failed to extract PDF text: {}", e)),
+        //     }
+        // }
+        // ".docx" => {
+        //     // DOCX extraction logic
+        //     match extract_docx_text(path) {
+        //         Ok(text) => Ok(text),
+        //         Err(e) => Err(format!("Failed to extract DOCX text: {}", e)),
+        //     }
+        // }
+        // Add more file types as needed
+        _ => Err(format!("Unsupported file type: {}", extension)),
     }
-
-    // Check the configuration of the FTS table
-    result.push_str("\nFTS5 table configuration:\n");
-    if let Ok(config) = conn.query_row(
-        "SELECT sql FROM sqlite_master WHERE name = 'files_fts'",
-        [],
-        |row| row.get::<_, String>(0),
-    ) {
-        result.push_str(&format!("Table SQL: {}\n", config));
-    }
-
-    Ok(result)
 }

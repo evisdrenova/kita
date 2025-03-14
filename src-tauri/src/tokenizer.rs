@@ -19,7 +19,7 @@ pub fn build_trigrams(s: &str) -> String {
     tokens.join(" ")
 }
 
-// combine name/path/extension trigrams into one doc_text string that fs5 can search over
+/// Combine name/path/extension trigrams into one doc_text string that fs5 can search over
 pub fn build_doc_text(name: &str, path: &str, extension: &str) -> String {
     let mut parts = Vec::new();
     parts.push(build_trigrams(name));

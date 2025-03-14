@@ -1,35 +1,27 @@
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
-use std::sync::Arc;
 
-// struct to hold your embedding model
+/// Holds embedding model
 pub struct Embedder {
-    model: Arc<TextEmbedding>,
+    model: TextEmbedding,
 }
 
 impl Embedder {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let init_options =
+        let init_options: InitOptions =
             InitOptions::new(EmbeddingModel::BGESmallENV15).with_show_download_progress(true);
 
         let model = TextEmbedding::try_new(init_options)?;
 
-        Ok(Self {
-            model: Arc::new(model),
-        })
+        Ok(Self { model: model })
     }
 
-    // Get embeddings for a single text
+    /// Get embeddings for a single chunk of text
+    /// If there is an error this will return back an empty vector
     pub fn embed_text(&self, text: &str) -> Vec<f32> {
-        match self.model.embed(vec![text], None) {
-            Ok(embeddings) => {
-                if !embeddings.is_empty() {
-                    embeddings[0].clone()
-                } else {
-                    Vec::new() // Empty embedding if something went wrong
-                }
-            }
-            Err(_) => Vec::new(),
-        }
+        self.model
+            .embed(vec![text], None)
+            .map(|embeddings| embeddings.get(0).cloned().unwrap_or_default())
+            .unwrap_or_default()
     }
 
     // // Get embeddings for a batch of texts
