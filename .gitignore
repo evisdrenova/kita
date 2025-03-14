@@ -48,3 +48,6 @@ pnpm-debug.log*
 .tsbuildinfo
 .turbo
 .cache/
+
+
+.fastembed_cache/
