@@ -59,7 +59,7 @@ impl Chunker for TxtChunker {
 
         // Process embeddings in a single batch
         tokio::task::spawn_blocking(move || {
-            // Extract just the text content for embedding
+            // Extract just the text content for embedding and convert from chunks to strings
             let texts: Vec<&str> = chunks.iter().map(|chunk| chunk.content.as_str()).collect();
 
             // Generate embeddings in one batch call
@@ -229,23 +229,26 @@ async fn get_chunks_from_small_file(
     Ok(chunks)
 }
 
-/// Chunks texts
+/// Chunks texts based on a configured chunk_size and overlap
 fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<String> {
     if text.is_empty() {
         return Vec::new();
     }
 
+    // gets all of the words in the file and collects them into a vector
     let words: Vec<&str> = text.split_whitespace().collect();
     if words.is_empty() {
         return vec![text.to_string()];
     }
 
-    let mut chunks = Vec::new();
-    let mut start = 0;
+    let mut chunks: Vec<String> = Vec::new();
+    let mut start: usize = 0;
 
     while start < words.len() {
-        let end = std::cmp::min(start + chunk_size, words.len());
-        let chunk = words[start..end].join(" ");
+        // if the total amount of words is less than the chunk size then just return the entire text
+        // otherwise create a chunk of the chunk size + the start position and put it into the vector
+        let end: usize = std::cmp::min(start + chunk_size, words.len());
+        let chunk: String = words[start..end].join(" ");
         chunks.push(chunk);
 
         // Calculate next position with overlap
@@ -256,6 +259,5 @@ fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<String> {
             start = std::cmp::min(start + chunk_size - overlap, words.len() - 1);
         }
     }
-
     chunks
 }

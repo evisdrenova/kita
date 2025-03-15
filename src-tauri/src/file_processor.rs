@@ -250,10 +250,12 @@ fn create_path_embedding(
     pc: Arc<AtomicUsize>,
     progress_fn: impl Fn(ProcessingStatus) + Send + Sync + Clone + 'static,
 ) -> tokio::task::JoinHandle<()> {
-    let file_path = file_metadata.base.path;
+    // Clone the FileMetadata so we own it
+    let fm_clone = file_metadata.clone();
+    let file_path = fm_clone.base.path.clone(); // Clone the path too
 
     tokio::spawn(async move {
-        // Acquire concurrency permit to start doing some work
+        // Acquire concurrency permit
         let _permit = match permit.acquire().await {
             Ok(permit) => permit,
             Err(_) => {
@@ -263,14 +265,14 @@ fn create_path_embedding(
             }
         };
 
-        //process and save the file to the database for searching and full text searching
-        if let Err(e) = save_file_to_fts(db_path, file_metadata).await {
+        // Use fm_clone instead of file_metadata
+        if let Err(e) = save_file_to_fts(db_path, &fm_clone).await {
             let _ = err_sender.send((file_path, format!("File processing error: {:?}", e)));
             return;
         }
 
-        if file_metadata.size == 0 {
-            // we still want to index it but skip trying to chunk the file if it's empty
+        if fm_clone.size == 0 {
+            // Skip empty files
             return;
         }
 
@@ -284,18 +286,18 @@ fn create_path_embedding(
             use_gpu_acceleration: true,
         };
 
-        let orchestrator: ChunkerOrchestrator = ChunkerOrchestrator::new(config);
+        let orchestrator = ChunkerOrchestrator::new(config);
 
-        match orchestrator.chunk_file(file_metadata, embedder).await {
+        // Use fm_clone here too
+        match orchestrator.chunk_file(&fm_clone, embedder).await {
             Ok(chunk_embeddings) => {
                 if chunk_embeddings.is_empty() {
                     let _ =
                         err_sender.send((file_path, "No valid embeddings generated".to_string()));
                 } else {
-                    // Save the embeddings to vector DB
+                    // Process embeddings...
                     for (chunk, embedding) in chunk_embeddings {
                         // Insert into your vector DB
-                        // db.insert(chunk, embedding);
                     }
 
                     // Update progress
