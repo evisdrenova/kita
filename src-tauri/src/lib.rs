@@ -3,10 +3,10 @@ mod chunker;
 mod database_handler;
 mod embedder;
 mod file_processor;
+mod qdrant_manager;
 mod resource_monitor;
 mod tokenizer;
 mod utils;
-mod qdrant_manager;
 
 use file_processor::FileProcessorState;
 use tauri::Manager;
@@ -54,6 +54,10 @@ pub fn run() {
                     )));
                 }
             }
+
+
+            
+
             resource_monitor::init(app)?;
             Ok(())
         })

@@ -1,27 +1,68 @@
+use qdrant_client::qdrant::vectors_config::Config;
 use qdrant_client::qdrant::{
     CreateCollection, Distance, OptimizersConfigDiff, VectorParams, VectorsConfig,
 };
-
-use qdrant_client::qdrant::vectors_config::Config;
 use qdrant_client::Qdrant;
-use std::path::Path;
+use qdrant_client::QdrantError;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use tauri::AppHandle;
+use tauri::Manager;
+use thiserror::Error;
 
 struct QdrantManager {
     client: Qdrant,
     collection_name: String,
 }
 
+pub struct QdrantState {
+    pub manager: Arc<Mutex<QdrantManager>>,
+}
+
+#[derive(Debug, Error)]
+pub enum QdrantManagerError {
+    #[error("Qdrant error: {0}")]
+    QdrantErr(#[from] QdrantError),
+
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("Other: {0}")]
+    Other(String),
+}
+pub type QdrantManagerResult<T> = Result<T, QdrantManagerError>;
+
 impl QdrantManager {
-    /// Initialize new Qdrant client
-    async fn new(data_path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
-        // ensure the data directory exists
-        std::fs::create_dir_all(data_path)?;
+    /// Initialize qdrant
+    pub async fn initialize_qdrant(
+        app_handle: AppHandle,
+    ) -> QdrantManagerResult<Arc<Mutex<QdrantManager>>> {
+        let app_data_dir: PathBuf = app_handle
+            .path()
+            .app_data_dir()
+            .map_err(|_| QdrantManagerError::Other("Failed to get app data directory".into()))?;
 
-        // Initialize client
-        let client: Qdrant = Qdrant::from_url("http://localhost:6334").build()?;
-        let collection_name: &str = "documents";
+        let qdrant_path: PathBuf = app_data_dir.join("vector_db");
 
-        // Create collection if it doesn't exist
+        // Ensure storage directory exists
+        std::fs::create_dir_all(&qdrant_path).map_err(QdrantManagerError::Io)?;
+
+        // Create a new client
+        let manager = Self::new_client().await?;
+
+        println!(
+            "Qdrant vector database initialized. Path: {:?}",
+            qdrant_path
+        );
+        Ok(Arc::new(Mutex::new(manager)))
+    }
+    /// Create new qdrant client
+    async fn new_client() -> QdrantManagerResult<Self> {
+        // Connect to an already-running Qdrant server on 6334
+        let client = Qdrant::from_url("http://localhost:6334").build()?;
+        let collection_name = "documents";
+
+        // Ensure the collection exists
         Self::upsert_collection(&client, collection_name).await?;
 
         Ok(Self {
@@ -30,10 +71,7 @@ impl QdrantManager {
         })
     }
 
-    async fn upsert_collection(
-        client: &Qdrant,
-        collection_name: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    async fn upsert_collection(client: &Qdrant, collection_name: &str) -> QdrantManagerResult<()> {
         let collections: bool = client.collection_exists(collection_name).await?;
 
         if collections {
