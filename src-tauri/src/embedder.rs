@@ -2,7 +2,7 @@ use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 
 /// Holds embedding model
 pub struct Embedder {
-    model: TextEmbedding,
+    pub model: TextEmbedding,
 }
 
 impl Embedder {
@@ -23,12 +23,4 @@ impl Embedder {
             .map(|embeddings| embeddings.get(0).cloned().unwrap_or_default())
             .unwrap_or_default()
     }
-
-    // // Get embeddings for a batch of texts
-    // pub fn embed_batch(&self, texts: &[String]) -> Vec<Vec<f32>> {
-    //     match self.model.embed_batch(texts, None) {
-    //         Ok(embeddings) => embeddings,
-    //         Err(_) => vec![Vec::new(); texts.len()],
-    //     }
-    // }
 }

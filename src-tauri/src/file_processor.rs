@@ -1,4 +1,3 @@
-use rayon::prelude::*;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -285,150 +284,36 @@ fn create_path_embedding(
             use_gpu_acceleration: true,
         };
 
-        let orchestrator = ChunkerOrchestrator::new(config);
+        let orchestrator: ChunkerOrchestrator = ChunkerOrchestrator::new(config);
 
-        match tokio::task::spawn_blocking(move || {
-            let chunks = orchestrator.chunk_file(file_metadata);
-
-            let chunks_with_embeddings: Vec<(Chunk, Vec<f32>)> = chunks
-                .into_par_iter()
-                .filter_map(|chunk| {
-                    let embedding = embedder.embed_text(&chunk.content);
-                    if embedding.is_empty() {
-                        None
-                    } else {
-                        Some((chunk, embedding))
+        match orchestrator.chunk_file(file_metadata, embedder).await {
+            Ok(chunk_embeddings) => {
+                if chunk_embeddings.is_empty() {
+                    let _ =
+                        err_sender.send((file_path, "No valid embeddings generated".to_string()));
+                } else {
+                    // Save the embeddings to vector DB
+                    for (chunk, embedding) in chunk_embeddings {
+                        // Insert into your vector DB
+                        // db.insert(chunk, embedding);
                     }
-                })
-                .collect();
 
-            if chunks_with_embeddings.is_empty() {
-                return Err("All embeddings failed for this file".to_string());
-            }
-
-            Ok(chunks_with_embeddings)
-        })
-        .await
-        {
-            Ok(Ok(pairs)) => {
-                // Save to vector database
-                for (chunk, embedding) in pairs {
-                    // Insert into database
-                    // Using your database library of choice
+                    // Update progress
+                    let processed = pc.fetch_add(1, Ordering::SeqCst) + 1;
+                    let percentage =
+                        ((processed as f64 / total_files as f64) * 100.0).round() as usize;
+                    progress_fn(ProcessingStatus {
+                        total: total_files,
+                        processed,
+                        percentage,
+                    });
                 }
-
-                // Update progress
-                let processed = pc.fetch_add(1, Ordering::SeqCst) + 1;
-                let percentage = ((processed as f64 / total_files as f64) * 100.0).round() as usize;
-                progress_fn(ProcessingStatus {
-                    total: total_files,
-                    processed,
-                    percentage,
-                });
-            }
-            Ok(Err(e)) => {
-                let _ = err_sender.send((file_path, e));
             }
             Err(e) => {
-                let _ = err_sender.send((file_path, format!("Processing error: {}", e)));
+                let _ = err_sender.send((file_path, format!("Chunking/embedding error: {}", e)));
             }
         }
     })
-
-    //     let mut chunks = chunk_file(file);
-
-    //     // match file.extension {
-    //     //     ".txt" => {
-    //     //         Ok() => {
-    //     //             chunk_file()
-    //     //         }
-    //     //     }
-    //     // }
-
-    //     // Parse and chunk the file
-    //     match parse_with_tokio(&orchestrator, vec![path_buf]).await {
-    //         Ok(chunks) => {
-    //             if chunks.is_empty() {
-    //                 let _ =
-    //                     err_sender.send((file_path, "No chunks extracted from file".to_string()));
-    //                 return;
-    //             }
-
-    //             info!("Parsed {} chunks from {}", chunks.len(), file_path);
-
-    //             // Extract chunk texts for parallel processing
-    //             let chunk_texts: Vec<String> =
-    //                 chunks.iter().map(|chunk| chunk.content.clone()).collect();
-
-    //             let embedder_ref = embedder.clone();
-    //             let file_path_ref = file_path.clone();
-
-    //             // Use a single spawn_blocking call with Rayon inside
-    //             // This avoids the overhead of multiple spawn_blocking calls
-    //             let chunk_embeddings = match tokio::task::spawn_blocking(move || {
-    //                 use rayon::prelude::*;
-
-    //                 // Process embeddings in parallel using Rayon
-    //                 chunk_texts
-    //                     .par_iter()
-    //                     .map(|text| embedder_ref.embed_text(text))
-    //                     .collect::<Vec<_>>()
-    //             })
-    //             .await
-    //             {
-    //                 Ok(embeddings) => embeddings,
-    //                 Err(e) => {
-    //                     let _ = err_sender
-    //                         .send((file_path, format!("Failed to generate embeddings: {:?}", e)));
-    //                     return;
-    //                 }
-    //             };
-
-    //             // Check for empty embeddings
-    //             let empty_embeddings: Vec<usize> = chunk_embeddings
-    //                 .iter()
-    //                 .enumerate()
-    //                 .filter(|(_, emb)| emb.is_empty())
-    //                 .map(|(idx, _)| idx)
-    //                 .collect();
-
-    //             if !empty_embeddings.is_empty() {
-    //                 let _ = err_sender.send((
-    //                     file_path_ref,
-    //                     format!("Empty embeddings for chunks: {:?}", empty_embeddings),
-    //                 ));
-    //                 // Continue processing anyway
-    //             }
-
-    //             // Create chunk-embedding pairs - filter out empty embeddings
-    //             let valid_pairs: Vec<(&Chunk, &Vec<f32>)> = chunks
-    //                 .iter()
-    //                 .zip(chunk_embeddings.iter())
-    //                 .filter(|(_, emb)| !emb.is_empty())
-    //                 .collect();
-
-    //             // Store embeddings in database here
-    //             // for (chunk, embedding) in &valid_pairs {
-    //             //     db.insert(...)
-    //             // }
-
-    //             // Update progress
-    //             let processed = pc.fetch_add(1, Ordering::SeqCst) + 1;
-    //             if total_files > 0 {
-    //                 let percentage =
-    //                     ((processed as f64 / total_files as f64) * 100.0).round() as usize;
-    //                 progress_fn(ProcessingStatus {
-    //                     total: total_files,
-    //                     processed,
-    //                     percentage,
-    //                 });
-    //             }
-    //         }
-    //         Err(e) => {
-    //             let _ = err_sender.send((file_path, format!("Parsing error: {:?}", e)));
-    //         }
-    //     }
-    // })
 }
 
 /// Process a single file in a blocking task because rusqlite is blocking.

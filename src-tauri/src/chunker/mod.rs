@@ -1,12 +1,13 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use thiserror::Error;
-use tracing::{error, instrument};
+use tracing::error;
 
 pub mod txt;
 
-use crate::file_processor::FileMetadata;
+use crate::{embedder::Embedder, file_processor::FileMetadata};
 
 pub use self::common::{Chunk, ChunkerConfig, ChunkerError, ChunkerResult};
 
@@ -87,7 +88,8 @@ pub trait Chunker: Send + Sync {
         &self,
         file: &FileMetadata,
         config: &ChunkerConfig,
-    ) -> ChunkerResult<Vec<Chunk>>;
+        embedder: Arc<Embedder>,
+    ) -> ChunkerResult<Vec<(Chunk, Vec<f32>)>>;
 }
 
 pub struct ChunkerOrchestrator {
@@ -121,13 +123,16 @@ impl ChunkerOrchestrator {
     }
 
     /// Find the right chunker for the file and chunk a single file
-    #[instrument(skip(self))]
-    pub async fn chunk_file(&self, file: &FileMetadata) -> ChunkerResult<Vec<Chunk>> {
-        let chunker = self
+    pub async fn chunk_file(
+        &self,
+        file: &FileMetadata,
+        embedder: Arc<Embedder>,
+    ) -> ChunkerResult<Vec<(Chunk, Vec<f32>)>> {
+        let chunker: &dyn Chunker = self
             .find_chunker_for_file(Path::new(&file.base.path))
             .ok_or_else(|| ChunkerError::UnsupportedType(file.extension.clone()))?;
 
-        chunker.chunk_file(file, &self.config).await
+        chunker.chunk_file(file, &self.config, embedder).await
     }
 }
 

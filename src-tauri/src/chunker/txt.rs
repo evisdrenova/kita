@@ -1,14 +1,16 @@
 use async_trait::async_trait;
 use std::path::Path;
+use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tracing::debug;
 
+use crate::embedder::Embedder;
 use crate::file_processor::FileMetadata;
 
 use super::common::{Chunk, ChunkMetadata, ChunkerConfig, ChunkerResult};
-use super::util;
 use super::Chunker;
+use super::{util, ChunkerError};
 
 /// Parser for plain text files
 #[derive(Default)]
@@ -38,56 +40,56 @@ impl Chunker for TxtChunker {
         &self,
         file: &FileMetadata,
         config: &ChunkerConfig,
-    ) -> ChunkerResult<Vec<Chunk>> {
-        // For very large files, use streaming approach
-        if file.size > 10_000_000 {
-            // 10MB threshold
-            return chunk_large_file(path, config).await;
-        }
+        embedder: Arc<Embedder>,
+    ) -> ChunkerResult<Vec<(Chunk, Vec<f32>)>> {
+        let path = Path::new(&file.base.path);
 
-        // For smaller files, read all at once
-        let content = tokio::fs::read_to_string(path).await?;
-
-        // Process content
-        let processed_content = if config.normalize_text {
-            util::normalize_text(&content)
+        // Get chunks based on file size
+        let chunks = if file.size > 10_000_000 {
+            // For large files, use streaming approach
+            get_chunks_from_large_file(path, config).await?
         } else {
-            content
+            // For smaller files, read all at once
+            get_chunks_from_small_file(path, config).await?
         };
 
-        // Chunk the text
-        let chunks = chunk_text(&processed_content, config.chunk_size, config.chunk_overlap);
-
-        // Early return for empty chunks
         if chunks.is_empty() {
             return Ok(Vec::new());
         }
 
-        // Create metadata-enriched chunks
-        let total_chunks = chunks.len();
-        let result = chunks
-            .into_iter()
-            .enumerate()
-            .map(|(idx, content)| Chunk {
-                content,
-                metadata: ChunkMetadata {
-                    source_path: path.to_path_buf(),
-                    chunk_index: idx,
-                    total_chunks: Some(total_chunks),
-                    page_number: None,
-                    section: None,
-                    mime_type: "text/plain".to_string(),
-                },
-            })
-            .collect();
+        // Process embeddings in a single batch
+        tokio::task::spawn_blocking(move || {
+            // Extract just the text content for embedding
+            let texts: Vec<&str> = chunks.iter().map(|chunk| chunk.content.as_str()).collect();
 
-        Ok(result)
+            // Generate embeddings in one batch call
+            match embedder.model.embed(texts, None) {
+                Ok(embeddings) => {
+                    // Pair chunks with their embeddings
+                    let chunk_embeddings: Vec<(Chunk, Vec<f32>)> = chunks
+                        .into_iter()
+                        .zip(embeddings.into_iter())
+                        .filter(|(_, embedding)| !embedding.is_empty())
+                        .collect();
+
+                    Ok(chunk_embeddings)
+                }
+                Err(_) => Err(ChunkerError::Other(
+                    "Failed to generate embeddings".to_string(),
+                )),
+            }
+        })
+        .await
+        .map_err(|e| ChunkerError::Other(format!("Thread error: {:?}", e)))?
     }
 }
 
 /// Handle very large files in a streaming fashion
-async fn chunk_large_file(path: &Path, config: &ChunkerConfig) -> ChunkerResult<Vec<Chunk>> {
-    debug!("Streaming large file: {}", path.display());
+async fn get_chunks_from_large_file(
+    path: &Path,
+    config: &ChunkerConfig,
+) -> ChunkerResult<Vec<Chunk>> {
+    debug!("Processing large file: {}", path.display());
 
     let file = File::open(path).await?;
     let reader = BufReader::new(file);
@@ -98,13 +100,13 @@ async fn chunk_large_file(path: &Path, config: &ChunkerConfig) -> ChunkerResult<
     let mut line_count = 0;
     let mut chunk_idx = 0;
 
-    // Read line by line
+    // Read and process line by line
     while let Some(line) = lines.next_line().await? {
         buffer.push_str(&line);
         buffer.push('\n');
         line_count += 1;
 
-        // Process when we've accumulated enough lines
+        // Process when enough lines accumulate
         if line_count >= config.chunk_size {
             let normalized = if config.normalize_text {
                 util::normalize_text(&buffer)
@@ -112,13 +114,13 @@ async fn chunk_large_file(path: &Path, config: &ChunkerConfig) -> ChunkerResult<
                 buffer.clone()
             };
 
-            // Add chunk
+            // Create chunk
             chunks.push(Chunk {
                 content: normalized,
                 metadata: ChunkMetadata {
                     source_path: path.to_path_buf(),
                     chunk_index: chunk_idx,
-                    total_chunks: None, // Will update after all chunks are collected
+                    total_chunks: None, // Will update later
                     page_number: None,
                     section: None,
                     mime_type: "text/plain".to_string(),
@@ -127,7 +129,7 @@ async fn chunk_large_file(path: &Path, config: &ChunkerConfig) -> ChunkerResult<
 
             // Handle overlap
             if config.chunk_overlap > 0 && config.chunk_overlap < line_count {
-                // Keep last N lines for overlap
+                // Keep overlap lines
                 let mut newlines_found = 0;
                 let mut overlap_pos = buffer.len();
 
@@ -152,7 +154,7 @@ async fn chunk_large_file(path: &Path, config: &ChunkerConfig) -> ChunkerResult<
         }
     }
 
-    // Process any remaining content
+    // Process remaining content
     if !buffer.is_empty() {
         let normalized = if config.normalize_text {
             util::normalize_text(&buffer)
@@ -173,7 +175,7 @@ async fn chunk_large_file(path: &Path, config: &ChunkerConfig) -> ChunkerResult<
         });
     }
 
-    // Update total_chunks for all chunks
+    // Update total_chunks
     let total = chunks.len();
     if total > 0 {
         for chunk in &mut chunks {
@@ -185,6 +187,49 @@ async fn chunk_large_file(path: &Path, config: &ChunkerConfig) -> ChunkerResult<
 }
 
 /// Split text into chunks with optional overlap
+async fn get_chunks_from_small_file(
+    path: &Path,
+    config: &ChunkerConfig,
+) -> ChunkerResult<Vec<Chunk>> {
+    // Read the entire file
+    let content = tokio::fs::read_to_string(path).await?;
+
+    // Process content
+    let processed_content = if config.normalize_text {
+        util::normalize_text(&content)
+    } else {
+        content
+    };
+
+    // Create text chunks
+    let text_chunks = chunk_text(&processed_content, config.chunk_size, config.chunk_overlap);
+
+    if text_chunks.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Create chunks
+    let total_chunks = text_chunks.len();
+    let chunks = text_chunks
+        .into_iter()
+        .enumerate()
+        .map(|(idx, content)| Chunk {
+            content,
+            metadata: ChunkMetadata {
+                source_path: path.to_path_buf(),
+                chunk_index: idx,
+                total_chunks: Some(total_chunks),
+                page_number: None,
+                section: None,
+                mime_type: "text/plain".to_string(),
+            },
+        })
+        .collect();
+
+    Ok(chunks)
+}
+
+/// Chunks texts
 fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<String> {
     if text.is_empty() {
         return Vec::new();
