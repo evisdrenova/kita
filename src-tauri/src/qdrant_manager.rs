@@ -10,7 +10,7 @@ use tauri::AppHandle;
 use tauri::Manager;
 use thiserror::Error;
 
-struct QdrantManager {
+pub struct QdrantManager {
     client: Qdrant,
     collection_name: String,
 }
@@ -105,4 +105,11 @@ impl QdrantManager {
 
         Ok(())
     }
+}
+
+#[tauri::command]
+pub async fn initialize_qdrant(
+    app_handle: AppHandle,
+) -> QdrantManagerResult<Arc<Mutex<QdrantManager>>> {
+    QdrantManager::initialize_qdrant(app_handle).await
 }

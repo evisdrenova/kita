@@ -55,9 +55,25 @@ pub fn run() {
                 }
             }
 
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to create runtime for qdrant");
 
-            
-
+            let app_handle = app.app_handle().clone();
+            match runtime.block_on(qdrant_manager::initialize_qdrant(app_handle)) {
+                Ok(manager) => {
+                    app.manage(qdrant_manager::QdrantState { manager });
+                    println!("Vector database successfully initialized");
+                }
+                Err(e) => {
+                    eprintln!("Failed to initialize vector database: {e}");
+                    return Err(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to initialize vector database: {}", e),
+                    )));
+                }
+            }
             resource_monitor::init(app)?;
             Ok(())
         })
