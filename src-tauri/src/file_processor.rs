@@ -8,7 +8,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Semaphore;
 use tokio::task;
-use tracing::error;
+use tracing::{error, info_span};
 use walkdir::WalkDir;
 
 use crate::tokenizer::{build_doc_text, build_trigrams};
@@ -250,6 +250,8 @@ fn create_path_embedding(
     pc: Arc<AtomicUsize>,
     progress_fn: impl Fn(ProcessingStatus) + Send + Sync + Clone + 'static,
 ) -> tokio::task::JoinHandle<()> {
+    println!("creating embedding for file {:?}", file_metadata.base.path);
+
     // Clone the FileMetadata so we own it
     let fm_clone = file_metadata.clone();
     let file_path = fm_clone.base.path.clone(); // Clone the path too
@@ -288,21 +290,21 @@ fn create_path_embedding(
 
         let orchestrator = ChunkerOrchestrator::new(config);
 
-        // Use fm_clone here too
         match orchestrator.chunk_file(&fm_clone, embedder).await {
             Ok(chunk_embeddings) => {
                 if chunk_embeddings.is_empty() {
                     let _ =
                         err_sender.send((file_path, "No valid embeddings generated".to_string()));
                 } else {
+                    println!("the chunk and embedding: {:?}", chunk_embeddings);
                     // Process embeddings...
-                    for (chunk, embedding) in chunk_embeddings {
-                        // Insert into your vector DB
-                    }
+                    // for (chunk, embedding) in chunk_embeddings {
+                    //     // Insert into your vector DB
+                    // }
 
                     // Update progress
-                    let processed = pc.fetch_add(1, Ordering::SeqCst) + 1;
-                    let percentage =
+                    let processed: usize = pc.fetch_add(1, Ordering::SeqCst) + 1;
+                    let percentage: usize =
                         ((processed as f64 / total_files as f64) * 100.0).round() as usize;
                     progress_fn(ProcessingStatus {
                         total: total_files,

@@ -42,6 +42,7 @@ impl Chunker for TxtChunker {
         config: &ChunkerConfig,
         embedder: Arc<Embedder>,
     ) -> ChunkerResult<Vec<(Chunk, Vec<f32>)>> {
+        println!("creating chunk for file {:?}", file.base.path);
         let path = Path::new(&file.base.path);
 
         // Get chunks based on file size
