@@ -96,10 +96,36 @@ fn init_vector_db(app: &tauri::App) -> AppResult<()> {
         .expect("Failed to create runtime for qdrant");
 
     let app_handle = app.app_handle().clone();
+
+    let app_data_dir: PathBuf = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|_| QdrantManagerError::Other("Failed to get app data directory".into()))?;
+
+    let qdrant_path: PathBuf = app_data_dir.join("vector_db");
+
+    // init qdrant binary
+    let sidebar_command = app.shell().sidecar("qdrant")
+        ..args(["--storage", qdrant_path, "--uri", "http://127.0.0.1:6334"]).unwrap();
+    let (mut rx, mut _child) = sidebar_command.spawn().expect("Failed to spawn sidecar");
+
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = rx.recv.await {
+            if let CommandEvent::Stdout(line_bytes) = event {
+                let line = String::from_utf8_lossy(&line_bytes);
+                window
+                    .emit("message", Some(format!("'{}'", line)))
+                    .expect("failed to emit event");
+                // write to stdin
+                child.write("message from Rust\n".as_bytes()).unwrap();
+            }
+        }
+    });
+
     match runtime.block_on(qdrant_manager::initialize_qdrant(app_handle)) {
         Ok(manager) => {
             app.manage(qdrant_manager::QdrantState { manager });
-            println!("Vector database successfully initialized");
+            println!("Vector db client successfully initialized");
             Ok(())
         }
         Err(e) => {

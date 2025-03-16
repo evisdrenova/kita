@@ -36,6 +36,8 @@ When the user searches for, e.g., "exa", that becomes an FTS search for the exa 
 
 // optimize the app list rendering it's a little slow - coudl use virtualization for the table or somethign else
 
+// write init script to download qdrant binary on startup since it's not being shipped to git
+
 // Fast, local Emebdding creation and RAG
 
 1. Parse files (txt, pdf, etc. ), normalize, then chunk large files to convert into a normalized internal representation
