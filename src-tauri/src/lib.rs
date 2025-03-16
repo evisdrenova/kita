@@ -9,7 +9,11 @@ mod tokenizer;
 mod utils;
 
 use file_processor::FileProcessorState;
-use tauri::Manager;
+use std::io::{Error, ErrorKind};
+use tauri::{AppHandle, Manager};
+use tauri_plugin_shell::ShellExt;
+
+type AppResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -18,63 +22,18 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
-
             window.open_devtools();
             window.close_devtools();
 
-            let db_path = match database_handler::initialize_database(app.app_handle().clone()) {
-                Ok(path) => {
-                    println!("Database successfully initialized at {:?}", path);
-                    path
-                }
-                Err(e) => {
-                    eprintln!("Failed to initialize database: {e}");
-                    return Err(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Failed to initialize database: {}", e),
-                    )));
-                }
-            };
-
+            let db_path = init_database(app.app_handle().clone())?;
             let db_path_str = db_path.to_string_lossy().to_string();
 
-            match file_processor::initialize_file_processor(
-                db_path_str,
-                4,
-                app.app_handle().clone(),
-            ) {
-                Ok(()) => {
-                    println!("File processor successfully initialized.")
-                }
-                Err(e) => {
-                    eprintln!("Failed to initialize file processor: {e}");
-                    return Err(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Failed to initialize file processor: {}", e),
-                    )));
-                }
-            }
+            init_file_processor(db_path_str, 4, app.app_handle().clone())?;
 
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("Failed to create runtime for qdrant");
+            init_vector_db(app)?;
 
-            let app_handle = app.app_handle().clone();
-            match runtime.block_on(qdrant_manager::initialize_qdrant(app_handle)) {
-                Ok(manager) => {
-                    app.manage(qdrant_manager::QdrantState { manager });
-                    println!("Vector database successfully initialized");
-                }
-                Err(e) => {
-                    eprintln!("Failed to initialize vector database: {e}");
-                    return Err(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Failed to initialize vector database: {}", e),
-                    )));
-                }
-            }
             resource_monitor::init(app)?;
+
             Ok(())
         })
         .manage(FileProcessorState::default())
@@ -92,4 +51,63 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn init_database(app_handle: AppHandle) -> AppResult<std::path::PathBuf> {
+    match database_handler::initialize_database(app_handle) {
+        Ok(path) => {
+            println!("Database successfully initialized at {:?}", path);
+            Ok(path)
+        }
+        Err(e) => {
+            eprintln!("Failed to initialize database: {e}");
+            Err(Box::new(Error::new(
+                ErrorKind::Other,
+                format!("Failed to initialize database: {}", e),
+            )))
+        }
+    }
+}
+
+fn init_file_processor(
+    db_path: String,
+    concurrency: usize,
+    app_handle: AppHandle,
+) -> AppResult<()> {
+    match file_processor::initialize_file_processor(db_path, concurrency, app_handle) {
+        Ok(()) => {
+            println!("File processor successfully initialized.");
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("Failed to initialize file processor: {e}");
+            Err(Box::new(Error::new(
+                ErrorKind::Other,
+                format!("Failed to initialize file processor: {}", e),
+            )))
+        }
+    }
+}
+
+fn init_vector_db(app: &tauri::App) -> AppResult<()> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create runtime for qdrant");
+
+    let app_handle = app.app_handle().clone();
+    match runtime.block_on(qdrant_manager::initialize_qdrant(app_handle)) {
+        Ok(manager) => {
+            app.manage(qdrant_manager::QdrantState { manager });
+            println!("Vector database successfully initialized");
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("Failed to initialize vector database: {e}");
+            Err(Box::new(Error::new(
+                ErrorKind::Other,
+                format!("Failed to initialize vector database: {}", e),
+            )))
+        }
+    }
 }

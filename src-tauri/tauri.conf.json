@@ -25,6 +25,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/kita_icon_margin.icns", "icons/kita_margin.png"]
+    "icon": ["icons/kita_icon_margin.icns", "icons/kita_margin.png"],
+    "externalBin": ["/binaries/qdrant"]
   }
 }
