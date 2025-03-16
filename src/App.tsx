@@ -22,7 +22,6 @@ import SectionNav from "./SectionNav";
 import { Command, File } from "lucide-react";
 import { register } from "@tauri-apps/plugin-global-shortcut";
 import { handleShortcut } from "./globalShortcut";
-import { Button } from "./components/ui/button";
 
 await register("CommandOrControl+Shift+C", handleShortcut).then(() =>
   console.log("shortcut successfully registered")
