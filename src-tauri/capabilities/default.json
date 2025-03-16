@@ -12,25 +12,6 @@
     "core:window:allow-show",
     "global-shortcut:allow-is-registered",
     "global-shortcut:allow-register",
-    "global-shortcut:allow-unregister",
-    {
-      "identifier": "shell:allow-execute",
-      "allow": [
-        {
-          "args": [
-            "--storage",
-            {
-              "validator": "\\S+"
-            },
-            "--uri",
-            "http://127.0.0.1:6334"
-          ],
-          "name": "binaries/qdrant",
-          "sidecar": true
-        }
-      ]
-    },
-    "shell:allow-open",
-    "shell:allow-spawn"
+    "global-shortcut:allow-unregister"
   ]
 }

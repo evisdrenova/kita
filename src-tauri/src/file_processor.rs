@@ -8,14 +8,14 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Semaphore;
 use tokio::task;
-use tracing::{error, info_span};
+use tracing::error;
 use walkdir::WalkDir;
 
 use crate::tokenizer::{build_doc_text, build_trigrams};
 
 use crate::utils::get_category_from_extension;
 
-use crate::chunker::{Chunk, ChunkerConfig, ChunkerOrchestrator};
+use crate::chunker::{ChunkerConfig, ChunkerOrchestrator};
 
 use crate::embedder::Embedder;
 

@@ -3,15 +3,14 @@ mod chunker;
 mod database_handler;
 mod embedder;
 mod file_processor;
-mod qdrant_manager;
 mod resource_monitor;
 mod tokenizer;
 mod utils;
+mod vectordb_manager;
 
 use file_processor::FileProcessorState;
 use std::io::{Error, ErrorKind};
 use tauri::{AppHandle, Manager};
-use tauri_plugin_shell::ShellExt;
 
 type AppResult<T> = Result<T, Box<dyn std::error::Error>>;
 
@@ -57,7 +56,7 @@ pub fn run() {
 fn init_database(app_handle: AppHandle) -> AppResult<std::path::PathBuf> {
     match database_handler::initialize_database(app_handle) {
         Ok(path) => {
-            println!("Database successfully initialized at {:?}", path);
+            println!("Database successfully initialized");
             Ok(path)
         }
         Err(e) => {
@@ -94,46 +93,25 @@ fn init_vector_db(app: &tauri::App) -> AppResult<()> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .expect("Failed to create runtime for qdrant");
+        .expect("Failed to create runtime for vector DB");
 
     let app_handle = app.app_handle().clone();
 
-    let app_data_dir: PathBuf = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|_| QdrantManagerError::Other("Failed to get app data directory".into()))?;
+    // Block on the future and handle the result
+    let result = runtime.block_on(async { vectordb_manager::init_vectordb(app_handle).await });
 
-    let qdrant_path: PathBuf = app_data_dir.join("vector_db");
-
-    // init qdrant binary
-    let sidebar_command = app.shell().sidecar("qdrant")
-        ..args(["--storage", qdrant_path, "--uri", "http://127.0.0.1:6334"]).unwrap();
-    let (mut rx, mut _child) = sidebar_command.spawn().expect("Failed to spawn sidecar");
-
-    tauri::async_runtime::spawn(async move {
-        while let Some(event) = rx.recv.await {
-            if let CommandEvent::Stdout(line_bytes) = event {
-                let line = String::from_utf8_lossy(&line_bytes);
-                window
-                    .emit("message", Some(format!("'{}'", line)))
-                    .expect("failed to emit event");
-                // write to stdin
-                child.write("message from Rust\n".as_bytes()).unwrap();
-            }
-        }
-    });
-
-    match runtime.block_on(qdrant_manager::initialize_qdrant(app_handle)) {
+    match result {
         Ok(manager) => {
-            app.manage(qdrant_manager::QdrantState { manager });
-            println!("Vector db client successfully initialized");
+            // Store the manager in app state
+            app.manage(vectordb_manager::VectorDbState { manager });
+            println!("Vector DB initialized successfully");
             Ok(())
         }
         Err(e) => {
-            eprintln!("Failed to initialize vector database: {e}");
-            Err(Box::new(Error::new(
-                ErrorKind::Other,
-                format!("Failed to initialize vector database: {}", e),
+            eprintln!("Failed to initialize vector DB: {}", e);
+            Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Vector database initialization failed: {}", e),
             )))
         }
     }

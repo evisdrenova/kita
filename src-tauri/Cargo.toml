@@ -47,8 +47,10 @@ async-trait = "0.1.87"
 tokio-stream = "0.1.17"
 clap = "4.5.32"
 fastembed = "4.6.0"
-qdrant-client = "1.13.0"
 tauri-plugin-shell = "2"
+lancedb = "0.18.1"
+arrow-array = "54.2.1"
+arrow-schema = "54.2.1"
 
 
 
