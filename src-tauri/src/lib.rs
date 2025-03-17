@@ -102,8 +102,8 @@ fn init_vector_db(app: &tauri::App) -> AppResult<()> {
 
     match result {
         Ok(manager) => {
-            // Store the manager in app state
-            app.manage(vectordb_manager::VectorDbState { manager });
+            // Store the manager directly in app state
+            app.manage(manager);
             println!("Vector DB initialized successfully");
             Ok(())
         }
