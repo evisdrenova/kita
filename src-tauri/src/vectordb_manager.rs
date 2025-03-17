@@ -13,6 +13,7 @@ use thiserror::Error;
 use tokio::sync::Mutex;
 
 use crate::chunker::Chunk;
+use crate::embedder::Embedder;
 
 pub struct VectorDbManager {
     client: Connection,
@@ -124,6 +125,7 @@ impl VectorDbManager {
         }
     }
 
+    /// Inserts embeddings into vector database
     pub async fn insert_embeddings(
         app_handle: &AppHandle,
         file_id: &str,
@@ -153,6 +155,46 @@ impl VectorDbManager {
         }
 
         Ok(())
+    }
+
+    /// TODO: finish this
+    /// Embeds the search query and searches vector database
+    pub async fn search_similar(
+        app_handle: &AppHandle,
+        query_text: &str,
+        embedder: &Embedder,
+        limit: usize,
+    ) -> VectorDbResult<Vec<SearchResult>> {
+        // Embed the query using the same embedder
+        let query_embedding = embedder.embed_single_text(query_text);
+
+        // Get the manager from app state
+        let state = app_handle.state::<Arc<tokio::sync::Mutex<VectorDbManager>>>();
+        let manager = state.lock().await;
+
+        // Open the table
+        let table = match manager.client.open_table(TABLE_NAME).execute().await {
+            Ok(table) => table,
+            Err(e) => {
+                return Err(VectorDbError::LanceError(format!(
+                    "Failed to open table: {}",
+                    e
+                )));
+            }
+        };
+
+        // Perform the vector similarity search
+        let results = table
+            .search(&query_embedding)
+            .limit(limit)
+            .execute()
+            .await
+            .map_err(|e| VectorDbError::LanceError(format!("Search failed: {}", e)))?;
+
+        // Convert to your result type
+        // ...
+
+        Ok(results)
     }
 }
 

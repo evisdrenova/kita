@@ -1,3 +1,5 @@
+/// Common module that defines the traits and implementations that every chunker type (txt, pdf, docx, etc.) should implement
+/// Also contains some utility functions
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};

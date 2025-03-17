@@ -17,7 +17,7 @@ impl Embedder {
 
     /// Get embeddings for a single chunk of text
     /// If there is an error this will return back an empty vector
-    pub fn embed_text(&self, text: &str) -> Vec<f32> {
+    pub fn embed_single_text(&self, text: &str) -> Vec<f32> {
         self.model
             .embed(vec![text], None)
             .map(|embeddings| embeddings.get(0).cloned().unwrap_or_default())
