@@ -7,7 +7,6 @@ use arrow_schema::{DataType, Field, Schema};
 use lancedb::{Connection, Error, Table};
 use std::path::PathBuf;
 use std::sync::Arc;
-// use std::sync::Mutex;
 use tauri::AppHandle;
 use tauri::Manager;
 use thiserror::Error;
@@ -89,7 +88,6 @@ impl VectorDbManager {
                 false
             }
             Err(e) => {
-                // Any other error is unexpected, so return it
                 println!("some other error'{:?}' exists", e);
                 false
             }
