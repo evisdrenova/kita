@@ -1,6 +1,8 @@
+use arrow_array::types::Float32Type;
+use arrow_array::{FixedSizeListArray, Int32Array, RecordBatch, RecordBatchIterator};
 use arrow_schema::{DataType, Field, Schema};
 use lancedb::index::Index;
-use lancedb::{Connection, Error};
+use lancedb::{Connection, Error, Table};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -73,25 +75,7 @@ impl VectorDbManager {
     async fn init_table(client: &Connection) -> VectorDbResult<()> {
         const TABLE_NAME: &str = "embeddings";
 
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("id", DataType::Utf8, false),
-            Field::new("text", DataType::Utf8, false),
-            Field::new(
-                "embedding",
-                DataType::FixedSizeList(
-                    Arc::new(Field::new("item", DataType::Float32, true)),
-                    384, // embedding dimension size
-                ),
-                false,
-            ),
-            Field::new("path", DataType::Utf8, false),
-            Field::new("chunk_index", DataType::Int32, false),
-            Field::new("total_chunks", DataType::Int32, true),
-            Field::new("mime_type", DataType::Utf8, true),
-            Field::new("page_number", DataType::Int32, true),
-        ]));
-
-        let table_exists = match client.open_table(TABLE_NAME).execute().await {
+        let table_exists: bool = match client.open_table(TABLE_NAME).execute().await {
             Ok(_) => {
                 println!("Table '{}' exists", TABLE_NAME);
                 true
@@ -107,59 +91,123 @@ impl VectorDbManager {
             }
         };
 
-        if table_exists {
-            return Ok(());
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Utf8, false),
+            Field::new("text", DataType::Utf8, false),
+            Field::new(
+                "embedding",
+                DataType::FixedSizeList(
+                    Arc::new(Field::new("item", DataType::Float32, true)),
+                    384, // embedding dimension
+                ),
+                false,
+            ),
+            Field::new("path", DataType::Utf8, false),
+            Field::new("chunk_index", DataType::Int32, false),
+            Field::new("total_chunks", DataType::Int32, true),
+            Field::new("mime_type", DataType::Utf8, true),
+            Field::new("page_number", DataType::Int32, true),
+        ]));
+
+        let schema_clone: Arc<Schema> = schema.clone();
+
+        if !table_exists {
+            let table = create_table(client, TABLE_NAME, &schema_clone).await?;
+            create_index(client, &table, schema).await?;
         }
 
-        // Create the empty table with our schema
-        match client
-            .create_empty_table(TABLE_NAME, schema)
-            .execute()
-            .await
-        {
-            Ok(_) => {
-                println!("Successfully created table '{}'", TABLE_NAME);
-                Ok(())
-            }
-            Err(e) => {
-                return Err(VectorDbError::LanceError(format!(
-                    "Failed to create table: {}",
-                    e
-                )))
-            }
-        }
-
-        // Open the table to create an index
-        // let table = match client.open_table(TABLE_NAME).execute().await {
-        //     Ok(table) => table,
-        //     Err(e) => {
-        //         return Err(VectorDbError::LanceError(format!(
-        //             "Failed to open table: {}",
-        //             e
-        //         )))
-        //     }
-        // };
-
-        // Create vector index
-        // println!("Creating vector index on embedding column");
-        // match table
-        //     .create_index(&["embedding"], Inde)
-        //     .execute()
-        //     .await
-        // {
-        //     Ok(_) => {
-        //         println!("Successfully created index on table '{}'", TABLE_NAME);
-        //         Ok(())
-        //     }
-        //     Err(e) => Err(VectorDbError::LanceError(format!(
-        //         "Failed to create index: {}",
-        //         e
-        //     ))),
-        // }
+        Ok(())
     }
 }
 
 #[tauri::command]
 pub async fn init_vectordb(app_handle: AppHandle) -> VectorDbResult<Arc<Mutex<VectorDbManager>>> {
     VectorDbManager::initialize_vectordb(app_handle).await
+}
+
+async fn create_table(
+    client: &Connection,
+    table_name: &str,
+    schema: &Arc<Schema>,
+) -> VectorDbResult<Table> {
+    match client
+        .create_empty_table(table_name, schema.clone())
+        .execute()
+        .await
+    {
+        Ok(table) => {
+            println!("Successfully created table '{}'", table_name);
+            Ok(table)
+        }
+        Err(e) => {
+            return Err(VectorDbError::LanceError(format!(
+                "Failed to create table: {}",
+                e
+            )))
+        }
+    }
+}
+
+async fn create_index(
+    client: &Connection,
+    table: &Table,
+    schema: Arc<Schema>,
+) -> VectorDbResult<()> {
+    // open table
+    let table = match client.open_table(table.name()).execute().await {
+        Ok(table) => table,
+        Err(e) => {
+            return Err(VectorDbError::LanceError(format!(
+                "Failed to open table: {}",
+                e
+            )));
+        }
+    };
+    // We'll insert a single row with 384 zeros as the embedding since we can't create an index on an empty table
+    let batches = RecordBatchIterator::new(
+        vec![RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(Int32Array::from_iter_values(0..384)),
+                Arc::new(
+                    FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
+                        (0..384).map(|_| Some(vec![Some(1.0); 128])),
+                        128,
+                    ),
+                ),
+            ],
+        )
+        .unwrap()]
+        .into_iter()
+        .map(Ok),
+        schema.clone(),
+    );
+
+    match table.add(Box::new(batches)).execute().await {
+        Ok(_) => {
+            println!("Successfully added dummy row")
+        }
+        Err(e) => {
+            return Err(VectorDbError::LanceError(format!(
+                "Failed to add dummy row: {}",
+                e
+            )))
+        }
+    }
+
+    println!("Creating vector index on 'embedding' column...");
+    if let Err(e) = table
+        .create_index(&["embedding"], Index::Auto)
+        .execute()
+        .await
+    {
+        return Err(VectorDbError::LanceError(format!(
+            "Failed to create index: {}",
+            e
+        )));
+    }
+
+    println!("Successfully created index on table '{}'.", table.name());
+
+    Ok(())
 }
