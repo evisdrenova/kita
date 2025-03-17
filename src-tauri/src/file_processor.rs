@@ -18,6 +18,7 @@ use crate::utils::get_category_from_extension;
 use crate::chunker::{ChunkerConfig, ChunkerOrchestrator};
 
 use crate::embedder::Embedder;
+use crate::vectordb_manager::VectorDbManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -103,14 +104,15 @@ impl FileProcessor {
     /// Main async method to process all the given paths:
     /// 1) collect files
     /// 2) spawn tasks with concurrency limit
-    /// 3) process files by storing them, creating chunks, embeddings and storing in qrant
-    /// 4) track progress and optionally emit Tauri events
+    /// 3) process files by storing them, creating chunks, embeddings and storing in vectordb
+    /// 4) track progress and emit Tauri events
     /// If successful then this function doesn't return anything
     /// If error, then it returns the number of errors, the file path that caused it and the error
     pub async fn process_paths(
         &self,
         paths: Vec<String>,
         on_progress: impl Fn(ProcessingStatus) + Send + Sync + Clone + 'static,
+        app_handle: AppHandle,
     ) -> Result<serde_json::Value, FileProcessorError> {
         println!("The paths {:?}", paths);
 
@@ -173,6 +175,7 @@ impl FileProcessor {
                 total_files,
                 pc,
                 progress_fn,
+                app_handle.clone(),
             );
 
             task_handles.push(task_handle);
@@ -210,8 +213,7 @@ impl FileProcessor {
         paths: &[String],
     ) -> Result<Vec<FileMetadata>, FileProcessorError> {
         let path_vec: Vec<String> = paths.to_vec();
-        // use tokio here since we're mainly doing i/o operations which tokio handles nicely
-        // rayon isn't as good of a choice here as it's mainly for cpu-intensive operations like processing data
+
         task::spawn_blocking(move || {
             let mut all_files: Vec<FileMetadata> = Vec::new();
             for path_str in path_vec {
@@ -249,6 +251,7 @@ fn create_path_embedding(
     total_files: usize,
     pc: Arc<AtomicUsize>,
     progress_fn: impl Fn(ProcessingStatus) + Send + Sync + Clone + 'static,
+    app_handle: AppHandle,
 ) -> tokio::task::JoinHandle<()> {
     println!("creating embedding for file {:?}", file_metadata.base.path);
 
@@ -267,12 +270,14 @@ fn create_path_embedding(
             }
         };
 
-        // Use fm_clone instead of file_metadata
-        if let Err(e) = save_file_to_fts(db_path, &fm_clone).await {
-            let _ = err_sender.send((file_path, format!("File processing error: {:?}", e)));
-            return;
-        }
-
+        let saved_file_id: String = match save_file_to_db(db_path.clone(), &fm_clone).await {
+            Ok(file_id) => file_id,
+            Err(e) => {
+                let _ =
+                    err_sender.send((file_path.clone(), format!("File processing error: {:?}", e)));
+                return;
+            }
+        };
         if fm_clone.size == 0 {
             // Skip empty files
             return;
@@ -297,11 +302,18 @@ fn create_path_embedding(
                         err_sender.send((file_path, "No valid embeddings generated".to_string()));
                 } else {
                     println!("the chunk and embedding: {:?}", chunk_embeddings);
-                    // Process embeddings...
-                    // for (chunk, embedding) in chunk_embeddings {
-                    //     // Insert into your vector DB
-                    // }
-
+                    VectorDbManager::insert_embeddings(
+                        &app_handle,
+                        &saved_file_id,
+                        chunk_embeddings,
+                    )
+                    .await
+                    .unwrap_or_else(|e| {
+                        let _ = err_sender.send((
+                            file_path.clone(),
+                            format!("Failed to insert embeddings: {}", e),
+                        ));
+                    });
                     // Update progress
                     let processed: usize = pc.fetch_add(1, Ordering::SeqCst) + 1;
                     let percentage: usize =
@@ -320,14 +332,20 @@ fn create_path_embedding(
     })
 }
 
-/// Process a single file in a blocking task because rusqlite is blocking.
-async fn save_file_to_fts(db_path: PathBuf, file: &FileMetadata) -> Result<(), FileProcessorError> {
+/// Saves a single file to the db and to fts
+/// returns the stringified file id on success
+async fn save_file_to_db(
+    db_path: PathBuf,
+    file: &FileMetadata,
+) -> Result<String, FileProcessorError> {
     let file = file.clone();
 
     task::spawn_blocking({
         let db_path = db_path;
-        move || -> Result<(), FileProcessorError> {
-            let conn = Connection::open(db_path)?;
+        move || -> Result<String, FileProcessorError> {
+            // Fixed error handling with map_err instead of map
+            let conn = Connection::open(db_path)
+            .map_err(|e| FileProcessorError::Db(e))?;
 
             // Set pragmas for better performance
             conn.execute_batch(
@@ -371,7 +389,7 @@ async fn save_file_to_fts(db_path: PathBuf, file: &FileMetadata) -> Result<(), F
                 params![file_id, doc_text],
             )?;
 
-            Ok(())
+            Ok(file_id.to_string())
         }
     }).await.map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?
 }
@@ -431,7 +449,6 @@ pub async fn process_paths_command(
     state: tauri::State<'_, FileProcessorState>,
     app_handle: AppHandle,
 ) -> Result<serde_json::Value, String> {
-    // Create a cloned instance of the processor
     let processor: FileProcessor = {
         let guard: std::sync::MutexGuard<'_, Option<FileProcessor>> =
             state.0.lock().map_err(|e| e.to_string())?;
@@ -441,13 +458,14 @@ pub async fn process_paths_command(
         }
     };
 
-    // Create a progress handler that emits Tauri event
+    let app_handle_for_progress = app_handle.clone();
+
     let progress_handler = move |status: ProcessingStatus| {
-        let _ = app_handle.emit("file-processing-progress", &status);
+        let _ = app_handle_for_progress.emit("file-processing-progress", &status);
     };
 
     processor
-        .process_paths(paths, progress_handler)
+        .process_paths(paths, progress_handler, app_handle)
         .await
         .map_err(|e: FileProcessorError| e.to_string())
 }
@@ -615,33 +633,5 @@ pub fn open_file(file_path: &str) -> Result<(), String> {
             "Failed to open file, exit code: {:?}",
             status.code()
         ))
-    }
-}
-
-fn read_file_content(path: &PathBuf, extension: &str) -> Result<String, String> {
-    // This function runs in a blocking context
-    match extension.to_lowercase().as_str() {
-        ".txt" => match std::fs::read_to_string(path) {
-            Ok(content) => Ok(content),
-            Err(e) => Err(format!("Failed to read text file: {}", e)),
-        },
-        // ".pdf" => {
-        //     // PDF extraction logic using appropriate library
-        //     // (e.g., pdf-extract or similar)
-        //     // For example:
-        //     match extract_pdf_text(path) {
-        //         Ok(text) => Ok(text),
-        //         Err(e) => Err(format!("Failed to extract PDF text: {}", e)),
-        //     }
-        // }
-        // ".docx" => {
-        //     // DOCX extraction logic
-        //     match extract_docx_text(path) {
-        //         Ok(text) => Ok(text),
-        //         Err(e) => Err(format!("Failed to extract DOCX text: {}", e)),
-        //     }
-        // }
-        // Add more file types as needed
-        _ => Err(format!("Unsupported file type: {}", extension)),
     }
 }

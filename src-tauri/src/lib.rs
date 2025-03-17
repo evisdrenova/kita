@@ -53,6 +53,7 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+/// Initialize the database
 fn init_database(app_handle: AppHandle) -> AppResult<std::path::PathBuf> {
     match database_handler::initialize_database(app_handle) {
         Ok(path) => {
@@ -69,6 +70,7 @@ fn init_database(app_handle: AppHandle) -> AppResult<std::path::PathBuf> {
     }
 }
 
+/// Initialize the file processor
 fn init_file_processor(
     db_path: String,
     concurrency: usize,
@@ -89,6 +91,7 @@ fn init_file_processor(
     }
 }
 
+/// Initialize the vectior and store the state in the app
 fn init_vector_db(app: &tauri::App) -> AppResult<()> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -102,7 +105,6 @@ fn init_vector_db(app: &tauri::App) -> AppResult<()> {
 
     match result {
         Ok(manager) => {
-            // Store the manager directly in app state
             app.manage(manager);
             println!("Vector DB initialized successfully");
             Ok(())

@@ -1,18 +1,25 @@
 use arrow_array::types::Float32Type;
-use arrow_array::{FixedSizeListArray, Int32Array, RecordBatch, RecordBatchIterator, StringArray};
+use arrow_array::FixedSizeListArray;
+use arrow_array::RecordBatch;
+use arrow_array::RecordBatchIterator;
+use arrow_array::StringArray;
 use arrow_schema::{DataType, Field, Schema};
-use lancedb::index::Index;
 use lancedb::{Connection, Error, Table};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
+// use std::sync::Mutex;
 use tauri::AppHandle;
 use tauri::Manager;
 use thiserror::Error;
+use tokio::sync::Mutex;
+
+use crate::chunker::Chunk;
 
 pub struct VectorDbManager {
     client: Connection,
 }
+
+const TABLE_NAME: &str = "embeddings";
 
 #[derive(Debug, Error)]
 pub enum VectorDbError {
@@ -68,10 +75,9 @@ impl VectorDbManager {
         Ok(instance)
     }
 
-    // checks to see if vector table exists if not, sets it up
+    /// Creates embeddings table
     async fn init_table(&self) -> VectorDbResult<()> {
         let client: &Connection = &self.client;
-        const TABLE_NAME: &str = "embeddings";
 
         let table_exists: bool = match client.open_table(TABLE_NAME).execute().await {
             Ok(_) => {
@@ -89,25 +95,7 @@ impl VectorDbManager {
             }
         };
 
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("id", DataType::Utf8, false),
-            Field::new("text", DataType::Utf8, false),
-            Field::new(
-                "embedding",
-                DataType::FixedSizeList(
-                    Arc::new(Field::new("item", DataType::Float32, true)),
-                    384, // embedding dimension
-                ),
-                false,
-            ),
-            Field::new("path", DataType::Utf8, false),
-            Field::new("chunk_index", DataType::Int32, false),
-            Field::new("total_chunks", DataType::Int32, true),
-            Field::new("mime_type", DataType::Utf8, true),
-            Field::new("page_number", DataType::Int32, true),
-        ]));
-
-        let schema_clone: Arc<Schema> = schema.clone();
+        let schema_clone: Arc<Schema> = get_embeddings_schema();
 
         if !table_exists {
             Self::create_table(&self, TABLE_NAME, &schema_clone).await?;
@@ -137,11 +125,100 @@ impl VectorDbManager {
             }
         }
     }
+
+    pub async fn insert_embeddings(
+        app_handle: &AppHandle,
+        file_id: &str,
+        chunk_embeddings: Vec<(Chunk, Vec<f32>)>,
+    ) -> VectorDbResult<()> {
+        let state = app_handle.state::<Arc<Mutex<VectorDbManager>>>();
+        let manager = state.lock().await;
+        // open table
+        let table = match manager.client.open_table(TABLE_NAME).execute().await {
+            Ok(table) => table,
+            Err(e) => {
+                return Err(VectorDbError::LanceError(format!(
+                    "Failed to open table: {}",
+                    e
+                )));
+            }
+        };
+
+        let batches = from_chunks_embeddings_to_data(chunk_embeddings, file_id);
+
+        // insert into table
+        if let Err(e) = table.add(Box::new(batches)).execute().await {
+            return Err(VectorDbError::LanceError(format!(
+                "Failed to add embeddings: {}",
+                e
+            )));
+        }
+
+        Ok(())
+    }
+}
+
+fn from_chunks_embeddings_to_data(
+    chunk_embeddings: Vec<(Chunk, Vec<f32>)>,
+    file_id: &str,
+) -> RecordBatchIterator<
+    std::iter::Map<
+        std::vec::IntoIter<RecordBatch>,
+        fn(RecordBatch) -> Result<RecordBatch, arrow_schema::ArrowError>,
+    >,
+> {
+    let schema = get_embeddings_schema();
+
+    let mut ids = Vec::with_capacity(chunk_embeddings.len());
+    let mut texts = Vec::with_capacity(chunk_embeddings.len());
+    let mut embeddings = Vec::with_capacity(chunk_embeddings.len());
+    let mut file_ids = Vec::with_capacity(chunk_embeddings.len());
+
+    for (i, (chunk, embedding)) in chunk_embeddings.iter().enumerate() {
+        ids.push(format!("{}_chunk_{}", file_id, i));
+        texts.push(chunk.content.clone());
+        embeddings.push(Some(embedding.iter().map(|&f| Some(f)).collect::<Vec<_>>()));
+        file_ids.push(file_id);
+    }
+
+    RecordBatchIterator::new(
+        vec![RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(StringArray::from(ids)),
+                Arc::new(StringArray::from(texts)),
+                Arc::new(
+                    FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(embeddings, 384),
+                ),
+                Arc::new(StringArray::from(file_ids)),
+            ],
+        )
+        .unwrap()]
+        .into_iter()
+        .map(Ok),
+        schema.clone(),
+    )
 }
 
 #[tauri::command]
 pub async fn init_vectordb(app_handle: AppHandle) -> VectorDbResult<Arc<Mutex<VectorDbManager>>> {
     VectorDbManager::initialize_vectordb(app_handle).await
+}
+
+fn get_embeddings_schema() -> Arc<Schema> {
+    Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Utf8, false),
+        Field::new("text", DataType::Utf8, false),
+        Field::new(
+            "embedding",
+            DataType::FixedSizeList(
+                Arc::new(Field::new("item", DataType::Float32, true)),
+                384, // embedding dimension
+            ),
+            false,
+        ),
+        Field::new("file_id", DataType::Utf8, false),
+    ]))
 }
 
 // creates an index
