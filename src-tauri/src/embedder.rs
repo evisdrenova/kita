@@ -12,7 +12,7 @@ impl Embedder {
 
         let model = TextEmbedding::try_new(init_options)?;
 
-        Ok(Self { model: model })
+        Ok(Self { model })
     }
 
     /// Get embeddings for a single chunk of text

@@ -103,6 +103,21 @@ fn init_vector_db(app: &tauri::App) -> AppResult<()> {
     // Block on the future and handle the result
     let result = runtime.block_on(async { vectordb_manager::init_vectordb(app_handle).await });
 
+    // Initialize the embedder and store it in the app state so we can use it
+    match embedder::Embedder::new() {
+        Ok(embedder) => {
+            app.manage(std::sync::Arc::new(embedder));
+            println!("Embedder initialized successfully");
+        }
+        Err(e) => {
+            eprintln!("Failed to initialize embedder: {}", e);
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Embedder initialization failed: {}", e),
+            )));
+        }
+    }
+
     match result {
         Ok(manager) => {
             app.manage(manager);

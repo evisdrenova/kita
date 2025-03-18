@@ -1,5 +1,7 @@
-use rusqlite::{params, Connection};
+use arrow_array::{Array, RecordBatch};
+use rusqlite::{params, Connection, Rows};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -116,17 +118,6 @@ impl FileProcessor {
     ) -> Result<serde_json::Value, FileProcessorError> {
         println!("The paths {:?}", paths);
 
-        // Initialize the embedder once
-        let embedder: Arc<Embedder> = match Embedder::new() {
-            Ok(emb) => Arc::new(emb),
-            Err(e) => {
-                return Err(FileProcessorError::Other(format!(
-                    "Failed to initialize embedder: {}",
-                    e
-                )))
-            }
-        };
-
         // TODO: we might want to  parallelize this and the chunking instead of doing it sequentlly, essentially walk the tree, get to leaves, chunk and embed them and keep going
 
         // get all file paths that need to be processed
@@ -163,13 +154,10 @@ impl FileProcessor {
             let this = self.clone();
             // each task needs its own reference to the progress function to update it
             let progress_fn = on_progress.clone();
-            // each task needs access to the embedder
-            let embedder_clone = embedder.clone();
 
             let task_handle: task::JoinHandle<()> = create_path_embedding(
                 this.db_path,
                 file,
-                embedder_clone,
                 permit,
                 err_sender,
                 total_files,
@@ -245,7 +233,6 @@ impl FileProcessor {
 fn create_path_embedding(
     db_path: PathBuf,
     file_metadata: &FileMetadata,
-    embedder: Arc<Embedder>,
     permit: Arc<Semaphore>,
     err_sender: UnboundedSender<(String, String)>,
     total_files: usize,
@@ -255,9 +242,8 @@ fn create_path_embedding(
 ) -> tokio::task::JoinHandle<()> {
     println!("creating embedding for file {:?}", file_metadata.base.path);
 
-    // Clone the FileMetadata so we own it
     let fm_clone = file_metadata.clone();
-    let file_path = fm_clone.base.path.clone(); // Clone the path too
+    let file_path = fm_clone.base.path.clone();
 
     tokio::spawn(async move {
         // Acquire concurrency permit
@@ -278,12 +264,12 @@ fn create_path_embedding(
                 return;
             }
         };
+
+        // Skip empty files
         if fm_clone.size == 0 {
-            // Skip empty files
             return;
         }
 
-        // Configure the chunker
         let config = ChunkerConfig {
             chunk_size: 100,
             chunk_overlap: 2,
@@ -294,6 +280,10 @@ fn create_path_embedding(
         };
 
         let orchestrator = ChunkerOrchestrator::new(config);
+
+        let embedder_state: State<'_, Arc<Embedder>> = app_handle.state::<Arc<Embedder>>();
+
+        let embedder: Arc<Embedder> = Arc::clone(&embedder_state.inner());
 
         match orchestrator.chunk_file(&fm_clone, embedder).await {
             Ok(chunk_embeddings) => {
@@ -470,11 +460,223 @@ pub async fn process_paths_command(
         .map_err(|e: FileProcessorError| e.to_string())
 }
 
+// #[tauri::command]
+// pub async fn get_files_data(
+//     query: String,
+//     state: State<'_, FileProcessorState>,
+//     app_handle: AppHandle,
+// ) -> Result<Vec<FileMetadata>, String> {
+//     let processor: FileProcessor = {
+//         let guard: std::sync::MutexGuard<'_, Option<FileProcessor>> =
+//             state.0.lock().map_err(|e| e.to_string())?;
+//         guard
+//             .as_ref()
+//             .ok_or("File processor not initialized".to_string())?
+//             .clone()
+//     };
+
+//     let conn =
+//         Connection::open(processor.db_path).map_err(|e| format!("Failed to open database: {e}"))?;
+
+//     // If user typed nothing, return first 50 files but we can be smarter here and check based on recents
+//     if query.trim().is_empty() {
+//         let mut stmt = conn
+//             .prepare(
+//                 r#"
+//              SELECT
+//               id,
+//               name,
+//               path,
+//               extension,
+//               size,
+//               created_at,
+//               updated_at
+//             FROM files
+//             LIMIT 50
+//         "#,
+//             )
+//             .map_err(|e| format!("Failed to prepare statement: {e}"))?;
+
+//         let mut rows = stmt.query([]).map_err(|e| format!("Query error: {e}"))?;
+
+//         let mut files = Vec::new();
+//         while let Some(row) = rows.next().map_err(|e| format!("Row error: {e}"))? {
+//             files.push(FileMetadata {
+//                 base: BaseMetadata {
+//                     id: Some(row.get(0).map_err(|e| e.to_string())?),
+//                     name: row.get(1).map_err(|e| e.to_string())?,
+//                     path: row.get(2).map_err(|e| e.to_string())?,
+//                 },
+//                 file_type: SearchSectionType::Files,
+//                 extension: row.get(3).map_err(|e| e.to_string())?,
+//                 size: row.get(4).map_err(|e| e.to_string())?,
+//                 created_at: row.get(5).ok(),
+//                 updated_at: row.get(6).ok(),
+//             });
+//         }
+//         return Ok(files);
+//     }
+
+//     if query.len() < 3 {
+//         let like_pattern = format!("%{}%", query);
+
+//         let mut stmt = conn
+//             .prepare(
+//                 r#"
+//             SELECT
+//               id,
+//               name,
+//               path,
+//               extension,
+//               size,
+//               created_at,
+//               updated_at
+//             FROM files
+//             WHERE name LIKE ?1 OR path LIKE ?2 OR extension LIKE ?3
+//             LIMIT 50
+//             "#,
+//             )
+//             .map_err(|e| format!("Failed to prepare statement: {e}"))?;
+
+//         let mut rows = stmt
+//             .query(params![&like_pattern, &like_pattern, &like_pattern])
+//             .map_err(|e| format!("Query error: {e}"))?;
+
+//         let mut files = Vec::new();
+//         while let Some(row) = rows.next().map_err(|e| format!("Row error: {e}"))? {
+//             files.push(FileMetadata {
+//                 base: BaseMetadata {
+//                     id: Some(row.get(0).map_err(|e| e.to_string())?),
+//                     name: row.get(1).map_err(|e| e.to_string())?,
+//                     path: row.get(2).map_err(|e| e.to_string())?,
+//                 },
+//                 file_type: SearchSectionType::Files,
+//                 extension: row.get(3).map_err(|e| e.to_string())?,
+//                 size: row.get(4).map_err(|e| e.to_string())?,
+//                 created_at: row.get(5).ok(),
+//                 updated_at: row.get(6).ok(),
+//             });
+//         }
+//         return Ok(files);
+//     }
+
+//     let search_trigrams = build_trigrams(&query);
+//     println!(
+//         "more than 3 in search query, the search trigrams: {}",
+//         search_trigrams
+//     );
+
+//     // do an FTS search on doc_text
+//     let mut stmt = conn
+//         .prepare(
+//             r#"
+//         SELECT
+//           f.id,
+//           f.name,
+//           f.path,
+//           f.extension,
+//           f.size,
+//           f.created_at,
+//           f.updated_at
+//         FROM files_fts ft
+//         JOIN files f ON ft.rowid = f.id
+//         WHERE ft.doc_text MATCH ?1
+//         LIMIT 50
+//         "#,
+//         )
+//         .map_err(|e| format!("Failed to prepare statement: {e}"))?;
+
+//     // Fix: Use search_trigrams instead of raw query
+//     let mut rows = stmt
+//         .query([search_trigrams.as_str()])
+//         .map_err(|e| format!("Query error: {e}"))?;
+
+//     let mut files = Vec::new();
+//     while let Some(row) = rows.next().map_err(|e| format!("Row error: {e}"))? {
+//         files.push(FileMetadata {
+//             base: BaseMetadata {
+//                 id: Some(row.get(0).map_err(|e| e.to_string())?),
+//                 name: row.get(1).map_err(|e| e.to_string())?,
+//                 path: row.get(2).map_err(|e| e.to_string())?,
+//             },
+//             file_type: SearchSectionType::Files,
+//             extension: row.get(3).map_err(|e| e.to_string())?,
+//             size: row.get(4).map_err(|e| e.to_string())?,
+//             created_at: row.get(5).ok(),
+//             updated_at: row.get(6).ok(),
+//         });
+//     }
+
+//     // get back file_ids of files that semantically match the query
+//     let mut semantic_rows = VectorDbManager::search_similar(&app_handle, &query)
+//         .await
+//         .map_err(|e| format!("Query error: {e}"))?;
+
+//     // translate the file_ids into FileMetadata to return
+//     let mut files = Vec::new();
+//     // while let Some(row) = semantic_rows.next().map_err(|e| format!("Row error: {e}"))? {
+//     //     files.push(FileMetadata {
+//     //         base: BaseMetadata {
+//     //             id: Some(row.get(0).map_err(|e| e.to_string())?),
+//     //             name: row.get(1).map_err(|e| e.to_string())?,
+//     //             path: row.get(2).map_err(|e| e.to_string())?,
+//     //         },
+//     //         file_type: SearchSectionType::Files,
+//     //         extension: row.get(3).map_err(|e| e.to_string())?,
+//     //         size: row.get(4).map_err(|e| e.to_string())?,
+//     //         created_at: row.get(5).ok(),
+//     //         updated_at: row.get(6).ok(),
+//     //     });
+//     // }
+
+//     Ok(files)
+// }
+
 #[tauri::command]
-pub fn get_files_data(
+pub async fn get_files_data(
     query: String,
     state: State<'_, FileProcessorState>,
+    app_handle: AppHandle,
 ) -> Result<Vec<FileMetadata>, String> {
+    let processor: FileProcessor = get_processor(&state)?;
+
+    let conn: Connection = Connection::open(&processor.db_path)
+        .map_err(|e| format!("Failed to open database: {e}"))?;
+
+    // Handle empty queries
+    if query.trim().is_empty() {
+        return get_recent_files(&conn);
+    }
+
+    // Handle short queries with LIKE
+    if query.len() < 3 {
+        return search_files_by_like(&conn, &query);
+    }
+
+    // For queries with >3 characters, first do an FTS search
+    let files = search_files_by_fts(&conn, &query)?;
+
+    // Get semantic results if we have vector search capability
+    let semantic_files: Vec<FileMetadata> =
+        match VectorDbManager::search_similar(&app_handle, &query).await {
+            Ok(results) => convert_search_results_to_metadata(results, &conn)?,
+            Err(e) => {
+                // Log the error but continue with just FTS results
+                eprintln!(
+                    "Semantic search error (continuing with text search only): {}",
+                    e
+                );
+                Vec::new()
+            }
+        };
+
+    // Combine and deduplicate results
+    let combined_files = combine_search_results(files, semantic_files);
+
+    Ok(combined_files)
+}
+
+fn get_processor(state: &State<'_, FileProcessorState>) -> Result<FileProcessor, String> {
     let processor: FileProcessor = {
         let guard: std::sync::MutexGuard<'_, Option<FileProcessor>> =
             state.0.lock().map_err(|e| e.to_string())?;
@@ -484,14 +686,14 @@ pub fn get_files_data(
             .clone()
     };
 
-    let conn =
-        Connection::open(processor.db_path).map_err(|e| format!("Failed to open database: {e}"))?;
+    Ok(processor)
+}
 
-    // If user typed nothing, return first 50 files but we can be smarter here and check based on recents
-    if query.trim().is_empty() {
-        let mut stmt = conn
-            .prepare(
-                r#"
+// Get recent files when query is empty
+fn get_recent_files(conn: &Connection) -> Result<Vec<FileMetadata>, String> {
+    let mut stmt = conn
+        .prepare(
+            r#"
              SELECT
               id,
               name,
@@ -501,37 +703,24 @@ pub fn get_files_data(
               created_at,
               updated_at
             FROM files
+            ORDER BY updated_at DESC
             LIMIT 50
         "#,
-            )
-            .map_err(|e| format!("Failed to prepare statement: {e}"))?;
+        )
+        .map_err(|e| format!("Failed to prepare statement: {e}"))?;
 
-        let mut rows = stmt.query([]).map_err(|e| format!("Query error: {e}"))?;
+    let rows = stmt.query([]).map_err(|e| format!("Query error: {e}"))?;
 
-        let mut files = Vec::new();
-        while let Some(row) = rows.next().map_err(|e| format!("Row error: {e}"))? {
-            files.push(FileMetadata {
-                base: BaseMetadata {
-                    id: Some(row.get(0).map_err(|e| e.to_string())?),
-                    name: row.get(1).map_err(|e| e.to_string())?,
-                    path: row.get(2).map_err(|e| e.to_string())?,
-                },
-                file_type: SearchSectionType::Files,
-                extension: row.get(3).map_err(|e| e.to_string())?,
-                size: row.get(4).map_err(|e| e.to_string())?,
-                created_at: row.get(5).ok(),
-                updated_at: row.get(6).ok(),
-            });
-        }
-        return Ok(files);
-    }
+    rows_to_file_metadata(rows)
+}
 
-    if query.len() < 3 {
-        let like_pattern = format!("%{}%", query);
+// Search files using LIKE for short queries
+fn search_files_by_like(conn: &Connection, query: &str) -> Result<Vec<FileMetadata>, String> {
+    let like_pattern = format!("%{}%", query);
 
-        let mut stmt = conn
-            .prepare(
-                r#"
+    let mut stmt = conn
+        .prepare(
+            r#"
             SELECT
               id,
               name,
@@ -543,39 +732,21 @@ pub fn get_files_data(
             FROM files
             WHERE name LIKE ?1 OR path LIKE ?2 OR extension LIKE ?3
             LIMIT 50
-            "#,
-            )
-            .map_err(|e| format!("Failed to prepare statement: {e}"))?;
+        "#,
+        )
+        .map_err(|e| format!("Failed to prepare statement: {e}"))?;
 
-        let mut rows = stmt
-            .query(params![&like_pattern, &like_pattern, &like_pattern])
-            .map_err(|e| format!("Query error: {e}"))?;
+    let rows = stmt
+        .query(params![&like_pattern, &like_pattern, &like_pattern])
+        .map_err(|e| format!("Query error: {e}"))?;
 
-        let mut files = Vec::new();
-        while let Some(row) = rows.next().map_err(|e| format!("Row error: {e}"))? {
-            files.push(FileMetadata {
-                base: BaseMetadata {
-                    id: Some(row.get(0).map_err(|e| e.to_string())?),
-                    name: row.get(1).map_err(|e| e.to_string())?,
-                    path: row.get(2).map_err(|e| e.to_string())?,
-                },
-                file_type: SearchSectionType::Files,
-                extension: row.get(3).map_err(|e| e.to_string())?,
-                size: row.get(4).map_err(|e| e.to_string())?,
-                created_at: row.get(5).ok(),
-                updated_at: row.get(6).ok(),
-            });
-        }
-        return Ok(files);
-    }
+    rows_to_file_metadata(rows)
+}
 
-    let search_trigrams = build_trigrams(&query);
-    println!(
-        "more than 3 in search query, the search trigrams: {}",
-        search_trigrams
-    );
+// Search files using full-text search
+fn search_files_by_fts(conn: &Connection, query: &str) -> Result<Vec<FileMetadata>, String> {
+    let search_trigrams = build_trigrams(query);
 
-    // do an FTS search on doc_text
     let mut stmt = conn
         .prepare(
             r#"
@@ -595,12 +766,17 @@ pub fn get_files_data(
         )
         .map_err(|e| format!("Failed to prepare statement: {e}"))?;
 
-    // Fix: Use search_trigrams instead of raw query
-    let mut rows = stmt
+    let rows = stmt
         .query([search_trigrams.as_str()])
         .map_err(|e| format!("Query error: {e}"))?;
 
-    let mut files = Vec::new();
+    rows_to_file_metadata(rows)
+}
+
+// convert sqlite rows to FileMetadata type
+fn rows_to_file_metadata(mut rows: Rows) -> Result<Vec<FileMetadata>, String> {
+    let mut files: Vec<FileMetadata> = Vec::new();
+
     while let Some(row) = rows.next().map_err(|e| format!("Row error: {e}"))? {
         files.push(FileMetadata {
             base: BaseMetadata {
@@ -617,6 +793,112 @@ pub fn get_files_data(
     }
 
     Ok(files)
+}
+
+// Convert vector search results to FileMetadata
+fn convert_search_results_to_metadata(
+    results: Vec<RecordBatch>,
+    conn: &Connection,
+) -> Result<Vec<FileMetadata>, String> {
+    // If no results, return empty vector
+    if results.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Extract file_ids from results
+    let mut file_ids = Vec::new();
+
+    for batch in &results {
+        // Get the file_id column (assuming it's at a specific position or name)
+        if let Some(column) = batch.column_by_name("file_id") {
+            // Convert Arrow array to StringArray
+            if let Some(string_array) = column.as_any().downcast_ref::<arrow_array::StringArray>() {
+                // Extract each string value
+                for i in 0..string_array.len() {
+                    let file_id = string_array.value(i);
+                    file_ids.push(file_id.to_string());
+                }
+            }
+        }
+    }
+
+    // If we couldn't extract any file_ids
+    if file_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    // Build a query to fetch file metadata by ids
+    let placeholders = file_ids
+        .iter()
+        .enumerate()
+        .map(|(i, _)| format!("?{}", i + 1))
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let query = format!(
+        r#"
+        SELECT id, name, path, extension, size, created_at, updated_at
+        FROM files
+        WHERE id IN ({})
+        "#,
+        placeholders
+    );
+
+    let mut stmt = conn
+        .prepare(&query)
+        .map_err(|e| format!("Failed to prepare statement: {e}"))?;
+
+    // Convert file_ids to params
+    let params: Vec<&dyn rusqlite::ToSql> = file_ids
+        .iter()
+        .map(|id| id as &dyn rusqlite::ToSql)
+        .collect();
+
+    let rows = stmt
+        .query(params.as_slice())
+        .map_err(|e| format!("Query error: {e}"))?;
+
+    rows_to_file_metadata(rows)
+}
+
+// Combine and deduplicate search results
+fn combine_search_results(
+    mut text_results: Vec<FileMetadata>,
+    mut semantic_results: Vec<FileMetadata>,
+) -> Vec<FileMetadata> {
+    // If either result set is empty, return the other
+    if text_results.is_empty() {
+        return semantic_results;
+    }
+    if semantic_results.is_empty() {
+        return text_results;
+    }
+
+    // Use a HashSet to track seen file IDs for deduplication
+    let mut seen_ids = HashSet::new();
+
+    // First add all text search results
+    let mut combined = Vec::with_capacity(text_results.len() + semantic_results.len());
+
+    for file in text_results.drain(..) {
+        if let Some(id) = &file.base.id {
+            seen_ids.insert(id.clone());
+        }
+        combined.push(file);
+    }
+
+    // Then add semantic results that aren't duplicates
+    for file in semantic_results.drain(..) {
+        if let Some(id) = &file.base.id {
+            if !seen_ids.contains(id) {
+                combined.push(file);
+            }
+        } else {
+            // If no ID (unusual), just add it
+            combined.push(file);
+        }
+    }
+
+    combined
 }
 
 #[tauri::command]

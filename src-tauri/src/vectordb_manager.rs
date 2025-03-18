@@ -4,6 +4,7 @@ use arrow_array::RecordBatch;
 use arrow_array::RecordBatchIterator;
 use arrow_array::StringArray;
 use arrow_schema::{DataType, Field, Schema};
+use futures::TryStreamExt;
 use lancedb::{Connection, Error, Table};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -157,18 +158,15 @@ impl VectorDbManager {
         Ok(())
     }
 
-    /// TODO: finish this
     /// Embeds the search query and searches vector database
     pub async fn search_similar(
         app_handle: &AppHandle,
         query_text: &str,
-        embedder: &Embedder,
-        limit: usize,
-    ) -> VectorDbResult<Vec<SearchResult>> {
-        // Embed the query using the same embedder
+    ) -> VectorDbResult<Vec<RecordBatch>> {
+        let embedder = app_handle.state::<Arc<Embedder>>();
+
         let query_embedding = embedder.embed_single_text(query_text);
 
-        // Get the manager from app state
         let state = app_handle.state::<Arc<tokio::sync::Mutex<VectorDbManager>>>();
         let manager = state.lock().await;
 
@@ -185,14 +183,15 @@ impl VectorDbManager {
 
         // Perform the vector similarity search
         let results = table
-            .search(&query_embedding)
-            .limit(limit)
-            .execute()
+            .query()
+            .nearest_to(query_embedding)
+            .unwrap()
+            .execute_hybrid()
+            .await
+            .unwrap()
+            .try_collect::<Vec<_>>()
             .await
             .map_err(|e| VectorDbError::LanceError(format!("Search failed: {}", e)))?;
-
-        // Convert to your result type
-        // ...
 
         Ok(results)
     }
