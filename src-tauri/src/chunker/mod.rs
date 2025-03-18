@@ -49,30 +49,28 @@ pub mod common {
         #[error("IO error: {0}")]
         Io(#[from] std::io::Error),
 
-        #[error("File format error: {0}")]
-        Format(String),
-
+        // #[error("File format error: {0}")]
+        // Format(String),
         #[error("Unsupported file type: {0}")]
         UnsupportedType(String),
 
-        #[error("PDF parsing error: {0}")]
-        PdfError(String),
+        // #[error("PDF parsing error: {0}")]
+        // PdfError(String),
 
-        #[error("DOCX parsing error: {0}")]
-        DocxError(String),
+        // #[error("DOCX parsing error: {0}")]
+        // DocxError(String),
 
-        #[error("XLS parsing error: {0}")]
-        XlsError(String),
+        // #[error("XLS parsing error: {0}")]
+        // XlsError(String),
 
-        #[error("Encoding error: {0}")]
-        EncodingError(String),
+        // #[error("Encoding error: {0}")]
+        // EncodingError(String),
 
-        #[error("Channel error")]
-        ChannelError,
+        // #[error("Channel error")]
+        // ChannelError,
 
-        #[error("Task join error: {0}")]
-        JoinError(String),
-
+        // #[error("Task join error: {0}")]
+        // JoinError(String),
         #[error("Other error: {0}")]
         Other(String),
     }
@@ -82,7 +80,7 @@ pub mod common {
 #[async_trait]
 pub trait Chunker: Send + Sync {
     // returns a vector of MIME types
-    fn supported_mime_types(&self) -> Vec<&str>;
+    // fn supported_mime_types(&self) -> Vec<&str>;
 
     fn can_chunk_file_type(&self, path: &Path) -> bool;
 

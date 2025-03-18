@@ -186,7 +186,6 @@ impl VectorDbManager {
         let mut query_options = QueryExecutionOptions::default();
         query_options.max_batch_length = 1024;
 
-        // Create and execute vector search with options
         let vector_query = table.query().nearest_to(query_embedding).map_err(|e| {
             VectorDbError::LanceError(format!("Failed to create vector query: {}", e))
         })?;
