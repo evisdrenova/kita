@@ -495,7 +495,7 @@ export default function App() {
     return filteredApps.length + filteredFiles.length;
   }, [filteredApps.length, filteredFiles.length]);
 
-  // console.log("files", filesData);
+  console.log("files", filesData);
   // console.log("get apps data", appsData);
 
   return (

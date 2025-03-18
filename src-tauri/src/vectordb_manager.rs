@@ -5,6 +5,8 @@ use arrow_array::RecordBatchIterator;
 use arrow_array::StringArray;
 use arrow_schema::{DataType, Field, Schema};
 use futures::TryStreamExt;
+use lancedb::query::ExecutableQuery;
+use lancedb::query::QueryExecutionOptions;
 use lancedb::{Connection, Error, Table};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -181,17 +183,23 @@ impl VectorDbManager {
             }
         };
 
-        // Perform the vector similarity search
-        let results = table
-            .query()
-            .nearest_to(query_embedding)
-            .unwrap()
-            .execute_hybrid()
+        let mut query_options = QueryExecutionOptions::default();
+        query_options.max_batch_length = 1024;
+
+        // Create and execute vector search with options
+        let vector_query = table.query().nearest_to(query_embedding).map_err(|e| {
+            VectorDbError::LanceError(format!("Failed to create vector query: {}", e))
+        })?;
+
+        let results = vector_query
+            .execute_with_options(query_options)
             .await
-            .unwrap()
+            .map_err(|e| VectorDbError::LanceError(format!("Vector search failed: {}", e)))?
             .try_collect::<Vec<_>>()
             .await
-            .map_err(|e| VectorDbError::LanceError(format!("Search failed: {}", e)))?;
+            .map_err(|e| {
+                VectorDbError::LanceError(format!("Vector search collection failed: {}", e))
+            })?;
 
         Ok(results)
     }
