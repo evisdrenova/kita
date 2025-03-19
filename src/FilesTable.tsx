@@ -10,8 +10,9 @@ import {
   Package,
   Database,
   FileArchive,
+  Zap,
 } from "lucide-react";
-import { FileMetadata } from "./types/types";
+import { FileMetadata, SemanticMetadata } from "./types/types";
 import {
   cn,
   FormatFileSize,
@@ -24,10 +25,11 @@ interface Props {
   data: FileMetadata[];
   onRowClick?: (file: FileMetadata) => void;
   selectedItemName?: string;
+  semanticMatches?: Record<string, SemanticMetadata>;
 }
 
 export default function FilesTable(props: Props) {
-  const { data, onRowClick, selectedItemName } = props;
+  const { data, onRowClick, selectedItemName, semanticMatches } = props;
 
   console.log("data in files table", data);
   return (
@@ -40,6 +42,7 @@ export default function FilesTable(props: Props) {
               file={file}
               onRowClick={onRowClick}
               isSelected={file.name === selectedItemName}
+              semanticMatch={file.id ? semanticMatches?.[file.id] : undefined}
             />
           ))}
         </div>
@@ -53,14 +56,18 @@ const FileRow = memo(
     file,
     onRowClick,
     isSelected,
+    semanticMatch,
   }: {
     file: FileMetadata;
     onRowClick?: (file: FileMetadata) => void;
     isSelected: boolean;
+    semanticMatch?: SemanticMetadata;
   }) => {
     const handleClick = useCallback(() => {
       if (onRowClick) onRowClick(file);
     }, [file, onRowClick]);
+
+    const isSemanticMatch = !!semanticMatch;
 
     return (
       <div
@@ -72,13 +79,23 @@ const FileRow = memo(
       >
         <div className="flex flex-row justify-between w-full p-2 ">
           <div className="flex flex-col gap-1">
-            <FileName file={file} />
+            <FileName file={file} isSemanticMatch={isSemanticMatch} />
             <div className="ml-6">
               <FilePath file={file} />
+              {semanticMatch?.content && (
+                <div className="text-xs text-gray-400 mt-1 ml-0.5 line-clamp-1">
+                  {semanticMatch.content}
+                </div>
+              )}
             </div>
           </div>
           <div className="flex flex-col gap-1">
-            <FileExtension file={file} />
+            <div className="flex items-center gap-2">
+              <FileExtension file={file} />
+              {isSemanticMatch && (
+                <SemanticRelevance distance={semanticMatch.distance} />
+              )}
+            </div>
             <FileSize file={file} />
           </div>
         </div>
@@ -87,13 +104,20 @@ const FileRow = memo(
   }
 );
 
-function FileName({ file }: { file: FileMetadata }) {
+function FileName({
+  file,
+  isSemanticMatch,
+}: {
+  file: FileMetadata;
+  isSemanticMatch: boolean;
+}) {
   return (
     <div className="flex items-center flex-row gap-2 ">
       {getFileIcon(file.extension)}
       <span className="text-sm truncate">
         {truncateFilename(file.name, 40, true)}
       </span>
+      {isSemanticMatch && <Zap className="h-3 w-3 text-amber-400" />}
     </div>
   );
 }
@@ -118,6 +142,18 @@ function FileSize({ file }: { file: FileMetadata }) {
   return (
     <div className="flex items-center justify-start gap-1 text-xs text-gray-500">
       {FormatFileSize(file.size)}
+    </div>
+  );
+}
+
+function SemanticRelevance({ distance }: { distance: number }) {
+  // Convert distance to similarity percentage (assuming distance is between 0-1)
+  // Lower distance means higher similarity
+  const similarityPercentage = Math.round((1 - distance) * 100);
+
+  return (
+    <div className="flex items-center text-xs px-1.5 py-0.5 rounded-full bg-amber-950/30 text-amber-400">
+      {similarityPercentage}% match
     </div>
   );
 }

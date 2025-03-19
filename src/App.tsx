@@ -160,6 +160,37 @@ export default function App() {
     setIndexingProgress(null);
   }, [isSettingsOpen]);
 
+  const combinedFileResults = useMemo(() => {
+    // Start with files from regular search
+    const mergedResults = [...filesData];
+    const existingIds = new Set(filesData.map((file) => file.id));
+
+    // Add semantic results that don't have matching IDs
+    semanticData.forEach((semanticItem) => {
+      if (!existingIds.has(semanticItem.id)) {
+        // Convert semantic item to file metadata format
+        mergedResults.push({
+          ...semanticItem,
+          size: 0, // Default size if not available
+          updated_at: undefined,
+          created_at: undefined,
+        });
+      }
+    });
+
+    return mergedResults;
+  }, [filesData, semanticData]);
+
+  const semanticMatchesById = useMemo(() => {
+    const matchesMap: Record<string, SemanticMetadata> = {};
+    semanticData.forEach((item) => {
+      if (item.id) {
+        matchesMap[item.id] = item;
+      }
+    });
+    return matchesMap;
+  }, [semanticData]);
+
   // initial data load - runs once on mount
   useEffect(() => {
     const initialize = async () => {
@@ -332,8 +363,8 @@ export default function App() {
   );
 
   const filteredFiles = useMemo(
-    () => filterFiles(filesData, searchQuery),
-    [filterFiles, filesData, searchQuery]
+    () => filterFiles(combinedFileResults, searchQuery),
+    [filterFiles, combinedFileResults, searchQuery]
   );
   // refreshes app data
   const refreshApps = useCallback(async () => {
@@ -485,12 +516,13 @@ export default function App() {
             selectedItemName={
               currentSection === "files" ? selectedItem : undefined
             }
+            semanticMatches={semanticMatchesById}
           />
         ),
         // Add a method to get a limited component
         getLimitedComponent: (limit: number) => (
           <FilesTable
-            data={filteredFiles.slice(0, limit)}
+            data={filteredFiles}
             onRowClick={(file) => {
               setSelectedItem(file.name);
               setCurrentSection("files");
@@ -502,6 +534,7 @@ export default function App() {
             selectedItemName={
               currentSection === "files" ? selectedItem : undefined
             }
+            semanticMatches={semanticMatchesById}
           />
         ),
       },
