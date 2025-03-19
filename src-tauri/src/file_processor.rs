@@ -466,6 +466,8 @@ pub async fn get_files_data(
     state: State<'_, FileProcessorState>,
     app_handle: AppHandle,
 ) -> Result<Vec<FileMetadata>, String> {
+    println!("the query in get files: {:?}", query);
+
     let processor: FileProcessor = get_processor(&state)?;
 
     let conn: Connection = Connection::open(&processor.db_path)
@@ -498,8 +500,12 @@ pub async fn get_files_data(
             }
         };
 
+    println!("the semantic files: {:?}", semantic_files);
+
     // Combine and deduplicate results
     let combined_files = combine_search_results(files, semantic_files);
+
+    println!("the combined files: {:?}", combined_files);
 
     Ok(combined_files)
 }
@@ -532,7 +538,6 @@ fn get_recent_files(conn: &Connection) -> Result<Vec<FileMetadata>, String> {
               updated_at
             FROM files
             ORDER BY updated_at DESC
-            LIMIT 50
         "#,
         )
         .map_err(|e| format!("Failed to prepare statement: {e}"))?;
@@ -559,7 +564,7 @@ fn search_files_by_like(conn: &Connection, query: &str) -> Result<Vec<FileMetada
               updated_at
             FROM files
             WHERE name LIKE ?1 OR path LIKE ?2 OR extension LIKE ?3
-            LIMIT 50
+       
         "#,
         )
         .map_err(|e| format!("Failed to prepare statement: {e}"))?;
@@ -589,7 +594,7 @@ fn search_files_by_fts(conn: &Connection, query: &str) -> Result<Vec<FileMetadat
         FROM files_fts ft
         JOIN files f ON ft.rowid = f.id
         WHERE ft.doc_text MATCH ?1
-        LIMIT 50
+     
         "#,
         )
         .map_err(|e| format!("Failed to prepare statement: {e}"))?;
@@ -633,29 +638,57 @@ fn convert_search_results_to_metadata(
         return Ok(Vec::new());
     }
 
-    // Extract file_ids from results
-    let mut file_ids = Vec::new();
+    let mut relevant_file_ids = Vec::new();
 
+    // Extract file_ids from results
     for batch in &results {
-        // Get the file_id column (assuming it's at a specific position or name)
-        if let Some(column) = batch.column_by_name("file_id") {
-            // Convert Arrow array to StringArray
-            if let Some(string_array) = column.as_any().downcast_ref::<arrow_array::StringArray>() {
-                // Extract each string value
-                for i in 0..string_array.len() {
-                    let file_id = string_array.value(i);
-                    file_ids.push(file_id.to_string());
+        if let Some(distance_column) = batch.column_by_name("_distance") {
+            if let Some(file_id_column) = batch.column_by_name("file_id") {
+                if let (Some(distance_array), Some(file_id_array)) = (
+                    distance_column
+                        .as_any()
+                        .downcast_ref::<arrow_array::Float32Array>(),
+                    file_id_column
+                        .as_any()
+                        .downcast_ref::<arrow_array::StringArray>(),
+                ) {
+                    // Iterate through rows
+                    for i in 0..distance_array.len() {
+                        if !distance_array.is_null(i) {
+                            let distance = distance_array.value(i);
+                            if distance < 0.85 {
+                                let file_id = file_id_array.value(i);
+                                relevant_file_ids.push(file_id.to_string());
+
+                                // For debugging
+                                println!(
+                                    "Relevant match: file_id={}, distance={}",
+                                    file_id, distance
+                                );
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
-    // If we couldn't extract any file_ids
-    if file_ids.is_empty() {
+    // Deduplicate file_ids
+    let relevant_file_ids: Vec<String> = relevant_file_ids
+        .into_iter()
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    println!("the results in the convert: {:?}", results);
+
+    // If no relevant results, return empty
+    if relevant_file_ids.is_empty() {
         return Ok(Vec::new());
     }
+
     // Build a query to fetch file metadata by ids
-    let placeholders = file_ids
+    let placeholders = relevant_file_ids
         .iter()
         .enumerate()
         .map(|(i, _)| format!("?{}", i + 1))
@@ -676,7 +709,7 @@ fn convert_search_results_to_metadata(
         .map_err(|e| format!("Failed to prepare statement: {e}"))?;
 
     // Convert file_ids to params
-    let params: Vec<&dyn rusqlite::ToSql> = file_ids
+    let params: Vec<&dyn rusqlite::ToSql> = relevant_file_ids
         .iter()
         .map(|id| id as &dyn rusqlite::ToSql)
         .collect();

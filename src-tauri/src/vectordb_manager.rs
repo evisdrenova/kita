@@ -7,7 +7,7 @@ use arrow_schema::{DataType, Field, Schema};
 use futures::TryStreamExt;
 use lancedb::query::ExecutableQuery;
 use lancedb::query::QueryExecutionOptions;
-use lancedb::{Connection, Error, Table};
+use lancedb::{Connection, Error};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::AppHandle;
@@ -39,7 +39,6 @@ pub enum VectorDbError {
 pub type VectorDbResult<T> = Result<T, VectorDbError>;
 
 impl VectorDbManager {
-    /// Initialize vectordb
     pub async fn initialize_vectordb(
         app_handle: AppHandle,
     ) -> VectorDbResult<Arc<Mutex<VectorDbManager>>> {
@@ -50,39 +49,30 @@ impl VectorDbManager {
 
         let vectordb_path: PathBuf = app_data_dir.join("vector_db");
 
-        let manager = Self::new_vectordb_client(&vectordb_path).await?;
+        let manager: VectorDbManager = Self::new_vectordb_client(&vectordb_path).await?;
 
         println!("Vector database initialized. Path: {:?}", vectordb_path);
         Ok(Arc::new(Mutex::new(manager)))
     }
 
-    /// Create new vector db client
     async fn new_vectordb_client(vdb_path: &PathBuf) -> VectorDbResult<Self> {
-        let client = match lancedb::connect(&vdb_path.to_string_lossy())
+        let client = lancedb::connect(&vdb_path.to_string_lossy())
             .execute()
             .await
-        {
-            Ok(client) => {
-                println!("Successfully created LanceDB client");
-                client
-            }
-            Err(e) => {
+            .map_err(|e| {
                 println!("Unable to create LanceDB client: {}", e);
-                return Err(VectorDbError::LanceError(e.to_string()));
-            }
-        };
+                VectorDbError::LanceError(e.to_string())
+            })?;
 
-        let instance = Self { client };
-        instance.init_table().await?;
+        let instance: VectorDbManager = Self { client };
+
+        instance.ensure_embedding_table_exists().await?;
 
         Ok(instance)
     }
 
-    /// Creates embeddings table
-    async fn init_table(&self) -> VectorDbResult<()> {
-        let client: &Connection = &self.client;
-
-        let table_exists: bool = match client.open_table(TABLE_NAME).execute().await {
+    async fn ensure_embedding_table_exists(&self) -> VectorDbResult<()> {
+        let table_exists = match self.client.open_table(TABLE_NAME).execute().await {
             Ok(_) => {
                 println!("Table '{}' exists", TABLE_NAME);
                 true
@@ -92,43 +82,26 @@ impl VectorDbManager {
                 false
             }
             Err(e) => {
-                println!("some other error'{:?}' exists", e);
-                false
+                println!("Error checking table: {:?}", e);
+                return Err(VectorDbError::LanceError(format!(
+                    "Error checking table: {}",
+                    e
+                )));
             }
         };
 
-        let schema_clone: Arc<Schema> = get_embeddings_schema();
-
         if !table_exists {
-            Self::create_table(&self, TABLE_NAME, &schema_clone).await?;
-            // create_index(client, &table, schema).await?;
+            let schema = get_embeddings_schema();
+            self.client
+                .create_empty_table(TABLE_NAME, schema)
+                .execute()
+                .await
+                .map_err(|e| VectorDbError::LanceError(format!("Failed to create table: {}", e)))?;
         }
 
         Ok(())
     }
 
-    async fn create_table(&self, table_name: &str, schema: &Arc<Schema>) -> VectorDbResult<Table> {
-        let client = &self.client;
-
-        match client
-            .create_empty_table(table_name, schema.clone())
-            .execute()
-            .await
-        {
-            Ok(table) => {
-                println!("Successfully created table '{}'", table_name);
-                Ok(table)
-            }
-            Err(e) => {
-                return Err(VectorDbError::LanceError(format!(
-                    "Failed to create table: {}",
-                    e
-                )))
-            }
-        }
-    }
-
-    /// Inserts embeddings into vector database
     pub async fn insert_embeddings(
         app_handle: &AppHandle,
         file_id: &str,
@@ -160,31 +133,36 @@ impl VectorDbManager {
         Ok(())
     }
 
-    /// Embeds the search query and searches vector database
     pub async fn search_similar(
         app_handle: &AppHandle,
         query_text: &str,
     ) -> VectorDbResult<Vec<RecordBatch>> {
-        let embedder = app_handle.state::<Arc<Embedder>>();
+        println!("the query in search similar: {:?}", query_text);
 
-        let query_embedding = embedder.embed_single_text(query_text);
-
-        let state = app_handle.state::<Arc<tokio::sync::Mutex<VectorDbManager>>>();
+        let state = app_handle.state::<Arc<Mutex<VectorDbManager>>>();
         let manager = state.lock().await;
 
-        // Open the table
-        let table = match manager.client.open_table(TABLE_NAME).execute().await {
-            Ok(table) => table,
-            Err(e) => {
-                return Err(VectorDbError::LanceError(format!(
-                    "Failed to open table: {}",
-                    e
-                )));
-            }
-        };
+        if let Err(e) = manager.ensure_embedding_table_exists().await {
+            println!("Error ensuring table exists: {}", e);
+            return Ok(Vec::new());
+        }
 
-        let mut query_options = QueryExecutionOptions::default();
-        query_options.max_batch_length = 1024;
+        let embedder = app_handle.state::<Arc<Embedder>>();
+        let query_embedding = embedder.embed_single_text(query_text);
+
+        println!(
+            "Query embedded in search similar: {:?}",
+            query_embedding.len()
+        );
+
+        let table = manager
+            .client
+            .open_table(TABLE_NAME)
+            .execute()
+            .await
+            .map_err(|e| VectorDbError::LanceError(format!("Failed to open table: {}", e)))?;
+
+        let query_options = QueryExecutionOptions::default();
 
         let vector_query = table.query().nearest_to(query_embedding).map_err(|e| {
             VectorDbError::LanceError(format!("Failed to create vector query: {}", e))
@@ -199,6 +177,8 @@ impl VectorDbManager {
             .map_err(|e| {
                 VectorDbError::LanceError(format!("Vector search collection failed: {}", e))
             })?;
+
+        println!("Vector search returned {} results", results.len());
 
         Ok(results)
     }

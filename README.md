@@ -30,14 +30,6 @@ We register that tokenizer with SQLite’s FTS5 engine.
 We store each filename/path as a series of these 3‑char tokens in the files_fts table.
 When the user searches for, e.g., "exa", that becomes an FTS search for the exa token—matching anywhere that has those three characters consecutively.
 
-## Roadmap / Issues
-
-// i might be able to use the sysinfo crate to replace all of the libproc functions - investigate further
-
-// optimize the app list rendering it's a little slow - coudl use virtualization for the table or somethign else
-
-// write init script to download qdrant binary on startup since it's not being shipped to git
-
 // Fast, local Emebdding creation and RAG
 
 1. Parse files (txt, pdf, etc. ), normalize, then chunk large files to convert into a normalized internal representation
@@ -54,3 +46,21 @@ xls -> read row by row or cell ranges
 1. Parse files → chunk → embed → index in vector store.
 2. Embed query → retrieve top-k relevant chunks → assemble prompt → run local LLM → return answer.
 3. Re-index or add new files by repeating ingestion steps.
+
+## Roadmap / Issues
+
+// i might be able to use the sysinfo crate to replace all of the libproc functions - investigate further
+
+// optimize the app list rendering it's a little slow - coudl use virtualization for the table or somethign else
+
+// ability to create hot keys and startup flows that llow you to start up multiple apps at once or do other workflows
+
+// results in vectordb are returned twice, maybe duplices?
+
+// when we do the embeddings, we count all of the files that we're going to embed, but only do the ones that aren't empty, so it turns out saying something like 9 out of 60 completed, we need to return the statuses for the other ones too i.e. 9 completed, 52 skipped
+
+Relevant match: file_id=27, distance=0.73390585
+Relevant match: file_id=27, distance=0.73390585
+Relevant match: file_id=243, distance=0.8071738
+Relevant match: file_id=38, distance=0.83399314
+Relevant match: file_id=38, distance=0.83399314

@@ -80,7 +80,7 @@ pub mod common {
 #[async_trait]
 pub trait Chunker: Send + Sync {
     // returns a vector of MIME types
-    // fn supported_mime_types(&self) -> Vec<&str>;
+    fn supported_mime_types(&self) -> Vec<&str>;
 
     fn can_chunk_file_type(&self, path: &Path) -> bool;
 

@@ -498,6 +498,8 @@ export default function App() {
   console.log("files", filesData);
   // console.log("get apps data", appsData);
 
+  console.log("the query", searchQuery);
+
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <Header setSearchQuery={setSearchQuery} searchQuery={searchQuery} />
