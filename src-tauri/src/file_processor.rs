@@ -611,6 +611,7 @@ fn rows_to_file_metadata(mut rows: Rows) -> Result<Vec<FileMetadata>, String> {
     let mut files: Vec<FileMetadata> = Vec::new();
 
     while let Some(row) = rows.next().map_err(|e| format!("Row error: {e}"))? {
+        println!("the rows: {:?}", row);
         files.push(FileMetadata {
             base: BaseMetadata {
                 id: Some(row.get(0).map_err(|e| e.to_string())?),

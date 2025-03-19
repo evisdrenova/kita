@@ -287,9 +287,10 @@ export default function App() {
   //  base filter items function for filtering apps, files, etc.
   const filterItems = useCallback(
     <T extends { name: string }>(items: T[], query: string): T[] => {
-      if (!query.trim()) {
+      if (!query.trim() || query.trim().split(" ").length > 2) {
         return items;
       }
+
       return items.filter((item) =>
         item.name.toLowerCase().includes(query.toLowerCase())
       );

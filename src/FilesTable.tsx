@@ -29,6 +29,7 @@ interface Props {
 export default function FilesTable(props: Props) {
   const { data, onRowClick, selectedItemName } = props;
 
+  console.log("data in files table", data);
   return (
     <>
       {data.length > 0 && (
