@@ -284,11 +284,27 @@ export default function App() {
     };
   }, [searchQuery]);
 
-  //  base filter items function for filtering apps, files, etc.
-  const filterItems = useCallback(
-    <T extends { name: string }>(items: T[], query: string): T[] => {
-      if (!query.trim() || query.trim().split(" ").length > 2) {
-        return items;
+  const filterApps = useCallback(
+    (items: AppMetadata[], query: string): AppMetadata[] => {
+      if (!query.trim()) {
+        return items; // Show all apps when query is empty
+      }
+      // Always filter apps by name regardless of query length
+      return items.filter((item) =>
+        item.name.toLowerCase().includes(query.toLowerCase())
+      );
+    },
+    []
+  );
+
+  const filterFiles = useCallback(
+    (items: FileMetadata[], query: string): FileMetadata[] => {
+      if (!query.trim()) {
+        return items; // Show all files when query is empty
+      }
+
+      if (query.trim().split(" ").length > 2) {
+        return items; // Return backend results as-is
       }
 
       return items.filter((item) =>
@@ -298,18 +314,16 @@ export default function App() {
     []
   );
 
-  // filters apps
+  // Apply the appropriate filters
   const filteredApps = useMemo(
-    () => filterItems(appsData, searchQuery),
-    [filterItems, appsData, searchQuery]
+    () => filterApps(appsData, searchQuery),
+    [filterApps, appsData, searchQuery]
   );
 
-  // filters files
   const filteredFiles = useMemo(
-    () => filterItems(filesData, searchQuery),
-    [filterItems, filesData, searchQuery]
+    () => filterFiles(filesData, searchQuery),
+    [filterFiles, filesData, searchQuery]
   );
-
   // refreshes app data
   const refreshApps = useCallback(async () => {
     try {
