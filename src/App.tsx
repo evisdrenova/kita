@@ -10,6 +10,7 @@ import {
   searchCategories,
   SearchCategory,
   Section,
+  SemanticMetadata,
 } from "./types/types";
 import Header from "./Header";
 import { errorToast } from "./components/ui/toast";
@@ -38,6 +39,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [appsData, setAppsData] = useState<AppMetadata[]>([]);
   const [filesData, setFilesData] = useState<FileMetadata[]>([]);
+  const [semanticData, setSemanticData] = useState<SemanticMetadata[]>([]);
   const [selectedItem, setSelectedItem] = useState<string>();
   // const [recents, setRecents] = useState<FileMetadata[]>([]);
   // const [isSearchActive, setIsSearchActive] = useState(false);
@@ -267,11 +269,20 @@ export default function App() {
     let isMounted = true;
     const fetchFilesData = async () => {
       try {
-        const data = await invoke<FileMetadata[]>("get_files_data", {
+        const fileData = await invoke<FileMetadata[]>("get_files_data", {
           query: searchQuery,
         });
+
+        const semanticData = await invoke<SemanticMetadata[]>(
+          "get_semantic_files_data",
+          {
+            query: searchQuery,
+          }
+        );
+
         if (isMounted) {
-          setFilesData(data);
+          setFilesData(fileData);
+          setSemanticData(semanticData);
         }
       } catch (error) {
         console.error("Failed to fetch files data:", error);
@@ -514,6 +525,10 @@ export default function App() {
   // console.log("get apps data", appsData);
 
   console.log("the query", searchQuery);
+
+  // TODO: the front end should just know what files to return when depending on what the user is trying to search for, instead of trying to return all of them
+
+  // maybe that means combined the semantic data with the files data in the useEffect when the query changes and then returning the union of them and handling duplicates. It need to just like work...
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">

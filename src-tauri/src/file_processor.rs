@@ -460,10 +460,37 @@ pub async fn process_paths_command(
 }
 
 #[tauri::command]
-pub async fn get_files_data(
+pub async fn get_semantic_files_data(
     query: String,
     state: State<'_, FileProcessorState>,
     app_handle: AppHandle,
+) -> Result<Vec<SemanticMetadata>, String> {
+    let processor: FileProcessor = get_processor(&state)?;
+
+    let conn: Connection = Connection::open(&processor.db_path)
+        .map_err(|e| format!("Failed to open database: {e}"))?;
+
+    // Do a vector similarity search
+    let semantic_files: Vec<SemanticMetadata> =
+        match VectorDbManager::search_similar(&app_handle, &query).await {
+            Ok(results) => convert_search_results_to_metadata(results, &conn)?,
+            Err(e) => {
+                // Log the error but continue with just FTS results
+                eprintln!(
+                    "Semantic search error (continuing with text search only): {}",
+                    e
+                );
+                Vec::new()
+            }
+        };
+
+    Ok(semantic_files)
+}
+
+#[tauri::command]
+pub async fn get_files_data(
+    query: String,
+    state: State<'_, FileProcessorState>,
 ) -> Result<Vec<FileMetadata>, String> {
     println!("the query in get files: {:?}", query);
 
@@ -486,28 +513,7 @@ pub async fn get_files_data(
     // TODO: just use the execute_hybrid in lancedb to combine this with the search_simlar
     let files = search_files_by_fts(&conn, &query)?;
 
-    // Do a vector similarity search
-    let semantic_files: Vec<FileMetadata> =
-        match VectorDbManager::search_similar(&app_handle, &query).await {
-            Ok(results) => convert_search_results_to_metadata(results, &conn)?,
-            Err(e) => {
-                // Log the error but continue with just FTS results
-                eprintln!(
-                    "Semantic search error (continuing with text search only): {}",
-                    e
-                );
-                Vec::new()
-            }
-        };
-
-    println!("the semantic files: {:?}", semantic_files);
-
-    // Combine and deduplicate results
-    let combined_files = combine_search_results(files, semantic_files);
-
-    println!("the combined files: {:?}", combined_files);
-
-    Ok(combined_files)
+    Ok(files)
 }
 
 fn get_processor(state: &State<'_, FileProcessorState>) -> Result<FileProcessor, String> {
@@ -632,6 +638,8 @@ fn rows_to_semantic_metadata(mut rows: Rows) -> Result<Vec<SemanticMetadata>, St
     let mut files: Vec<SemanticMetadata> = Vec::new();
 
     while let Some(row) = rows.next().map_err(|e| format!("Row error: {e}"))? {
+        println!("the row: {:?}", row);
+
         files.push(SemanticMetadata {
             base: BaseMetadata {
                 id: Some(row.get(0).map_err(|e| e.to_string())?),
@@ -652,7 +660,7 @@ fn rows_to_semantic_metadata(mut rows: Rows) -> Result<Vec<SemanticMetadata>, St
 fn convert_search_results_to_metadata(
     results: Vec<RecordBatch>,
     conn: &Connection,
-) -> Result<Vec<FileMetadata>, String> {
+) -> Result<Vec<SemanticMetadata>, String> {
     // If no results, return empty vector
     if results.is_empty() {
         return Ok(Vec::new());
@@ -695,8 +703,6 @@ fn convert_search_results_to_metadata(
             }
         }
     }
-
-    // TODO: finish integrating the file_id:distance map into this so that we can always return back the distance as well
 
     // Deduplicate file_ids
     let relevant_file_ids: Vec<String> = relevant_file_ids
@@ -743,49 +749,49 @@ fn convert_search_results_to_metadata(
         .query(params.as_slice())
         .map_err(|e| format!("Query error: {e}"))?;
 
-    rows_to_file_metadata(rows)
+    rows_to_semantic_metadata(rows)
 }
 
 // Combine and deduplicate search results
-fn combine_search_results(
-    mut text_results: Vec<FileMetadata>,
-    mut semantic_results: Vec<FileMetadata>,
-) -> Vec<FileMetadata> {
-    // If either result set is empty, return the other
-    if text_results.is_empty() {
-        return semantic_results;
-    }
-    if semantic_results.is_empty() {
-        return text_results;
-    }
+// fn combine_search_results(
+//     mut text_results: Vec<FileMetadata>,
+//     mut semantic_results: Vec<SemanticMetadata>,
+// ) -> Vec<FileMetadata> {
+//     // If either result set is empty, return the other
+//     if text_results.is_empty() {
+//         return semantic_results;
+//     }
+//     if semantic_results.is_empty() {
+//         return text_results;
+//     }
 
-    // Use a HashSet to track seen file IDs for deduplication
-    let mut seen_ids = HashSet::new();
+//     // Use a HashSet to track seen file IDs for deduplication
+//     let mut seen_ids = HashSet::new();
 
-    // First add all text search results
-    let mut combined = Vec::with_capacity(text_results.len() + semantic_results.len());
+//     // First add all text search results
+//     let mut combined = Vec::with_capacity(text_results.len() + semantic_results.len());
 
-    for file in text_results.drain(..) {
-        if let Some(id) = &file.base.id {
-            seen_ids.insert(id.clone());
-        }
-        combined.push(file);
-    }
+//     for file in text_results.drain(..) {
+//         if let Some(id) = &file.base.id {
+//             seen_ids.insert(id.clone());
+//         }
+//         combined.push(file);
+//     }
 
-    // Then add semantic results that aren't duplicates
-    for file in semantic_results.drain(..) {
-        if let Some(id) = &file.base.id {
-            if !seen_ids.contains(id) {
-                combined.push(file);
-            }
-        } else {
-            // If no ID (unusual), just add it
-            combined.push(file);
-        }
-    }
+//     // Then add semantic results that aren't duplicates
+//     for file in semantic_results.drain(..) {
+//         if let Some(id) = &file.base.id {
+//             if !seen_ids.contains(id) {
+//                 combined.push(file);
+//             }
+//         } else {
+//             // If no ID (unusual), just add it
+//             combined.push(file);
+//         }
+//     }
 
-    combined
-}
+//     combined
+// }
 
 #[tauri::command]
 pub fn open_file(file_path: &str) -> Result<(), String> {

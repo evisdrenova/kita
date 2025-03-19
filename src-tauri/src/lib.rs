@@ -47,6 +47,7 @@ pub fn run() {
             resource_monitor::stop_resource_monitoring,
             file_processor::process_paths_command,
             file_processor::get_files_data,
+            file_processor::get_semantic_files_data,
             file_processor::open_file,
         ])
         .run(tauri::generate_context!())
