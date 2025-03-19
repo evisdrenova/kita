@@ -59,6 +59,8 @@ xls -> read row by row or cell ranges
 
 // when we do the embeddings, we count all of the files that we're going to embed, but only do the ones that aren't empty, so it turns out saying something like 9 out of 60 completed, we need to return the statuses for the other ones too i.e. 9 completed, 52 skipped
 
+// update the semantic search to return back the semantic type instead of the filemetadata type
+
 Relevant match: file_id=27, distance=0.73390585
 Relevant match: file_id=27, distance=0.73390585
 Relevant match: file_id=243, distance=0.8071738

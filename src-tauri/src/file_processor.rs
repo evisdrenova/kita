@@ -1,7 +1,7 @@
 use arrow_array::{Array, RecordBatch};
 use rusqlite::{params, Connection, Rows};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -259,8 +259,7 @@ fn create_path_embedding(
         let saved_file_id: String = match save_file_to_db(db_path.clone(), &fm_clone).await {
             Ok(file_id) => file_id,
             Err(e) => {
-                let _ =
-                    err_sender.send((file_path.clone(), format!("File processing error: {:?}", e)));
+                let _ = err_sender.send((file_path, format!("File processing error: {:?}", e)));
                 return;
             }
         };
@@ -484,9 +483,10 @@ pub async fn get_files_data(
     }
 
     // For queries with >3 characters, first do an FTS search
+    // TODO: just use the execute_hybrid in lancedb to combine this with the search_simlar
     let files = search_files_by_fts(&conn, &query)?;
 
-    // Get semantic results if we have vector search capability
+    // Do a vector similarity search
     let semantic_files: Vec<FileMetadata> =
         match VectorDbManager::search_similar(&app_handle, &query).await {
             Ok(results) => convert_search_results_to_metadata(results, &conn)?,
@@ -611,7 +611,6 @@ fn rows_to_file_metadata(mut rows: Rows) -> Result<Vec<FileMetadata>, String> {
     let mut files: Vec<FileMetadata> = Vec::new();
 
     while let Some(row) = rows.next().map_err(|e| format!("Row error: {e}"))? {
-        println!("the rows: {:?}", row);
         files.push(FileMetadata {
             base: BaseMetadata {
                 id: Some(row.get(0).map_err(|e| e.to_string())?),
@@ -629,6 +628,26 @@ fn rows_to_file_metadata(mut rows: Rows) -> Result<Vec<FileMetadata>, String> {
     Ok(files)
 }
 
+fn rows_to_semantic_metadata(mut rows: Rows) -> Result<Vec<SemanticMetadata>, String> {
+    let mut files: Vec<SemanticMetadata> = Vec::new();
+
+    while let Some(row) = rows.next().map_err(|e| format!("Row error: {e}"))? {
+        files.push(SemanticMetadata {
+            base: BaseMetadata {
+                id: Some(row.get(0).map_err(|e| e.to_string())?),
+                name: row.get(1).map_err(|e| e.to_string())?,
+                path: row.get(2).map_err(|e| e.to_string())?,
+            },
+            semantic_type: SearchSectionType::Semantic,
+            extension: row.get(3).map_err(|e| e.to_string())?,
+            distance: row.get(4).map_err(|e| e.to_string())?,
+            content: row.get(5).map_err(|e| e.to_string())?,
+        });
+    }
+
+    Ok(files)
+}
+
 // Convert vector search results to FileMetadata
 fn convert_search_results_to_metadata(
     results: Vec<RecordBatch>,
@@ -640,6 +659,8 @@ fn convert_search_results_to_metadata(
     }
 
     let mut relevant_file_ids = Vec::new();
+
+    let mut file_id_distance: HashMap<String, f32> = HashMap::new();
 
     // Extract file_ids from results
     for batch in &results {
@@ -661,6 +682,7 @@ fn convert_search_results_to_metadata(
                                 let file_id = file_id_array.value(i);
                                 relevant_file_ids.push(file_id.to_string());
 
+                                file_id_distance.insert(file_id.to_string(), distance);
                                 // For debugging
                                 println!(
                                     "Relevant match: file_id={}, distance={}",
@@ -673,6 +695,8 @@ fn convert_search_results_to_metadata(
             }
         }
     }
+
+    // TODO: finish integrating the file_id:distance map into this so that we can always return back the distance as well
 
     // Deduplicate file_ids
     let relevant_file_ids: Vec<String> = relevant_file_ids
