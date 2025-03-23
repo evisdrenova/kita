@@ -150,6 +150,8 @@ impl VectorDbManager {
         let embedder = app_handle.state::<Arc<Embedder>>();
         let query_embedding: Vec<f32> = embedder.embed_single_text(query_text);
 
+        println!("single text query embedding: {:?}", query_embedding);
+
         let table = manager
             .client
             .open_table(TABLE_NAME)
@@ -157,13 +159,17 @@ impl VectorDbManager {
             .await
             .map_err(|e| VectorDbError::LanceError(format!("Failed to open table: {}", e)))?;
 
-        let query_options = QueryExecutionOptions::default();
+        let query_options: QueryExecutionOptions = QueryExecutionOptions::default();
 
         let vector_query = table.query().nearest_to(query_embedding).map_err(|e| {
             VectorDbError::LanceError(format!("Failed to create vector query: {}", e))
         })?;
 
-        let results: Vec<RecordBatch> = vector_query
+        let nev_vec = vector_query
+            .distance_type(lancedb::DistanceType::Cosine)
+            .clone();
+
+        let results: Vec<RecordBatch> = nev_vec
             .execute_with_options(query_options)
             .await
             .map_err(|e| VectorDbError::LanceError(format!("Vector search failed: {}", e)))?

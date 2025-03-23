@@ -145,16 +145,31 @@ function SemanticRelevance({ distance }: { distance: number }) {
   // Convert distance to similarity percentage
   const similarityPercentage = Math.round((1 - distance) * 100);
 
-  // Determine color based on similarity level
-  let textColor = "text-green-400";
-  if (similarityPercentage < 20) {
-    textColor = "text-amber-400";
-  } else if (similarityPercentage < 30) {
-    textColor = "text-yellow-400";
+  // Determine match strength based on similarity level
+  let matchStrength: string;
+  let variantClass: string;
+
+  if (similarityPercentage > 80) {
+    matchStrength = "Strong match";
+    variantClass =
+      "bg-green-900/30 text-green-400 hover:bg-green-900/20 border-green-800";
+  } else if (similarityPercentage >= 50) {
+    matchStrength = "Good match";
+    variantClass =
+      "bg-yellow-900/30 text-yellow-400 hover:bg-yellow-900/20 border-yellow-800";
+  } else {
+    matchStrength = "Weak match";
+    variantClass =
+      "bg-amber-900/30 text-amber-400 hover:bg-amber-900/20 border-amber-800";
   }
 
   return (
-    <Badge className={`${textColor}`}>{similarityPercentage}% match</Badge>
+    <Badge
+      variant="outline"
+      className={cn("text-xs font-normal", variantClass)}
+    >
+      {matchStrength}
+    </Badge>
   );
 }
 

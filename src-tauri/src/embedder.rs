@@ -7,8 +7,7 @@ pub struct Embedder {
 
 impl Embedder {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let init_options: InitOptions =
-            InitOptions::new(EmbeddingModel::BGESmallENV15).with_show_download_progress(true);
+        let init_options: InitOptions = InitOptions::new(EmbeddingModel::AllMiniLML6V2);
 
         let model = TextEmbedding::try_new(init_options)?;
 
