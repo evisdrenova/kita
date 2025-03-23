@@ -10,7 +10,6 @@ import {
   Package,
   Database,
   FileArchive,
-  Zap,
 } from "lucide-react";
 import { FileMetadata, SemanticMetadata } from "./types/types";
 import {
@@ -20,6 +19,7 @@ import {
   truncatePath,
 } from "./lib/utils";
 import { FaRegFilePdf } from "react-icons/fa";
+import { Badge } from "./components/ui/badge";
 
 interface Props {
   data: FileMetadata[];
@@ -79,7 +79,12 @@ const FileRow = memo(
       >
         <div className="flex flex-row justify-between w-full p-2 ">
           <div className="flex flex-col gap-1">
-            <FileName file={file} isSemanticMatch={isSemanticMatch} />
+            <div className="flex flex-row items-center gap-2">
+              <FileName file={file} isSemanticMatch={isSemanticMatch} />
+              {isSemanticMatch && (
+                <SemanticRelevance distance={semanticMatch.distance} />
+              )}
+            </div>
             <div className="ml-6">
               <FilePath file={file} />
               {semanticMatch?.content && (
@@ -92,9 +97,6 @@ const FileRow = memo(
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
               <FileExtension file={file} />
-              {isSemanticMatch && (
-                <SemanticRelevance distance={semanticMatch.distance} />
-              )}
             </div>
             <FileSize file={file} />
           </div>
@@ -104,20 +106,13 @@ const FileRow = memo(
   }
 );
 
-function FileName({
-  file,
-  isSemanticMatch,
-}: {
-  file: FileMetadata;
-  isSemanticMatch: boolean;
-}) {
+function FileName({ file }: { file: FileMetadata; isSemanticMatch: boolean }) {
   return (
     <div className="flex items-center flex-row gap-2 ">
       {getFileIcon(file.extension)}
       <span className="text-sm truncate">
         {truncateFilename(file.name, 40, true)}
       </span>
-      {isSemanticMatch && <Zap className="h-3 w-3 text-amber-400" />}
     </div>
   );
 }
@@ -147,14 +142,19 @@ function FileSize({ file }: { file: FileMetadata }) {
 }
 
 function SemanticRelevance({ distance }: { distance: number }) {
-  // Convert distance to similarity percentage (assuming distance is between 0-1)
-  // Lower distance means higher similarity
+  // Convert distance to similarity percentage
   const similarityPercentage = Math.round((1 - distance) * 100);
 
+  // Determine color based on similarity level
+  let textColor = "text-green-400";
+  if (similarityPercentage < 20) {
+    textColor = "text-amber-400";
+  } else if (similarityPercentage < 30) {
+    textColor = "text-yellow-400";
+  }
+
   return (
-    <div className="flex items-center text-xs px-1.5 py-0.5 rounded-full bg-amber-950/30 text-amber-400">
-      {similarityPercentage}% match
-    </div>
+    <Badge className={`${textColor}`}>{similarityPercentage}% match</Badge>
   );
 }
 

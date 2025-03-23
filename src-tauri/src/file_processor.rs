@@ -748,47 +748,6 @@ fn convert_search_results_to_metadata(
     rows_to_semantic_metadata(rows, &file_id_distances)
 }
 
-// Combine and deduplicate search results
-// fn combine_search_results(
-//     mut text_results: Vec<FileMetadata>,
-//     mut semantic_results: Vec<SemanticMetadata>,
-// ) -> Vec<FileMetadata> {
-//     // If either result set is empty, return the other
-//     if text_results.is_empty() {
-//         return semantic_results;
-//     }
-//     if semantic_results.is_empty() {
-//         return text_results;
-//     }
-
-//     // Use a HashSet to track seen file IDs for deduplication
-//     let mut seen_ids = HashSet::new();
-
-//     // First add all text search results
-//     let mut combined = Vec::with_capacity(text_results.len() + semantic_results.len());
-
-//     for file in text_results.drain(..) {
-//         if let Some(id) = &file.base.id {
-//             seen_ids.insert(id.clone());
-//         }
-//         combined.push(file);
-//     }
-
-//     // Then add semantic results that aren't duplicates
-//     for file in semantic_results.drain(..) {
-//         if let Some(id) = &file.base.id {
-//             if !seen_ids.contains(id) {
-//                 combined.push(file);
-//             }
-//         } else {
-//             // If no ID (unusual), just add it
-//             combined.push(file);
-//         }
-//     }
-
-//     combined
-// }
-
 #[tauri::command]
 pub fn open_file(file_path: &str) -> Result<(), String> {
     let status = Command::new("open")
