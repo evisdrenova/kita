@@ -311,6 +311,8 @@ export default function App() {
           }
         );
 
+        console.log("semantic data", semanticData);
+
         if (isMounted) {
           setFilesData(fileData);
           setSemanticData(semanticData);

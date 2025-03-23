@@ -74,7 +74,7 @@ pub struct SemanticMetadata {
     pub semantic_type: SearchSectionType,
 
     pub extension: String,
-    pub distance: f64,
+    pub distance: f32,
     pub content: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -634,22 +634,26 @@ fn rows_to_file_metadata(mut rows: Rows) -> Result<Vec<FileMetadata>, String> {
     Ok(files)
 }
 
-fn rows_to_semantic_metadata(mut rows: Rows) -> Result<Vec<SemanticMetadata>, String> {
+fn rows_to_semantic_metadata(
+    mut rows: Rows,
+    distances: &HashMap<String, f32>,
+) -> Result<Vec<SemanticMetadata>, String> {
     let mut files: Vec<SemanticMetadata> = Vec::new();
 
     while let Some(row) = rows.next().map_err(|e| format!("Row error: {e}"))? {
-        println!("the row: {:?}", row);
+        let id: i64 = row.get(0).map_err(|e| e.to_string())?;
 
+        let distance = *distances.get(&id.to_string()).unwrap_or(&1.0);
         files.push(SemanticMetadata {
             base: BaseMetadata {
-                id: Some(row.get(0).map_err(|e| e.to_string())?),
+                id: Some(id.clone()),
                 name: row.get(1).map_err(|e| e.to_string())?,
                 path: row.get(2).map_err(|e| e.to_string())?,
             },
             semantic_type: SearchSectionType::Semantic,
             extension: row.get(3).map_err(|e| e.to_string())?,
-            distance: row.get(4).map_err(|e| e.to_string())?,
-            content: row.get(5).map_err(|e| e.to_string())?,
+            distance: distance,
+            content: None, // update this later to return the exact content
         });
     }
 
@@ -666,11 +670,9 @@ fn convert_search_results_to_metadata(
         return Ok(Vec::new());
     }
 
-    let mut relevant_file_ids = Vec::new();
+    let mut file_id_distances: HashMap<String, f32> = HashMap::new();
 
-    let mut file_id_distance: HashMap<String, f32> = HashMap::new();
-
-    // Extract file_ids from results
+    // Extract data from results
     for batch in &results {
         if let Some(distance_column) = batch.column_by_name("_distance") {
             if let Some(file_id_column) = batch.column_by_name("file_id") {
@@ -688,14 +690,15 @@ fn convert_search_results_to_metadata(
                             let distance = distance_array.value(i);
                             if distance < 0.85 {
                                 let file_id = file_id_array.value(i);
-                                relevant_file_ids.push(file_id.to_string());
-
-                                file_id_distance.insert(file_id.to_string(), distance);
-                                // For debugging
-                                println!(
-                                    "Relevant match: file_id={}, distance={}",
-                                    file_id, distance
-                                );
+                                if !file_id_distances.contains_key(file_id)
+                                    || file_id_distances[file_id] > distance
+                                {
+                                    file_id_distances.insert(file_id.to_string(), distance);
+                                    println!(
+                                        "Relevant match: file_id={}, distance={}",
+                                        file_id, distance
+                                    );
+                                }
                             }
                         }
                     }
@@ -704,22 +707,15 @@ fn convert_search_results_to_metadata(
         }
     }
 
-    // Deduplicate file_ids
-    let relevant_file_ids: Vec<String> = relevant_file_ids
-        .into_iter()
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
-
-    println!("the results in the convert: {:?}", results);
-
-    // If no relevant results, return empty
-    if relevant_file_ids.is_empty() {
+    if file_id_distances.is_empty() {
         return Ok(Vec::new());
     }
 
+    // extract the file ids to retrieve from DB
+    let file_ids: Vec<String> = file_id_distances.keys().cloned().collect();
+
     // Build a query to fetch file metadata by ids
-    let placeholders = relevant_file_ids
+    let placeholders = file_ids
         .iter()
         .enumerate()
         .map(|(i, _)| format!("?{}", i + 1))
@@ -740,7 +736,7 @@ fn convert_search_results_to_metadata(
         .map_err(|e| format!("Failed to prepare statement: {e}"))?;
 
     // Convert file_ids to params
-    let params: Vec<&dyn rusqlite::ToSql> = relevant_file_ids
+    let params: Vec<&dyn rusqlite::ToSql> = file_ids
         .iter()
         .map(|id| id as &dyn rusqlite::ToSql)
         .collect();
@@ -749,7 +745,7 @@ fn convert_search_results_to_metadata(
         .query(params.as_slice())
         .map_err(|e| format!("Query error: {e}"))?;
 
-    rows_to_semantic_metadata(rows)
+    rows_to_semantic_metadata(rows, &file_id_distances)
 }
 
 // Combine and deduplicate search results

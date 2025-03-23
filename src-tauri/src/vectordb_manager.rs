@@ -148,12 +148,7 @@ impl VectorDbManager {
         }
 
         let embedder = app_handle.state::<Arc<Embedder>>();
-        let query_embedding = embedder.embed_single_text(query_text);
-
-        println!(
-            "Query embedded in search similar: {:?}",
-            query_embedding.len()
-        );
+        let query_embedding: Vec<f32> = embedder.embed_single_text(query_text);
 
         let table = manager
             .client
@@ -168,7 +163,7 @@ impl VectorDbManager {
             VectorDbError::LanceError(format!("Failed to create vector query: {}", e))
         })?;
 
-        let results = vector_query
+        let results: Vec<RecordBatch> = vector_query
             .execute_with_options(query_options)
             .await
             .map_err(|e| VectorDbError::LanceError(format!("Vector search failed: {}", e)))?
@@ -178,7 +173,7 @@ impl VectorDbManager {
                 VectorDbError::LanceError(format!("Vector search collection failed: {}", e))
             })?;
 
-        println!("Vector search returned {} results", results.len());
+        println!("the reuslts: {:?}", results);
 
         Ok(results)
     }
