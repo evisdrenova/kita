@@ -348,18 +348,27 @@ export default function App() {
           query: searchQuery,
         });
 
-        const semanticData = await invoke<SemanticMetadata[]>(
-          "get_semantic_files_data",
-          {
-            query: searchQuery,
-          }
-        );
+        // Only run semantic search if there's an actual query
+        if (searchQuery.trim()) {
+          const semanticData = await invoke<SemanticMetadata[]>(
+            "get_semantic_files_data",
+            {
+              query: searchQuery,
+            }
+          );
 
-        console.log("semantic data", semanticData);
+          if (isMounted) {
+            setSemanticData(semanticData);
+          }
+        } else {
+          // Clear semantic data when query is empty
+          if (isMounted) {
+            setSemanticData([]);
+          }
+        }
 
         if (isMounted) {
           setFilesData(fileData);
-          setSemanticData(semanticData);
         }
       } catch (error) {
         console.error("Failed to fetch files data:", error);
