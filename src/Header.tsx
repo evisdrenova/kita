@@ -19,6 +19,8 @@ export default function Header(props: HeaderProps) {
         <Input
           placeholder="Type a command or search..."
           value={searchQuery}
+          autoCorrect="off"
+          spellCheck="false"
           ref={inputRef}
           autoFocus
           onChange={(e) => setSearchQuery(e.target.value)}
