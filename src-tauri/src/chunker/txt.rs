@@ -203,7 +203,7 @@ async fn get_chunks_from_small_file(
     };
 
     // Create text chunks
-    let text_chunks = chunk_text(&processed_content, config.chunk_size, config.chunk_overlap);
+    let text_chunks = util::chunk_text(&processed_content, config.chunk_size, config.chunk_overlap);
 
     if text_chunks.is_empty() {
         return Ok(Vec::new());
@@ -228,37 +228,4 @@ async fn get_chunks_from_small_file(
         .collect();
 
     Ok(chunks)
-}
-
-/// Chunks texts based on a configured chunk_size and overlap
-fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<String> {
-    if text.is_empty() {
-        return Vec::new();
-    }
-
-    // gets all of the words in the file and collects them into a vector
-    let words: Vec<&str> = text.split_whitespace().collect();
-    if words.is_empty() {
-        return vec![text.to_string()];
-    }
-
-    let mut chunks: Vec<String> = Vec::new();
-    let mut start: usize = 0;
-
-    while start < words.len() {
-        // if the total amount of words is less than the chunk size then just return the entire text
-        // otherwise create a chunk of the chunk size + the start position and put it into the vector
-        let end: usize = std::cmp::min(start + chunk_size, words.len());
-        let chunk: String = words[start..end].join(" ");
-        chunks.push(chunk);
-
-        // Calculate next position with overlap
-        if end == words.len() {
-            break; // We've reached the end
-        } else {
-            // Move forward by (chunk_size - overlap)
-            start = std::cmp::min(start + chunk_size - overlap, words.len() - 1);
-        }
-    }
-    chunks
 }

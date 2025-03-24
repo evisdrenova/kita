@@ -51,6 +51,8 @@ tauri-plugin-shell = "2"
 lancedb = "0.18.1"
 arrow-array = "54.2.1"
 arrow-schema = "54.2.1"
+lopdf = "0.36.0"
+pdf-extract = "0.8.2"
 
 
 

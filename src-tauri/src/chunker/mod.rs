@@ -7,6 +7,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use tracing::error;
 
+pub mod pdf;
 pub mod txt;
 
 use crate::{embedder::Embedder, file_processor::FileMetadata};
@@ -49,20 +50,19 @@ pub mod common {
         #[error("IO error: {0}")]
         Io(#[from] std::io::Error),
 
-        #[error("File format error: {0}")]
-        Format(String),
+        // #[error("File format error: {0}")]
+        // Format(String),
         #[error("Unsupported file type: {0}")]
         UnsupportedType(String),
 
-        // #[error("PDF parsing error: {0}")]
-        // PdfError(String),
+        #[error("PDF parsing error: {0}")]
+        PdfError(String),
 
         // #[error("DOCX parsing error: {0}")]
         // DocxError(String),
 
         // #[error("XLS parsing error: {0}")]
         // XlsError(String),
-
         // #[error("Encoding error: {0}")]
         // EncodingError(String),
 
@@ -79,7 +79,6 @@ pub mod common {
 // chunker trait that each chunker needs to explicitly implement
 #[async_trait]
 pub trait Chunker: Send + Sync {
-    // returns a vector of MIME types
     fn supported_mime_types(&self) -> Vec<&str>;
 
     fn can_chunk_file_type(&self, path: &Path) -> bool;
@@ -105,6 +104,7 @@ impl ChunkerOrchestrator {
         };
 
         orchestrator.register_chunker(Box::new(txt::TxtChunker::default()));
+        orchestrator.register_chunker(Box::new(pdf::PdfChunker::default()));
 
         orchestrator
     }
@@ -225,5 +225,38 @@ pub mod util {
 
         // probably add more here
         normalized
+    }
+
+    /// Chunks texts based on a configured chunk_size and overlap
+    pub fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<String> {
+        if text.is_empty() {
+            return Vec::new();
+        }
+
+        // gets all of the words in the file and collects them into a vector
+        let words: Vec<&str> = text.split_whitespace().collect();
+        if words.is_empty() {
+            return vec![text.to_string()];
+        }
+
+        let mut chunks: Vec<String> = Vec::new();
+        let mut start: usize = 0;
+
+        while start < words.len() {
+            // if the total amount of words is less than the chunk size then just return the entire text
+            // otherwise create a chunk of the chunk size + the start position and put it into the vector
+            let end: usize = std::cmp::min(start + chunk_size, words.len());
+            let chunk: String = words[start..end].join(" ");
+            chunks.push(chunk);
+
+            // Calculate next position with overlap
+            if end == words.len() {
+                break; // We've reached the end
+            } else {
+                // Move forward by (chunk_size - overlap)
+                start = std::cmp::min(start + chunk_size - overlap, words.len() - 1);
+            }
+        }
+        chunks
     }
 }
