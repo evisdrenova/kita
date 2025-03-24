@@ -361,8 +361,8 @@ const TableRow = memo(
       <tr
         onClick={handleClick}
         className={cn(
-          isSelected ? "bg-muted" : "hover:bg-zinc-800",
-          "transition-colors cursor-pointer rounded "
+          isSelected ? "bg-muted" : "hover:bg-zinc-200 dark:hover:bg-zinc-800",
+          "transition-colors cursor-pointer rounded"
         )}
       >
         {columns.map((column) => (

@@ -33,13 +33,12 @@ const PaginatedSection = ({
       {shouldPaginate && !showMore && (section.counts || 0) > 5 && (
         <button
           onClick={() => setShowMore(true)}
-          className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 py-1 self-start"
+          className="text-xs  text-blue-700 hover:text-blue-800 flex items-center gap-1 py-1 self-start cursor-pointer"
         >
           <ChevronDown className="w-3 h-3" />
-          Show More ({(section.counts || 0) - 5} more)
+          Show {(section.counts || 0) - 5} more
         </button>
       )}
-      {/* <Separator /> */}
     </div>
   );
 };
@@ -56,7 +55,7 @@ const SectionNav = (props: SectionNavProps) => {
 
   return (
     <div className="flex flex-col">
-      <nav className="flex flex-row gap-2 border-b border-b-border sticky top-0 bg-zinc-800">
+      <nav className="flex flex-row gap-2 border-b border-b-border sticky top-0 dark:bg-zinc-800">
         <div className="px-3 py-2 flex gap-2 overflow-auto scrollbar-none">
           {/* All button*/}
           <NavButton
@@ -89,10 +88,10 @@ const SectionNav = (props: SectionNavProps) => {
               .filter((sect) => sect.counts && sect.counts > 0)
               .map((section, index) => (
                 <div key={section.id}>
-                  <h2 className="text-sm font-medium text-gray-400 mb-2">
+                  <h2 className="text-sm font-medium text-gray-800 dark:text-gray-400 mb-2">
                     {section.name}
                     {section.counts !== undefined && (
-                      <span className="ml-2 text-gray-500">
+                      <span className="ml-2 text-gray-800 dark:text-gray-500">
                         ({section.counts})
                       </span>
                     )}
@@ -135,7 +134,7 @@ const NavButton = memo(
       transition-colors duration-150 cursor-pointer
       ${
         isActive
-          ? "bg-blue-500/20 text-white-400 ring-1 ring-blue-400/30"
+          ? "bg-blue-500/20 text-gray-900 dark:text-white-400 ring-1 ring-blue-400/30"
           : "text-gray-400 hover:bg-white/5"
       }
     `}
@@ -148,8 +147,8 @@ const NavButton = memo(
           inline-flex items-center justify-center rounded-full px-1.5 
           ${
             isActive
-              ? "bg-blue-400/20 text-blue-200"
-              : "bg-white/5 text-gray-500"
+              ? "bg-blue-400/20 text-blue-800 dark:text-blue-200"
+              : "bg-white/5 text-gray-800 dark:text-gray-500"
           }
         `}
         >
