@@ -178,7 +178,51 @@ export default function App() {
       }
     });
 
-    return mergedResults;
+    // Create a map of distances for sorting
+    const distanceMap: Record<string, number> = {};
+    semanticData.forEach((item) => {
+      if (item.id) {
+        distanceMap[item.id] = item.distance;
+      }
+    });
+
+    // Sort files by semantic match strength (if present)
+    return mergedResults.sort((a, b) => {
+      const aDistance = distanceMap[a.id || ""] || 1;
+      const bDistance = distanceMap[b.id || ""] || 1;
+
+      // Strong match: > 80% similarity (distance < 0.2)
+      const aIsStrong = aDistance < 0.2;
+      const bIsStrong = bDistance < 0.2;
+
+      // Good match: 50-80% similarity (distance between 0.2 and 0.5)
+      const aIsGood = aDistance >= 0.2 && aDistance < 0.5;
+      const bIsGood = bDistance >= 0.2 && bDistance < 0.5;
+
+      // Weak match: < 50% similarity (distance >= 0.5)
+      const aIsWeak = aDistance >= 0.5 && aDistance < 0.85;
+      const bIsWeak = bDistance >= 0.5 && bDistance < 0.85;
+
+      // Sort by match category first
+      if (aIsStrong && !bIsStrong) return -1;
+      if (!aIsStrong && bIsStrong) return 1;
+      if (aIsGood && !bIsGood && !bIsStrong) return -1;
+      if (!aIsGood && bIsGood && !aIsStrong) return 1;
+      if (aIsWeak && !bIsWeak && !bIsGood && !bIsStrong) return -1;
+      if (!aIsWeak && bIsWeak && !bIsGood && !bIsStrong) return 1;
+
+      // Within the same category, sort by actual distance
+      if (
+        (aIsStrong && bIsStrong) ||
+        (aIsGood && bIsGood) ||
+        (aIsWeak && bIsWeak)
+      ) {
+        return aDistance - bDistance;
+      }
+
+      // For non-semantic results or results with same distance, preserve original order
+      return 0;
+    });
   }, [filesData, semanticData]);
 
   const semanticMatchesById = useMemo(() => {
