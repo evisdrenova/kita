@@ -49,8 +49,8 @@ pub mod common {
         #[error("IO error: {0}")]
         Io(#[from] std::io::Error),
 
-        // #[error("File format error: {0}")]
-        // Format(String),
+        #[error("File format error: {0}")]
+        Format(String),
         #[error("Unsupported file type: {0}")]
         UnsupportedType(String),
 

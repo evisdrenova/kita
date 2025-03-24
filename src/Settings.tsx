@@ -11,6 +11,7 @@ import { forwardRef, useState } from "react";
 import { IndexingProgress, SearchCategory } from "./types/types";
 import { ScrollArea } from "./components/ui/scroll-area";
 import { Separator } from "./components/ui/separator";
+import { Badge } from "./components/ui/badge";
 
 interface FolderSettingsProps {
   toggleCategory: (category: SearchCategory) => void;
@@ -23,6 +24,7 @@ interface FolderSettingsProps {
   setIsSettingsOpen: (val: boolean) => void;
   showProgress: boolean;
   indexElapsedTime: number;
+  indexStartTime: number;
 }
 type SettingCategory =
   | "General"
@@ -44,6 +46,7 @@ const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
       setIsSettingsOpen,
       showProgress,
       indexElapsedTime,
+      indexStartTime,
     } = props;
 
     const [selectedSettingCategory, setSelectedSettingCategory] =
@@ -62,6 +65,7 @@ const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
           handleSelectPaths={handleSelectPaths}
           showProgress={showProgress}
           indexElapsedTime={indexElapsedTime}
+          indexStartTime={indexStartTime}
         />
       ),
       Shortcuts: <Shortcuts />,
@@ -130,6 +134,7 @@ interface IndexSettingsProps {
   handleSelectPaths: () => void;
   showProgress: boolean;
   indexElapsedTime: number;
+  indexStartTime: number;
 }
 
 function IndexingSettings(props: IndexSettingsProps) {
@@ -142,6 +147,7 @@ function IndexingSettings(props: IndexSettingsProps) {
     handleSelectPaths,
     showProgress,
     indexElapsedTime,
+    indexStartTime,
   } = props;
 
   const formatTime = (seconds: number) => {
@@ -179,34 +185,49 @@ function IndexingSettings(props: IndexSettingsProps) {
         </Button>
       </div>
       {showProgress && (
-        <div className="mt-2 space-y-1">
+        <div className="mt-2 space-y-2">
           <div className="h-1 w-full bg-gray-200 rounded-full overflow-hidden">
             <div
               className="h-full bg-blue-700 transition-all duration-300"
-              style={{ width: `${indexingProgress?.percentage || 0}%` }}
+              style={{
+                width: isIndexing
+                  ? `${Math.min(
+                      95,
+                      ((Date.now() - indexStartTime) / 30000) * 100
+                    )}%`
+                  : "100%",
+              }}
             />
           </div>
-          <p className="text-xs text-muted-foreground">
-            {isIndexing ? (
+
+          <div className="grid grid-cols-[30%_70%] gap-x-2 text-xs text-muted-foreground">
+            <div>Total files:</div>
+            <div>{indexingProgress?.total || 0}</div>
+
+            <div>Files processed:</div>
+            <div>{indexingProgress?.processed || 0}</div>
+
+            <div>Files skipped:</div>
+            <div>
+              {indexingProgress
+                ? indexingProgress.total - indexingProgress.processed
+                : 0}
+            </div>
+
+            {!isIndexing && indexElapsedTime !== null && (
               <>
-                Processed {indexingProgress?.processed} of{" "}
-                {indexingProgress?.total} files ({indexingProgress?.percentage}
-                %)
-              </>
-            ) : (
-              <>
-                Completed! {indexingProgress?.processed} of{" "}
-                {indexingProgress?.total} files processed
-                {indexElapsedTime !== null && (
-                  <span className="ml-1">
-                    in in {formatTime(indexElapsedTime)}
-                  </span>
-                )}
+                <div>Processing time:</div>
+                <div>{formatTime(indexElapsedTime)}</div>
               </>
             )}
-          </p>
+          </div>
+
+          <Badge className="text-xs text-left bg-green-700 text-white">
+            {isIndexing ? <>Processing files...</> : <>Processing complete!</>}
+          </Badge>
         </div>
       )}
+
       <Separator className="my-4" />
       <h4 className="text-sm font-medium mb-3">File Types</h4>
       <div className="space-y-3">

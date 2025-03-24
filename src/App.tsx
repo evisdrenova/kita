@@ -53,7 +53,7 @@ export default function App() {
   );
   const [currentItemIndex, setCurrentItemIndex] = useState<number>(-1);
   const [activeSection, setActiveSection] = useState<number | null>(null);
-
+  const [indexStartTime, setIndexStartTime] = useState<number>(0);
   // base section definition
   const sectionDefinitions = [
     {
@@ -115,7 +115,8 @@ export default function App() {
 
       if (!selected || (Array.isArray(selected) && !selected.length)) return;
       const paths = Array.isArray(selected) ? selected : [selected];
-      const indexStartTime = Date.now();
+      const startTime = Date.now();
+      setIndexStartTime(startTime);
 
       setIsIndexing(true);
       setShowProgress(true);
@@ -131,10 +132,12 @@ export default function App() {
         }
       );
 
-      await invoke("process_paths_command", { paths });
+      const res = await invoke("process_paths_command", { paths });
+
+      console.log("res", res);
 
       const indexEndTime = Date.now();
-      const indexTimeElapsed = (indexEndTime - indexStartTime) / 1000;
+      const indexTimeElapsed = (indexEndTime - startTime) / 1000;
 
       setIndexElapsedTime(indexTimeElapsed);
       unlistenProgress();
@@ -661,6 +664,7 @@ export default function App() {
         setIsSettingsOpen={setIsSettingsOpen}
         showProgress={showProgress}
         indexElapsedTime={indexElapsedTime ?? 0}
+        indexStartTime={indexStartTime}
       />
     </div>
   );
