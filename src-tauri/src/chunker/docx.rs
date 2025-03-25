@@ -165,9 +165,46 @@ fn extract_text_recursive(doc: &docx_rs::Document, text: &mut String) {
                 }
                 text.push('\n'); // Add newline after paragraphs
             }
+            docx_rs::DocumentChild::Table(table) => {
+                // Process tables
+                for row_child in &table.rows {
+                    // Since TableChild has only one variant, we can directly extract it
+                    let row = match row_child {
+                        docx_rs::TableChild::TableRow(row) => row,
+                    };
+
+                    for cell_child in &row.cells {
+                        // Extract text from each cell
+                        // Since TableRowChild has only one variant, we can directly extract it
+                        let cell = match cell_child {
+                            docx_rs::TableRowChild::TableCell(cell) => cell,
+                        };
+
+                        for cell_content in &cell.children {
+                            match cell_content {
+                                docx_rs::TableCellContent::Paragraph(p) => {
+                                    for run_child in &p.children {
+                                        if let docx_rs::ParagraphChild::Run(run) = run_child {
+                                            for text_child in &run.children {
+                                                if let docx_rs::RunChild::Text(t) = text_child {
+                                                    text.push_str(&t.text);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    text.push(' '); // Space between paragraphs in cell
+                                }
+                                _ => {} // Ignore other cell content types
+                            }
+                        }
+                        text.push('\t'); // Tab between cells
+                    }
+                    text.push('\n'); // Newline between rows
+                }
+                text.push('\n'); // Extra newline after table
+            }
             _ => {
-                // Skip other types - this is the ultra-simplified approach
-                // In a real implementation, you'd handle tables, etc.
+                // Skip other types
             }
         }
     }
