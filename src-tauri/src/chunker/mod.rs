@@ -8,6 +8,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use tracing::error;
 
+pub mod docx;
 pub mod json;
 pub mod pdf;
 pub mod txt;
@@ -52,8 +53,6 @@ pub mod common {
         #[error("IO error: {0}")]
         Io(#[from] std::io::Error),
 
-        // #[error("File format error: {0}")]
-        // Format(String),
         #[error("Unsupported file type: {0}")]
         UnsupportedType(String),
 
@@ -66,11 +65,12 @@ pub mod common {
         #[error("Text File Parsing error: {0}")]
         TextFileError(String),
 
-        // #[error("DOCX parsing error: {0}")]
-        // DocxError(String),
+        #[error("Docx File Parsing error: {0}")]
+        DocxFileError(String),
 
         // #[error("XLS parsing error: {0}")]
         // XlsError(String),
+
         // #[error("Encoding error: {0}")]
         // EncodingError(String),
 
@@ -118,6 +118,7 @@ impl ChunkerOrchestrator {
         orchestrator.register_chunker(Box::new(txt::TxtChunker::default()));
         orchestrator.register_chunker(Box::new(pdf::PdfChunker::default()));
         orchestrator.register_chunker(Box::new(json::JsonChunker::default()));
+        orchestrator.register_chunker(Box::new(docx::DocxChunker::default()));
 
         orchestrator
     }

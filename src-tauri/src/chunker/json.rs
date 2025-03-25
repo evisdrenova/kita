@@ -4,7 +4,6 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
-use tracing::debug;
 
 use crate::embedder::Embedder;
 use crate::file_processor::FileMetadata;
