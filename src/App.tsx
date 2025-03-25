@@ -168,13 +168,15 @@ export default function App() {
     const mergedResults = [...filesData];
     const existingIds = new Set(filesData.map((file) => file.id));
 
+    console.log("semantic data", semanticData);
+
     // Add semantic results that don't have matching IDs
     semanticData.forEach((semanticItem) => {
       if (!existingIds.has(semanticItem.id)) {
         // Convert semantic item to file metadata format
         mergedResults.push({
           ...semanticItem,
-          size: 0, // Default size if not available
+          size: semanticItem.size, // Default size if not available
           updated_at: undefined,
           created_at: undefined,
         });

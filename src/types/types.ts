@@ -30,6 +30,7 @@ export interface SemanticMetadata extends BaseMetadata {
   extension: string;
   distance: number;
   content?: string;
+  size: number;
 }
 
 export interface AppResourceUsage {
