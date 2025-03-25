@@ -8,6 +8,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use tracing::error;
 
+pub mod json;
 pub mod pdf;
 pub mod txt;
 
@@ -110,6 +111,7 @@ impl ChunkerOrchestrator {
 
         orchestrator.register_chunker(Box::new(txt::TxtChunker::default()));
         orchestrator.register_chunker(Box::new(pdf::PdfChunker::default()));
+        orchestrator.register_chunker(Box::new(json::JsonChunker::default()));
 
         orchestrator
     }

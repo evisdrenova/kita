@@ -215,7 +215,6 @@ const TableRow = memo(
     columns,
     onRowClick,
     isSelected,
-    semanticMatch,
   }: {
     file: FileMetadata;
     columns: Column<FileMetadata>[];
@@ -226,8 +225,6 @@ const TableRow = memo(
     const handleClick = useCallback(() => {
       if (onRowClick) onRowClick(file);
     }, [file, onRowClick]);
-
-    const isSemanticMatch = !!semanticMatch;
 
     const renderCells = (column: Column<FileMetadata>) => {
       if (column.render) {
