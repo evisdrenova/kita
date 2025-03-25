@@ -37,14 +37,6 @@ pub fn initialize_database(app_handle: AppHandle) -> Result<PathBuf, DbError> {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );"#,
-        r#"CREATE TABLE IF NOT EXISTS embeddings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_id INTEGER NOT NULL,
-            embedding TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
-        );"#,
         r#"CREATE TABLE IF NOT EXISTS recents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             path TEXT UNIQUE,
