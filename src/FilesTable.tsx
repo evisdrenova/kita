@@ -1,4 +1,4 @@
-import { memo, useCallback } from "react";
+import { memo, useCallback, useState } from "react";
 import {
   File,
   FileText,
@@ -10,14 +10,11 @@ import {
   Package,
   Database,
   FileArchive,
+  Copy,
+  CheckCircle,
 } from "lucide-react";
 import { FileMetadata, SemanticMetadata } from "./types/types";
-import {
-  cn,
-  FormatFileSize,
-  truncateFilename,
-  truncatePath,
-} from "./lib/utils";
+import { cn, FormatFileSize, truncateFilename } from "./lib/utils";
 import { FaRegFilePdf } from "react-icons/fa";
 import { Badge } from "./components/ui/badge";
 
@@ -28,37 +25,200 @@ interface Props {
   semanticMatches?: Record<string, SemanticMetadata>;
 }
 
-export default function FilesTable(props: Props) {
-  const { data, onRowClick, selectedItemName, semanticMatches } = props;
+interface Column<T> {
+  key: string;
+  header: string;
+  width: number;
+  render?: (item: T) => React.ReactNode;
+}
 
-  console.log("data in files table", data);
+// We'll define the columns inside the component to access the props
+const getColumns = (
+  semanticMatches?: Record<string, SemanticMetadata>
+): Column<FileMetadata>[] => [
+  {
+    key: "name",
+    header: "Name",
+    width: 60,
+    render: (file) => {
+      const matchId = file.id || "";
+      const semanticMatch =
+        matchId && semanticMatches ? semanticMatches[matchId] : undefined;
+      const isSemanticMatch = !!semanticMatch;
+
+      return (
+        <div className="flex flex-col min-w-0 max-w-md">
+          <div className="flex items-center space-x-2 overflow-hidden">
+            {getFileIcon(file.extension)}
+            <span className="text-sm truncate">
+              {truncateFilename(file.name, 40, true)}
+            </span>
+            {file.path && (
+              <div className="flex items-center text-xs text-gray-500">
+                <CopyPathButton path={file.path} />
+              </div>
+            )}
+            {isSemanticMatch && semanticMatch && (
+              <SemanticRelevance distance={semanticMatch.distance} />
+            )}
+          </div>
+          {/* {file.path && (
+            <div className="flex items-center text-xs text-gray-500 ml-6">
+              <span className="truncate mr-1">{truncatePath(file.path)}</span>
+              <CopyPathButton path={file.path} />
+            </div>
+          )} */}
+          {isSemanticMatch && semanticMatch?.content && (
+            <div className="text-xs text-gray-400 truncate ml-6 line-clamp-1">
+              {semanticMatch.content}
+            </div>
+          )}
+        </div>
+      );
+    },
+  },
+  {
+    key: "size",
+    header: "Size",
+    width: 20,
+    render: (file) => (
+      <div className="flex items-center justify-start gap-1 text-xs text-gray-500">
+        {FormatFileSize(file.size)}
+      </div>
+    ),
+  },
+  {
+    key: "type",
+    header: "Type",
+    width: 20,
+    render: (file) => (
+      <div className="flex items-center justify-start gap-1 text-xs text-gray-500">
+        {file.extension ? file.extension.toUpperCase() : "—"}
+      </div>
+    ),
+  },
+];
+
+export default function FilesTable(props: Props) {
+  const { data, onRowClick, selectedItemName, semanticMatches = {} } = props;
+
+  // Generate columns with access to semanticMatches
+  const columns = getColumns(semanticMatches);
+  const [sortKey, setSortKey] = useState<string | null>("name");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  // Handle column sorting
+  const handleSort = useCallback(
+    (key: string) => {
+      setSortKey((prevKey) => {
+        if (prevKey === key) {
+          // If already sorting by this key, cycle through directions
+          if (sortDirection === "asc") {
+            setSortDirection("desc");
+            return key;
+          } else {
+            // If already at desc, go back to no sort
+            setSortDirection("asc");
+            return key;
+          }
+        } else {
+          // New column, start with ascending sort
+          setSortDirection("asc");
+          return key;
+        }
+      });
+    },
+    [sortDirection]
+  );
+
+  // Sort the files
+  const sortedFiles = [...data].sort((a, b) => {
+    if (sortKey === "name") {
+      return sortDirection === "asc"
+        ? a.name.localeCompare(b.name)
+        : b.name.localeCompare(a.name);
+    } else if (sortKey === "size") {
+      return sortDirection === "asc" ? a.size - b.size : b.size - a.size;
+    } else if (sortKey === "type") {
+      const typeA = a.extension || "";
+      const typeB = b.extension || "";
+      return sortDirection === "asc"
+        ? typeA.localeCompare(typeB)
+        : typeB.localeCompare(typeA);
+    }
+    return 0;
+  });
+
   return (
     <>
-      {data.length > 0 && (
-        <div className="flex flex-col gap-1">
-          {data.map((file) => (
-            <FileRow
-              key={`${file.path}-${file.name}`}
-              file={file}
-              onRowClick={onRowClick}
-              isSelected={file.name === selectedItemName}
-              semanticMatch={file.id ? semanticMatches?.[file.id] : undefined}
-            />
-          ))}
+      {sortedFiles.length > 0 && (
+        <div className="flex flex-col">
+          <div className="bg-inherit">
+            <table
+              className="w-full border-collapse"
+              style={{ tableLayout: "fixed" }}
+            >
+              <thead>
+                <tr>
+                  {columns.map((column) => (
+                    <th
+                      key={column.key}
+                      className="text-left p-2 text-sm font-medium text-gray-500"
+                      onClick={() => handleSort(column.key)}
+                      style={{
+                        cursor: "pointer",
+                        width: `${column.width}%`,
+                      }}
+                    >
+                      {column.header}
+                      {sortKey === column.key && (
+                        <span className="ml-1">
+                          {sortDirection === "asc" ? "↑" : "↓"}
+                        </span>
+                      )}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+            </table>
+          </div>
+          <div>
+            <table
+              className="w-full border-collapse"
+              style={{ tableLayout: "fixed" }}
+            >
+              <tbody>
+                {sortedFiles.map((file) => (
+                  <TableRow
+                    key={`${file.path}-${file.name}`}
+                    file={file}
+                    columns={columns}
+                    onRowClick={onRowClick}
+                    isSelected={file.name === selectedItemName}
+                    semanticMatch={
+                      file.id ? semanticMatches?.[file.id] : undefined
+                    }
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </>
   );
 }
 
-const FileRow = memo(
+const TableRow = memo(
   ({
     file,
+    columns,
     onRowClick,
     isSelected,
     semanticMatch,
   }: {
     file: FileMetadata;
+    columns: Column<FileMetadata>[];
     onRowClick?: (file: FileMetadata) => void;
     isSelected: boolean;
     semanticMatch?: SemanticMetadata;
@@ -69,77 +229,35 @@ const FileRow = memo(
 
     const isSemanticMatch = !!semanticMatch;
 
+    const renderCells = (column: Column<FileMetadata>) => {
+      if (column.render) {
+        return column.render(file);
+      } else {
+        return (file as any)[column.key];
+      }
+    };
+
     return (
-      <div
+      <tr
         onClick={handleClick}
         className={cn(
           isSelected ? "bg-muted" : "hover:bg-zinc-200 dark:hover:bg-zinc-800",
-          "transition-colors cursor-pointer rounded "
+          "transition-colors cursor-pointer rounded"
         )}
       >
-        <div className="flex flex-row justify-between w-full p-2 ">
-          <div className="flex flex-col gap-1">
-            <div className="flex flex-row items-center gap-2">
-              <FileName file={file} isSemanticMatch={isSemanticMatch} />
-              {isSemanticMatch && (
-                <SemanticRelevance distance={semanticMatch.distance} />
-              )}
-            </div>
-            <div className="ml-6">
-              <FilePath file={file} />
-              {semanticMatch?.content && (
-                <div className="text-xs text-gray-400 mt-1 ml-0.5 line-clamp-1">
-                  {semanticMatch.content}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <FileExtension file={file} />
-            </div>
-            <FileSize file={file} />
-          </div>
-        </div>
-      </div>
+        {columns.map((column) => (
+          <td
+            key={column.key}
+            className="p-2"
+            style={{ width: `${column.width}%` }}
+          >
+            {renderCells(column)}
+          </td>
+        ))}
+      </tr>
     );
   }
 );
-
-function FileName({ file }: { file: FileMetadata; isSemanticMatch: boolean }) {
-  return (
-    <div className="flex items-center flex-row gap-2 ">
-      {getFileIcon(file.extension)}
-      <span className="text-sm truncate">
-        {truncateFilename(file.name, 40, true)}
-      </span>
-    </div>
-  );
-}
-
-function FilePath({ file }: { file: FileMetadata }) {
-  return (
-    <div className="flex items-center justify-start gap-1 text-gray-500">
-      {truncatePath(file.path)}
-    </div>
-  );
-}
-
-function FileExtension({ file }: { file: FileMetadata }) {
-  return (
-    <div className="flex items-center justify-start gap-1 text-xs text-gray-500">
-      {file.extension ? file.extension.toUpperCase() : "—"}
-    </div>
-  );
-}
-
-function FileSize({ file }: { file: FileMetadata }) {
-  return (
-    <div className="flex items-center justify-start gap-1 text-xs text-gray-500">
-      {FormatFileSize(file.size)}
-    </div>
-  );
-}
 
 function SemanticRelevance({ distance }: { distance: number }) {
   // Convert distance to similarity percentage
@@ -172,6 +290,40 @@ function SemanticRelevance({ distance }: { distance: number }) {
     </Badge>
   );
 }
+
+const CopyPathButton = memo(({ path }: { path: string }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      navigator.clipboard
+        .writeText(path)
+        .then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        })
+        .catch((err) => {
+          console.error("Failed to copy path:", err);
+        });
+    },
+    [path]
+  );
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="p-1 rounded-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+      title="Copy full path"
+    >
+      {copied ? (
+        <CheckCircle className="h-3 w-3 text-green-500" />
+      ) : (
+        <Copy className="h-3 w-3" />
+      )}
+    </button>
+  );
+});
 
 function getFileIcon(filePath: string) {
   const extension =
