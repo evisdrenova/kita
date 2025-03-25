@@ -23,13 +23,6 @@ impl Chunker for TxtChunker {
     }
 
     fn can_chunk_file_type(&self, path: &Path) -> bool {
-        if let Some(ext) = path.extension() {
-            if ext.to_string_lossy().to_lowercase() == "txt" {
-                return true;
-            }
-        }
-
-        // Try to detect by MIME type
         match util::detect_mime_type(path) {
             Ok(mime) => mime == "text/plain",
             Err(_) => false,
@@ -43,6 +36,7 @@ impl Chunker for TxtChunker {
         embedder: Arc<Embedder>,
     ) -> ChunkerResult<Vec<(Chunk, Vec<f32>)>> {
         println!("creating chunk for file {:?}", file.base.path);
+
         let path = Path::new(&file.base.path);
 
         // Get chunks based on file size

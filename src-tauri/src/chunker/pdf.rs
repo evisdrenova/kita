@@ -20,12 +20,6 @@ impl Chunker for PdfChunker {
     }
 
     fn can_chunk_file_type(&self, path: &Path) -> bool {
-        if let Some(ext) = path.extension() {
-            if ext.to_string_lossy().to_lowercase() == "pdf" {
-                return true;
-            }
-        }
-
         match util::detect_mime_type(path) {
             Ok(mime) => mime == "application/pdf",
             Err(_) => false,

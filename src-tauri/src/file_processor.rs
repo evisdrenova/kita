@@ -290,7 +290,6 @@ fn create_path_embedding(
                     let _ =
                         err_sender.send((file_path, "No valid embeddings generated".to_string()));
                 } else {
-                    println!("the chunk and embedding: {:?}", chunk_embeddings);
                     VectorDbManager::insert_embeddings(
                         &app_handle,
                         &saved_file_id,

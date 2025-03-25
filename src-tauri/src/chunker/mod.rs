@@ -114,11 +114,15 @@ impl ChunkerOrchestrator {
     }
 
     fn find_chunker_for_file(&self, path: &Path) -> Option<&dyn Chunker> {
-        for chunker in &self.chunkers {
+        for (i, chunker) in self.chunkers.iter().enumerate() {
+            println!("Trying chunker {} for file {:?}", i, path);
             if chunker.can_chunk_file_type(path) {
+                println!("Chunker {} accepted file {:?}", i, path);
                 return Some(chunker.as_ref());
             }
         }
+
+        println!("No chunker found for file: {:?}", path);
         None
     }
 
@@ -163,6 +167,7 @@ pub mod util {
         let mut buffer: [u8; 8192] = [0u8; 8192]; // Read 8KB for signature detection
         let bytes_read: usize = file.read(&mut buffer)?;
 
+        // Try to detect by magic bytes first
         let infer = Infer::new();
         if let Some(kind) = infer.get(&buffer[..bytes_read]) {
             return Ok(kind.mime_type().to_string());
@@ -170,7 +175,8 @@ pub mod util {
 
         // Fallback: use extension if available
         if let Some(ext) = path.extension() {
-            match ext.to_string_lossy().to_lowercase().as_str() {
+            let ext_str = ext.to_string_lossy().to_lowercase();
+            match ext_str.as_str() {
                 "txt" => return Ok("text/plain".to_string()),
                 "pdf" => return Ok("application/pdf".to_string()),
                 "docx" => {
@@ -189,31 +195,25 @@ pub mod util {
                 "js" => return Ok("application/javascript".to_string()),
                 "ts" => return Ok("application/typescript".to_string()),
                 "py" => return Ok("text/x-python".to_string()),
-                // Add more mappings as needed
-                _ => {}
+                "json" => return Ok("application/json".to_string()),
+                "md" => return Ok("text/markdown".to_string()),
+                "html" | "htm" => return Ok("text/html".to_string()),
+                "css" => return Ok("text/css".to_string()),
+                "csv" => return Ok("text/csv".to_string()),
+                _ => {
+                    return Err(ChunkerError::UnsupportedType(format!(
+                        "Unsupported file extension: {}",
+                        ext_str
+                    )))
+                }
             }
         }
 
-        // Last resort: check if it's likely a text file
-        if is_text_file(&buffer[..bytes_read]) {
-            return Ok("text/plain".to_string());
-        }
-
-        Ok("application/octet-stream".to_string())
+        // No extension and no recognized magic bytes - return an error
+        Err(ChunkerError::UnsupportedType(
+            "File has no extension and couldn't be identified by content".to_string(),
+        ))
     }
-
-    /// Simple heuristic to check if a buffer is likely text
-    fn is_text_file(buffer: &[u8]) -> bool {
-        if buffer.is_empty() {
-            return false;
-        }
-
-        // Check if the content is likely ASCII or UTF-8 text
-        let text_ratio =
-            buffer.iter().filter(|&&b| b.is_ascii()).count() as f32 / buffer.len() as f32;
-        text_ratio > 0.8
-    }
-
     /// Normalize text: unify line endings, trim whitespace, etc.
     pub fn normalize_text(text: &str) -> String {
         let mut normalized = text.replace("\r", "\n"); // Normalize Mac line endings
