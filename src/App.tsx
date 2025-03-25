@@ -53,7 +53,6 @@ export default function App() {
   );
   const [currentItemIndex, setCurrentItemIndex] = useState<number>(-1);
   const [activeSection, setActiveSection] = useState<number | null>(null);
-  const [indexStartTime, setIndexStartTime] = useState<number>(0);
   // base section definition
   const sectionDefinitions = [
     {
@@ -116,7 +115,6 @@ export default function App() {
       if (!selected || (Array.isArray(selected) && !selected.length)) return;
       const paths = Array.isArray(selected) ? selected : [selected];
       const startTime = Date.now();
-      setIndexStartTime(startTime);
 
       console.log("paths", paths);
 
@@ -666,7 +664,6 @@ export default function App() {
         setIsSettingsOpen={setIsSettingsOpen}
         showProgress={showProgress}
         indexElapsedTime={indexElapsedTime ?? 0}
-        indexStartTime={indexStartTime}
       />
     </div>
   );

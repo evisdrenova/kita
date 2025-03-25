@@ -94,7 +94,7 @@ pub trait Chunker: Send + Sync {
 
 pub struct ChunkerOrchestrator {
     chunkers: Vec<Box<dyn Chunker>>, //a vector of available chunkers like txt, pdf, etc.
-    config: ChunkerConfig,
+    config: ChunkerConfig,           // defines a chunker orchestrator config
     mime_map: HashMap<String, usize>, // mime type to chunker indices in the chunkers vector
     extension_map: HashMap<String, usize>, // maps extensions to chunker indices
 }
@@ -108,7 +108,6 @@ impl ChunkerOrchestrator {
             config,
         };
 
-        // Register default chunkers
         orchestrator.register_chunker(Box::new(txt::TxtChunker::default()));
         orchestrator.register_chunker(Box::new(pdf::PdfChunker::default()));
 
@@ -123,16 +122,52 @@ impl ChunkerOrchestrator {
             self.mime_map.insert(mime_type.to_string(), chunker_index);
         }
 
-        // Register common extensions for this chunker type
-        match chunker.supported_mime_types().first() {
-            Some(&"text/plain") => {
-                self.extension_map.insert("txt".to_string(), chunker_index);
-                self.extension_map.insert("text".to_string(), chunker_index);
+        // Register extensions based on the chunker's supported MIME types
+        for mime_type in chunker.supported_mime_types() {
+            match mime_type {
+                "text/plain" => {
+                    self.extension_map.insert("txt".to_string(), chunker_index);
+                    self.extension_map.insert("text".to_string(), chunker_index);
+                }
+                "application/pdf" => {
+                    self.extension_map.insert("pdf".to_string(), chunker_index);
+                }
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => {
+                    self.extension_map.insert("docx".to_string(), chunker_index);
+                }
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => {
+                    self.extension_map.insert("xlsx".to_string(), chunker_index);
+                }
+                "text/rust" => {
+                    self.extension_map.insert("rs".to_string(), chunker_index);
+                }
+                "application/javascript" => {
+                    self.extension_map.insert("js".to_string(), chunker_index);
+                }
+                "application/typescript" => {
+                    self.extension_map.insert("ts".to_string(), chunker_index);
+                }
+                "text/x-python" => {
+                    self.extension_map.insert("py".to_string(), chunker_index);
+                }
+                "application/json" => {
+                    self.extension_map.insert("json".to_string(), chunker_index);
+                }
+                "text/markdown" => {
+                    self.extension_map.insert("md".to_string(), chunker_index);
+                }
+                "text/html" => {
+                    self.extension_map.insert("html".to_string(), chunker_index);
+                    self.extension_map.insert("htm".to_string(), chunker_index);
+                }
+                "text/css" => {
+                    self.extension_map.insert("css".to_string(), chunker_index);
+                }
+                "text/csv" => {
+                    self.extension_map.insert("csv".to_string(), chunker_index);
+                }
+                _ => {} // Ignore any other MIME types
             }
-            Some(&"application/pdf") => {
-                self.extension_map.insert("pdf".to_string(), chunker_index);
-            }
-            _ => {}
         }
 
         self.chunkers.push(chunker);

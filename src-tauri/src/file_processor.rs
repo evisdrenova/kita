@@ -1,7 +1,7 @@
 use arrow_array::{Array, RecordBatch};
 use rusqlite::{params, Connection, Rows};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -215,11 +215,24 @@ impl FileProcessor {
                                 continue;
                             }
                         };
+                        // skip hidden files
+                        if let Some(file_name) = entry.file_name().to_str() {
+                            if file_name.starts_with(".") {
+                                continue;
+                            }
+                        }
+
                         if entry.file_type().is_file() {
                             let _ = get_file_metadata(entry.path(), &mut all_files);
                         }
                     }
                 } else {
+                    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                        if file_name.starts_with(".") {
+                            continue;
+                        }
+                    }
+
                     let _ = get_file_metadata(path, &mut all_files);
                 }
             }

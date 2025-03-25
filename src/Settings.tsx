@@ -24,7 +24,6 @@ interface FolderSettingsProps {
   setIsSettingsOpen: (val: boolean) => void;
   showProgress: boolean;
   indexElapsedTime: number;
-  indexStartTime: number;
 }
 type SettingCategory =
   | "General"
@@ -46,7 +45,6 @@ const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
       setIsSettingsOpen,
       showProgress,
       indexElapsedTime,
-      indexStartTime,
     } = props;
 
     const [selectedSettingCategory, setSelectedSettingCategory] =
@@ -65,7 +63,6 @@ const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
           handleSelectPaths={handleSelectPaths}
           showProgress={showProgress}
           indexElapsedTime={indexElapsedTime}
-          indexStartTime={indexStartTime}
         />
       ),
       Shortcuts: <Shortcuts />,
@@ -134,7 +131,6 @@ interface IndexSettingsProps {
   handleSelectPaths: () => void;
   showProgress: boolean;
   indexElapsedTime: number;
-  indexStartTime: number;
 }
 
 function IndexingSettings(props: IndexSettingsProps) {
@@ -147,7 +143,6 @@ function IndexingSettings(props: IndexSettingsProps) {
     handleSelectPaths,
     showProgress,
     indexElapsedTime,
-    indexStartTime,
   } = props;
 
   const formatTime = (seconds: number) => {
@@ -186,18 +181,33 @@ function IndexingSettings(props: IndexSettingsProps) {
       </div>
       {showProgress && (
         <div className="mt-2 space-y-2">
-          <div className="h-1 w-full bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-blue-700 transition-all duration-300"
-              style={{
-                width: indexingProgress?.total
-                  ? `${Math.round(
-                      (indexingProgress.processed / indexingProgress.total) *
-                        100
-                    )}%`
-                  : "0%",
-              }}
-            />
+          <div className="flex flex-row items-center gap-2">
+            <div className="h-1 w-full bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-700 transition-all duration-300"
+                style={{
+                  width: indexingProgress?.total
+                    ? `${Math.round(
+                        ((indexingProgress.processed +
+                          (indexingProgress.total -
+                            indexingProgress.processed)) /
+                          indexingProgress.total) *
+                          100
+                      )}%`
+                    : "0%",
+                }}
+              />
+            </div>
+            <div>
+              {indexingProgress?.total &&
+                Math.round(
+                  ((indexingProgress.processed +
+                    (indexingProgress.total - indexingProgress.processed)) /
+                    indexingProgress.total) *
+                    100
+                )}
+              %
+            </div>
           </div>
           <div className="grid grid-cols-[30%_70%] gap-x-2 text-xs text-muted-foreground">
             <div>Total files:</div>
@@ -298,5 +308,5 @@ function Advanced() {
     </div>
   );
 }
-
+FolderSettings.displayName = "FolderSettings";
 export default FolderSettings;
