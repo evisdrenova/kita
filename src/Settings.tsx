@@ -190,16 +190,15 @@ function IndexingSettings(props: IndexSettingsProps) {
             <div
               className="h-full bg-blue-700 transition-all duration-300"
               style={{
-                width: isIndexing
-                  ? `${Math.min(
-                      95,
-                      ((Date.now() - indexStartTime) / 30000) * 100
+                width: indexingProgress?.total
+                  ? `${Math.round(
+                      (indexingProgress.processed / indexingProgress.total) *
+                        100
                     )}%`
-                  : "100%",
+                  : "0%",
               }}
             />
           </div>
-
           <div className="grid grid-cols-[30%_70%] gap-x-2 text-xs text-muted-foreground">
             <div>Total files:</div>
             <div>{indexingProgress?.total || 0}</div>

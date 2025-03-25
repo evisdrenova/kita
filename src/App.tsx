@@ -118,6 +118,8 @@ export default function App() {
       const startTime = Date.now();
       setIndexStartTime(startTime);
 
+      console.log("paths", paths);
+
       setIsIndexing(true);
       setShowProgress(true);
       setIndexingProgress(null);

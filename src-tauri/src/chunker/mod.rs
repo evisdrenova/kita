@@ -2,6 +2,7 @@
 /// Also contains some utility functions
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use thiserror::Error;
@@ -94,15 +95,20 @@ pub trait Chunker: Send + Sync {
 pub struct ChunkerOrchestrator {
     chunkers: Vec<Box<dyn Chunker>>, //a vector of available chunkers like txt, pdf, etc.
     config: ChunkerConfig,
+    mime_map: HashMap<String, usize>, // mime type to chunker indices in the chunkers vector
+    extension_map: HashMap<String, usize>, // maps extensions to chunker indices
 }
 
 impl ChunkerOrchestrator {
     pub fn new(config: ChunkerConfig) -> Self {
         let mut orchestrator = Self {
             chunkers: Vec::new(),
+            extension_map: HashMap::new(),
+            mime_map: HashMap::new(),
             config,
         };
 
+        // Register default chunkers
         orchestrator.register_chunker(Box::new(txt::TxtChunker::default()));
         orchestrator.register_chunker(Box::new(pdf::PdfChunker::default()));
 
@@ -110,12 +116,52 @@ impl ChunkerOrchestrator {
     }
 
     pub fn register_chunker(&mut self, chunker: Box<dyn Chunker>) {
+        let chunker_index = self.chunkers.len();
+
+        // Register all supported MIME types
+        for mime_type in chunker.supported_mime_types() {
+            self.mime_map.insert(mime_type.to_string(), chunker_index);
+        }
+
+        // Register common extensions for this chunker type
+        match chunker.supported_mime_types().first() {
+            Some(&"text/plain") => {
+                self.extension_map.insert("txt".to_string(), chunker_index);
+                self.extension_map.insert("text".to_string(), chunker_index);
+            }
+            Some(&"application/pdf") => {
+                self.extension_map.insert("pdf".to_string(), chunker_index);
+            }
+            _ => {}
+        }
+
         self.chunkers.push(chunker);
     }
 
     fn find_chunker_for_file(&self, path: &Path) -> Option<&dyn Chunker> {
+        // First try a quick lookup by extension
+        if let Some(ext) = path.extension() {
+            let ext_str = ext.to_string_lossy().to_lowercase();
+            if let Some(&chunker_idx) = self.extension_map.get(&ext_str) {
+                println!("Found chunker by extension mapping for file {:?}", path);
+                return Some(self.chunkers[chunker_idx].as_ref());
+            }
+        }
+
+        // If that fails, try MIME type detection
+        match util::detect_mime_type(path) {
+            Ok(mime) => {
+                if let Some(&chunker_idx) = self.mime_map.get(&mime) {
+                    println!("Found chunker by MIME type for file {:?}", path);
+                    return Some(self.chunkers[chunker_idx].as_ref());
+                }
+            }
+            Err(_) => {}
+        }
+
+        // Fallback: try each chunker directly (slower but more thorough)
         for (i, chunker) in self.chunkers.iter().enumerate() {
-            println!("Trying chunker {} for file {:?}", i, path);
+            println!("Trying chunker {} directly for file {:?}", i, path);
             if chunker.can_chunk_file_type(path) {
                 println!("Chunker {} accepted file {:?}", i, path);
                 return Some(chunker.as_ref());
@@ -143,13 +189,16 @@ impl ChunkerOrchestrator {
 impl Clone for ChunkerOrchestrator {
     fn clone(&self) -> Self {
         // We need to re-register parsers when cloning
-        let mut new_instance: ChunkerOrchestrator = Self {
+        let mut new_instance = Self {
             chunkers: Vec::new(),
+            extension_map: HashMap::new(),
+            mime_map: HashMap::new(),
             config: self.config.clone(),
         };
 
         // Re-register the default parsers
         new_instance.register_chunker(Box::new(txt::TxtChunker::default()));
+        new_instance.register_chunker(Box::new(pdf::PdfChunker::default()));
 
         new_instance
     }
@@ -209,7 +258,6 @@ pub mod util {
             }
         }
 
-        // No extension and no recognized magic bytes - return an error
         Err(ChunkerError::UnsupportedType(
             "File has no extension and couldn't be identified by content".to_string(),
         ))
