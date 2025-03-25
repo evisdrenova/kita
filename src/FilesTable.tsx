@@ -260,10 +260,11 @@ const TableRow = memo(
 );
 
 function SemanticRelevance({ distance }: { distance: number }) {
-  // Convert distance to similarity percentage
-  const similarityPercentage = Math.round((1 - distance) * 100);
+  // Convert cosine distance (0..2) to a [0..1] similarity
+  // Then turn into a [0..100] percentage
+  const similarity = 1 - distance / 2;
+  const similarityPercentage = Math.round(similarity * 100);
 
-  // Determine match strength based on similarity level
   let matchStrength: string;
   let variantClass: string;
 
@@ -274,7 +275,7 @@ function SemanticRelevance({ distance }: { distance: number }) {
   } else if (similarityPercentage >= 50) {
     matchStrength = "Good match";
     variantClass =
-      "bg-yellow-900/30 text-yellow-400 hover:bg-yellow-900/20 border-yellow-800";
+      "bg-blue-900/30 text-blue-400 hover:bg-blue-900/20 border-blue-800";
   } else {
     matchStrength = "Weak match";
     variantClass =
