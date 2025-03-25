@@ -57,8 +57,14 @@ pub mod common {
         #[error("Unsupported file type: {0}")]
         UnsupportedType(String),
 
-        #[error("PDF parsing error: {0}")]
-        PdfError(String),
+        #[error("PDF File parsing error: {0}")]
+        PdFilefError(String),
+
+        #[error("JSON File Parsing error: {0}")]
+        JSONFileError(String),
+
+        #[error("Text File Parsing error: {0}")]
+        TextFileError(String),
 
         // #[error("DOCX parsing error: {0}")]
         // DocxError(String),

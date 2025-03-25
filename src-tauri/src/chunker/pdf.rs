@@ -58,13 +58,13 @@ impl Chunker for PdfChunker {
 
                     Ok(chunk_embeddings)
                 }
-                Err(_) => Err(ChunkerError::PdfError(
+                Err(_) => Err(ChunkerError::PdFilefError(
                     "Failed to generate embeddings".to_string(),
                 )),
             }
         })
         .await
-        .map_err(|e| ChunkerError::PdfError(format!("Thread error: {:?}", e)))?
+        .map_err(|e| ChunkerError::PdFilefError(format!("Thread error: {:?}", e)))?
     }
 }
 
@@ -74,13 +74,13 @@ async fn extract_pdf_text(path: &Path) -> ChunkerResult<String> {
 
     let text = tokio::task::spawn_blocking(move || match extract_text(&path_str) {
         Ok(text) => Ok(text),
-        Err(e) => Err(ChunkerError::PdfError(format!(
+        Err(e) => Err(ChunkerError::PdFilefError(format!(
             "Failed to extract PDF text: {}",
             e
         ))),
     })
     .await
-    .map_err(|e| ChunkerError::PdfError(format!("Thread error: {:?}", e)))??;
+    .map_err(|e| ChunkerError::PdFilefError(format!("Thread error: {:?}", e)))??;
 
     Ok(text)
 }

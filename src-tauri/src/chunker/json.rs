@@ -36,7 +36,7 @@ impl Chunker for JsonChunker {
         config: &ChunkerConfig,
         embedder: Arc<Embedder>,
     ) -> ChunkerResult<Vec<(Chunk, Vec<f32>)>> {
-        debug!("Creating JSON chunks for file {:?}", file.base.path);
+        println!("Creating JSON chunks for file {:?}", file.base.path);
 
         let path = Path::new(&file.base.path);
 
@@ -49,7 +49,10 @@ impl Chunker for JsonChunker {
         let json_value: Value = match serde_json::from_str(&content) {
             Ok(value) => value,
             Err(e) => {
-                return Err(ChunkerError::Other(format!("Failed to parse JSON: {}", e)));
+                return Err(ChunkerError::JSONFileError(format!(
+                    "Failed to parse JSON: {}",
+                    e
+                )));
             }
         };
 
@@ -77,13 +80,13 @@ impl Chunker for JsonChunker {
 
                     Ok(chunk_embeddings)
                 }
-                Err(_) => Err(ChunkerError::Other(
+                Err(_) => Err(ChunkerError::JSONFileError(
                     "Failed to generate embeddings".to_string(),
                 )),
             }
         })
         .await
-        .map_err(|e| ChunkerError::Other(format!("Thread error: {:?}", e)))?
+        .map_err(|e| ChunkerError::JSONFileError(format!("Thread error: {:?}", e)))?
     }
 }
 
@@ -141,7 +144,7 @@ fn chunk_json_object(
     if map.len() <= 5 {
         // Small objects can be kept together
         let content = serde_json::to_string_pretty(&Value::Object(map))
-            .map_err(|e| ChunkerError::Other(format!("JSON serialization error: {}", e)))?;
+            .map_err(|e| ChunkerError::JSONFileError(format!("JSON serialization error: {}", e)))?;
 
         if !content.is_empty() {
             chunks.push(create_chunk(content, path, 0, None, None));

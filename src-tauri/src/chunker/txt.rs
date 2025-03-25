@@ -69,13 +69,13 @@ impl Chunker for TxtChunker {
 
                     Ok(chunk_embeddings)
                 }
-                Err(_) => Err(ChunkerError::Other(
+                Err(_) => Err(ChunkerError::TextFileError(
                     "Failed to generate embeddings".to_string(),
                 )),
             }
         })
         .await
-        .map_err(|e| ChunkerError::Other(format!("Thread error: {:?}", e)))?
+        .map_err(|e| ChunkerError::TextFileError(format!("Thread error: {:?}", e)))?
     }
 }
 
