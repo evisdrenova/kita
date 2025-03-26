@@ -173,6 +173,6 @@ export function FormatFileSize(bytes: number | undefined): string {
   // Return bytes as is if less than 1 KB
   if (i === 0) return `${bytes} ${units[i]}`;
 
-  // Otherwise format with 2 decimal places
-  return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${units[i]}`;
+  // Otherwise format with 0 decimal places
+  return `${(bytes / Math.pow(1024, i)).toFixed(0)} ${units[i]}`;
 }
