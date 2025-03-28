@@ -3,6 +3,7 @@ mod chunker;
 mod database_handler;
 mod embedder;
 mod file_processor;
+mod model;
 mod resource_monitor;
 mod tokenizer;
 mod utils;
