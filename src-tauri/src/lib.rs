@@ -35,6 +35,8 @@ pub fn run() {
 
             init_vector_db(app)?;
 
+            serve::initialize_model_registry(app)?;
+
             resource_monitor::init(app)?;
 
             register_llm_commands(app)?;
@@ -54,6 +56,9 @@ pub fn run() {
             file_processor::get_files_data,
             file_processor::get_semantic_files_data,
             file_processor::open_file,
+            serve::get_available_models,
+            serve::start_model_download,
+            serve::check_model_exists,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
