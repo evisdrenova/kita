@@ -23,6 +23,7 @@ import SectionNav from "./SectionNav";
 import { Command, File } from "lucide-react";
 import { register } from "@tauri-apps/plugin-global-shortcut";
 import { handleShortcut } from "./globalShortcut";
+import ModelSelect from "./ModelSelect";
 
 await register("CommandOrControl+Shift+C", handleShortcut).then(() =>
   console.log("shortcut successfully registered")
@@ -624,6 +625,7 @@ export default function App() {
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <Header setSearchQuery={setSearchQuery} searchQuery={searchQuery} />
+      <ModelSelect />
       <main className="flex-1 overflow-auto scrollbar">
         {/* {searchQuery.trim() === "" ? (
           recents.length > 0 ? (

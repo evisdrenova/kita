@@ -5,11 +5,13 @@ mod embedder;
 mod file_processor;
 mod model;
 mod resource_monitor;
+mod serve;
 mod tokenizer;
 mod utils;
 mod vectordb_manager;
 
 use file_processor::FileProcessorState;
+use model::register_llm_commands;
 use std::io::{Error, ErrorKind};
 use tauri::{AppHandle, Manager};
 
@@ -34,6 +36,8 @@ pub fn run() {
             init_vector_db(app)?;
 
             resource_monitor::init(app)?;
+
+            register_llm_commands(app)?;
 
             Ok(())
         })

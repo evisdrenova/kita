@@ -8,6 +8,7 @@
 /src-tauri/WixTools
 /src-tauri/Cargo.lock
 /src-tauri/.fastembed_cache/
+/src-tauri/resources
 
 # Testing
 /coverage

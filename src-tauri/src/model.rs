@@ -375,6 +375,19 @@ pub async fn ask_llm(app_handle: AppHandle, prompt: String) -> Result<String, St
 
 // Example of how to register this command in main.rs
 pub fn register_llm_commands(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    app.manage(tokio::sync::Mutex::new(None::<LlamaServer>));
+    app.manage(tokio::sync::Mutex::new(None::<LLMServer>));
+    Ok(())
+}
+
+#[derive(Default)]
+struct MyState {
+    s: std::sync::Mutex<String>,
+    t: std::sync::Mutex<std::collections::HashMap<String, String>>,
+}
+// remember to call `.manage(MyState::default())`
+#[tauri::command]
+async fn command_name(state: tauri::State<'_, MyState>) -> Result<(), String> {
+    *state.s.lock().unwrap() = "new string".into();
+    state.t.lock().unwrap().insert("key".into(), "value".into());
     Ok(())
 }
