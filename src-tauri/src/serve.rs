@@ -1,11 +1,12 @@
 use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::ffi::OsStr;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use thiserror::Error;
 use tokio::sync::broadcast;
 
@@ -54,8 +55,8 @@ pub struct ModelInfo {
 
 // struct to maintain available and downloaded models
 pub struct ModelRegistry {
-    available_models: Mutex<Vec<HuggingFaceModelInfo>>,
-    downloaded_models: Mutex<Vec<ModelInfo>>,
+    available_models: Mutex<Vec<HuggingFaceModelInfo>>, // models in HF that we can download
+    downloaded_models: Mutex<Vec<ModelInfo>>,           // models we have downloaoded to the fs
 }
 
 impl ModelRegistry {
@@ -98,9 +99,10 @@ impl ModelRegistry {
         *available = models;
     }
 
+    /// scans the model directory and finds all of the downloaded models
     pub fn find_downloaded_models(&self, app_handle: &AppHandle) -> Result<()> {
         let models_dir = get_models_dir(app_handle)?;
-        let mut downloaded = Vec::new(); //Vec<ModelInfo>
+        let mut downloaded: Vec<ModelInfo> = Vec::new();
 
         if !models_dir.exists() {
             fs::create_dir_all(&models_dir)?;
@@ -109,30 +111,28 @@ impl ModelRegistry {
         }
 
         // Read all files in models directory
-        let entries = fs::read_dir(&models_dir)?;
+        let model_entries = fs::read_dir(&models_dir)?;
 
-        for entry in entries {
-            let entry = entry?;
-            let path = entry.path();
+        for model in model_entries {
+            let model: fs::DirEntry = model?;
+            let path: PathBuf = model.path();
 
             // Check if it's a .gguf file
-            if let Some(ext) = path.extension() {
-                if ext == "gguf" {
-                    // Find corresponding model in available_models
-                    let filename = path.file_name().unwrap().to_string_lossy();
-                    let available = self.available_models.lock().unwrap();
+            if is_gguf(path.extension()) {
+                // Find corresponding model in available_models
+                let filename = path.file_name().unwrap().to_string_lossy();
+                let available = self.available_models.lock().unwrap();
 
-                    if let Some(model) = available.iter().find(|m| m.filename == filename) {
-                        let model_info = ModelInfo {
-                            id: model.id.clone(),
-                            name: model.name.clone(),
-                            size: model.size,
-                            path: path.to_string_lossy().to_string(),
-                            quantization: model.quantization.clone(),
-                            is_downloaded: true,
-                        };
-                        downloaded.push(model_info);
-                    }
+                if let Some(model) = available.iter().find(|m| m.filename == filename) {
+                    let model_info = ModelInfo {
+                        id: model.id.clone(),
+                        name: model.name.clone(),
+                        size: model.size,
+                        path: path.to_string_lossy().to_string(),
+                        quantization: model.quantization.clone(),
+                        is_downloaded: true,
+                    };
+                    downloaded.push(model_info);
                 }
             }
         }
@@ -140,4 +140,283 @@ impl ModelRegistry {
         *self.downloaded_models.lock().unwrap() = downloaded;
         Ok(())
     }
+
+    /// gets all available models (combining avialable and downloaded info)
+    pub fn get_available_models(&self) -> Vec<ModelInfo> {
+        let available = self.available_models.lock().unwrap();
+        let downloaded = self.downloaded_models.lock().unwrap();
+
+        available
+            .iter()
+            .map(|model| {
+                // Check if this model has been downloaded
+                let downloaded_model = downloaded.iter().find(|m| m.id == model.id);
+
+                if let Some(dm) = downloaded_model {
+                    dm.clone()
+                } else {
+                    ModelInfo {
+                        id: model.id.clone(),
+                        name: model.name.clone(),
+                        size: model.size,
+                        path: String::new(), // Empty path for not-downloaded models
+                        quantization: model.quantization.clone(),
+                        is_downloaded: false,
+                    }
+                }
+            })
+            .collect()
+    }
+
+    // Get info for a specific model
+    pub fn get_model(&self, model_id: &str) -> Option<ModelInfo> {
+        // First check downloaded models
+        let downloaded = self.downloaded_models.lock().unwrap();
+        if let Some(model) = downloaded.iter().find(|m| m.id == model_id) {
+            return Some(model.clone());
+        }
+
+        // if not in the downloaded models then check available models
+        let available = self.available_models.lock().unwrap();
+        available
+            .iter()
+            .find(|m| m.id == model_id)
+            .map(|model| ModelInfo {
+                id: model.id.clone(),
+                name: model.name.clone(),
+                size: model.size,
+                path: String::new(),
+                quantization: model.quantization.clone(),
+                is_downloaded: false,
+            })
+    }
+
+    pub fn get_hf_model_info(&self, model_id: &str) -> Option<HuggingFaceModelInfo> {
+        let available = self.available_models.lock().unwrap();
+        available.iter().find(|m| m.id == model_id).cloned()
+    }
+
+    // Register a downloaded model
+    pub fn register_downloaded_model(&self, model_info: ModelInfo) {
+        let mut downloaded = self.downloaded_models.lock().unwrap();
+
+        // Check if model already exists, update if it does
+        if let Some(idx) = downloaded.iter().position(|m| m.id == model_info.id) {
+            downloaded[idx] = model_info;
+        } else {
+            downloaded.push(model_info);
+        }
+    }
+}
+
+fn is_gguf(extension: Option<&OsStr>) -> bool {
+    if let Some(ext) = extension {
+        if ext == "gguf" {
+            return true;
+        }
+    }
+    false
+}
+
+// Get models directory path
+fn get_models_dir(app_handle: &AppHandle) -> Result<PathBuf> {
+    let app_data_dir = app_handle.path_resolver().app_data_dir().ok_or_else(|| {
+        ModelError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "App data directory not found",
+        ))
+    })?;
+
+    Ok(app_data_dir.join("models"))
+}
+
+// Get HuggingFace download URL for a model
+fn get_hf_download_url(repo_id: &str, filename: &str) -> String {
+    format!(
+        "https://huggingface.co/{}/resolve/main/{}",
+        repo_id, filename
+    )
+}
+
+// Progress data structure
+#[derive(Clone, Serialize, Deserialize)]
+struct DownloadProgress {
+    progress: f64,
+    model_id: String,
+}
+
+async fn download_model_from_hf(
+    app_handle: &AppHandle,
+    model_info: &HuggingFaceModelInfo,
+) -> Result<PathBuf> {
+    // Create models directory if it doesn't exist
+    let models_dir = get_models_dir(app_handle)?;
+    if !models_dir.exists() {
+        fs::create_dir_all(&models_dir)?;
+    }
+
+    // Setup path for the downloaded file
+    let file_path = models_dir.join(&model_info.filename);
+
+    // Get download URL
+    let url = get_hf_download_url(&model_info.repo_id, &model_info.filename);
+    println!("Downloading model from: {}", url);
+
+    // Start download
+    let client = Client::new();
+    let res = client.get(&url).send().await?;
+
+    // Check response
+    if !res.status().is_success() {
+        return Err(ModelError::DownloadFailed(format!(
+            "Server returned: {}",
+            res.status()
+        )));
+    }
+
+    // Get total size
+    let total_size = res.content_length().unwrap_or(0);
+
+    // Create file for writing
+    let mut file = fs::File::create(&file_path)?;
+
+    // Download the file in chunks, updating progress
+    let mut downloaded: u64 = 0;
+    let mut stream = res.bytes_stream();
+
+    while let Some(item) = stream.next().await {
+        let chunk = item?;
+        file.write_all(&chunk)?;
+
+        downloaded += chunk.len() as u64;
+        let progress = if total_size > 0 {
+            (downloaded as f64 / total_size as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        // Emit progress event
+        let _ = app_handle.emit(
+            "model-download-progress",
+            DownloadProgress {
+                progress,
+                model_id: model_info.id.clone(),
+            },
+        );
+    }
+
+    file.flush()?;
+
+    Ok(file_path)
+}
+
+// --- Tauri Commands ---
+
+#[tauri::command]
+pub async fn get_available_models(
+    app_handle: AppHandle,
+    model_registry: State<'_, ModelRegistry>,
+) -> Result<Vec<ModelInfo>, String> {
+    // Make sure we've scanned for downloaded models
+    if let Err(e) = model_registry.find_downloaded_models(&app_handle) {
+        eprintln!("Error scanning models: {}", e);
+    }
+
+    Ok(model_registry.get_available_models()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn start_model_download(
+    app_handle: AppHandle,
+    model_registry: State<'_, ModelRegistry>,
+    model_id: String,
+) -> Result<String, String> {
+    // Get model info
+    let hf_model_info = model_registry
+        .get_hf_model_info(&model_id)
+        .ok_or_else(|| format!("Model {} not found", model_id))?;
+
+    // Clone what we need for the async task
+    let app_handle_clone = app_handle.clone();
+    let model_id_clone = model_id.clone();
+    let hf_model_info_clone = hf_model_info.clone();
+
+    // Start download in background
+    tokio::spawn(async move {
+        match download_model_from_hf(&app_handle_clone, &hf_model_info_clone).await {
+            Ok(file_path) => {
+                // Register the downloaded model
+                let model_info = ModelInfo {
+                    id: hf_model_info_clone.id,
+                    name: hf_model_info_clone.name,
+                    size: hf_model_info_clone.size,
+                    path: file_path.to_string_lossy().to_string(),
+                    quantization: hf_model_info_clone.quantization,
+                    is_downloaded: true,
+                };
+
+                // Update registry
+                let registry = app_handle_clone.state::<ModelRegistry>();
+                registry.register_downloaded_model(model_info);
+
+                // Notify frontend of completion
+                let _ = app_handle_clone.emit("model-download-complete", model_id_clone);
+            }
+            Err(e) => {
+                eprintln!("Download error: {}", e);
+                // Notify frontend of error
+                let _ = app_handle_clone.emit(
+                    "model-download-error",
+                    serde_json::json!({
+                        "model_id": model_id_clone,
+                        "error": e.to_string()
+                    }),
+                );
+            }
+        }
+    });
+
+    Ok("Download started".to_string())
+}
+
+#[tauri::command]
+pub async fn check_model_exists(
+    app_handle: AppHandle,
+    model_registry: State<'_, ModelRegistry>,
+    model_id: String,
+) -> Result<bool, String> {
+    // Rescan to make sure we have the latest info
+    if let Err(e) = model_registry.find_downloaded_models(&app_handle) {
+        return Err(format!("Error scanning models: {}", e));
+    }
+
+    // Check if model exists
+    let model_exists = model_registry
+        .get_model(&model_id)
+        .map(|m| m.is_downloaded)
+        .unwrap_or(false);
+
+    Ok(model_exists)
+}
+
+pub fn initialize_model_registry(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    // Create and initialize the registry
+    let registry = ModelRegistry::new();
+    registry.initialize();
+
+    // Register it with the app
+    app.manage(registry);
+
+    // Scan for existing models
+    let app_handle = app.app_handle();
+    let registry_state = app.state::<ModelRegistry>();
+
+    // Don't block initialization on this
+    tokio::spawn(async move {
+        if let Err(e) = registry_state.find_downloaded_models(&app_handle) {
+            eprintln!("Error scanning models during init: {}", e);
+        }
+    });
+
+    Ok(())
 }
