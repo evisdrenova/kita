@@ -1,7 +1,6 @@
 use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::ffi::OsStr;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -10,6 +9,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use thiserror::Error;
 use tokio::sync::broadcast;
 
+// --- Error Handling ---
 #[derive(Error, Debug)]
 pub enum ModelError {
     #[error("IO error: {0}")]
@@ -31,9 +31,12 @@ pub enum ModelError {
     InvalidConfig,
 }
 
-type Result<T> = std::result::Result<T, ModelError>;
+// Type alias for results
+type Result<T, E = ModelError> = std::result::Result<T, E>;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// --- Model Data Structures ---
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HuggingFaceModelInfo {
     id: String,
     name: String,
@@ -53,10 +56,10 @@ pub struct ModelInfo {
     pub is_downloaded: bool,
 }
 
-// struct to maintain available and downloaded models
+// Structure to maintain available and downloaded models
 pub struct ModelRegistry {
-    available_models: Mutex<Vec<HuggingFaceModelInfo>>, // models in HF that we can download
-    downloaded_models: Mutex<Vec<ModelInfo>>,           // models we have downloaoded to the fs
+    available_models: Mutex<Vec<HuggingFaceModelInfo>>,
+    downloaded_models: Mutex<Vec<ModelInfo>>,
 }
 
 impl ModelRegistry {
@@ -67,6 +70,7 @@ impl ModelRegistry {
         }
     }
 
+    // Initialize with pre-defined list of models
     pub fn initialize(&self) {
         let models = vec![
             HuggingFaceModelInfo {
@@ -99,11 +103,16 @@ impl ModelRegistry {
         *available = models;
     }
 
-    /// scans the model directory and finds all of the downloaded models
-    pub fn find_downloaded_models(&self, app_handle: &AppHandle) -> Result<()> {
-        let models_dir = get_models_dir(app_handle)?;
-        let mut downloaded: Vec<ModelInfo> = Vec::new();
+    // Scan the models directory to find downloaded models with option for custom path
+    pub fn scan_downloaded_models(
+        &self,
+        app_handle: &AppHandle,
+        custom_path: Option<&str>,
+    ) -> Result<()> {
+        let models_dir = get_models_dir(app_handle, custom_path)?;
+        let mut downloaded = Vec::new();
 
+        // Ensure directory exists
         if !models_dir.exists() {
             fs::create_dir_all(&models_dir)?;
             self.downloaded_models.lock().unwrap().clear();
@@ -111,28 +120,30 @@ impl ModelRegistry {
         }
 
         // Read all files in models directory
-        let model_entries = fs::read_dir(&models_dir)?;
+        let entries = fs::read_dir(&models_dir)?;
 
-        for model in model_entries {
-            let model: fs::DirEntry = model?;
-            let path: PathBuf = model.path();
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
 
             // Check if it's a .gguf file
-            if is_gguf(path.extension()) {
-                // Find corresponding model in available_models
-                let filename = path.file_name().unwrap().to_string_lossy();
-                let available = self.available_models.lock().unwrap();
+            if let Some(ext) = path.extension() {
+                if ext == "gguf" {
+                    // Find corresponding model in available_models
+                    let filename = path.file_name().unwrap().to_string_lossy();
+                    let available = self.available_models.lock().unwrap();
 
-                if let Some(model) = available.iter().find(|m| m.filename == filename) {
-                    let model_info = ModelInfo {
-                        id: model.id.clone(),
-                        name: model.name.clone(),
-                        size: model.size,
-                        path: path.to_string_lossy().to_string(),
-                        quantization: model.quantization.clone(),
-                        is_downloaded: true,
-                    };
-                    downloaded.push(model_info);
+                    if let Some(model) = available.iter().find(|m| m.filename == filename) {
+                        let model_info = ModelInfo {
+                            id: model.id.clone(),
+                            name: model.name.clone(),
+                            size: model.size,
+                            path: path.to_string_lossy().to_string(),
+                            quantization: model.quantization.clone(),
+                            is_downloaded: true,
+                        };
+                        downloaded.push(model_info);
+                    }
                 }
             }
         }
@@ -141,7 +152,7 @@ impl ModelRegistry {
         Ok(())
     }
 
-    /// gets all available models (combining avialable and downloaded info)
+    // Get all available models (combining available and downloaded info)
     pub fn get_available_models(&self) -> Vec<ModelInfo> {
         let available = self.available_models.lock().unwrap();
         let downloaded = self.downloaded_models.lock().unwrap();
@@ -176,7 +187,7 @@ impl ModelRegistry {
             return Some(model.clone());
         }
 
-        // if not in the downloaded models then check available models
+        // Then check available models
         let available = self.available_models.lock().unwrap();
         available
             .iter()
@@ -191,6 +202,7 @@ impl ModelRegistry {
             })
     }
 
+    // Get HuggingFace info for a model
     pub fn get_hf_model_info(&self, model_id: &str) -> Option<HuggingFaceModelInfo> {
         let available = self.available_models.lock().unwrap();
         available.iter().find(|m| m.id == model_id).cloned()
@@ -209,18 +221,15 @@ impl ModelRegistry {
     }
 }
 
-fn is_gguf(extension: Option<&OsStr>) -> bool {
-    if let Some(ext) = extension {
-        if ext == "gguf" {
-            return true;
-        }
+// Get models directory path with option for custom path
+fn get_models_dir(app_handle: &AppHandle, custom_path: Option<&str>) -> Result<PathBuf> {
+    // If custom path is provided, use it
+    if let Some(path) = custom_path {
+        return Ok(PathBuf::from(path));
     }
-    false
-}
 
-// Get models directory path
-fn get_models_dir(app_handle: &AppHandle) -> Result<PathBuf> {
-    let app_data_dir = app_handle.path_resolver().app_data_dir().ok_or_else(|| {
+    // Otherwise use app data directory
+    let app_data_dir = app_handle.path().app_data_dir().map_err(|_| {
         ModelError::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "App data directory not found",
@@ -245,12 +254,14 @@ struct DownloadProgress {
     model_id: String,
 }
 
+// Download a model from HuggingFace with option for custom path
 async fn download_model_from_hf(
     app_handle: &AppHandle,
     model_info: &HuggingFaceModelInfo,
+    custom_path: Option<&str>,
 ) -> Result<PathBuf> {
     // Create models directory if it doesn't exist
-    let models_dir = get_models_dir(app_handle)?;
+    let models_dir = get_models_dir(app_handle, custom_path)?;
     if !models_dir.exists() {
         fs::create_dir_all(&models_dir)?;
     }
@@ -316,13 +327,13 @@ async fn download_model_from_hf(
 pub async fn get_available_models(
     app_handle: AppHandle,
     model_registry: State<'_, ModelRegistry>,
-) -> Result<Vec<ModelInfo>, String> {
-    // Make sure we've scanned for downloaded models
-    if let Err(e) = model_registry.find_downloaded_models(&app_handle) {
-        eprintln!("Error scanning models: {}", e);
-    }
+    custom_path: Option<String>,
+) -> std::result::Result<Vec<ModelInfo>, String> {
+    model_registry
+        .scan_downloaded_models(&app_handle, custom_path.as_deref())
+        .map_err(|e| e.to_string())?;
 
-    Ok(model_registry.get_available_models()).map_err(|e| e.to_string())
+    Ok(model_registry.get_available_models())
 }
 
 #[tauri::command]
@@ -330,6 +341,7 @@ pub async fn start_model_download(
     app_handle: AppHandle,
     model_registry: State<'_, ModelRegistry>,
     model_id: String,
+    custom_path: Option<String>,
 ) -> Result<String, String> {
     // Get model info
     let hf_model_info = model_registry
@@ -340,10 +352,17 @@ pub async fn start_model_download(
     let app_handle_clone = app_handle.clone();
     let model_id_clone = model_id.clone();
     let hf_model_info_clone = hf_model_info.clone();
+    let custom_path_clone = custom_path.clone();
 
     // Start download in background
     tokio::spawn(async move {
-        match download_model_from_hf(&app_handle_clone, &hf_model_info_clone).await {
+        match download_model_from_hf(
+            &app_handle_clone,
+            &hf_model_info_clone,
+            custom_path_clone.as_deref(),
+        )
+        .await
+        {
             Ok(file_path) => {
                 // Register the downloaded model
                 let model_info = ModelInfo {
@@ -384,11 +403,17 @@ pub async fn check_model_exists(
     app_handle: AppHandle,
     model_registry: State<'_, ModelRegistry>,
     model_id: String,
+    custom_path: Option<String>,
 ) -> Result<bool, String> {
     // Rescan to make sure we have the latest info
-    if let Err(e) = model_registry.find_downloaded_models(&app_handle) {
-        return Err(format!("Error scanning models: {}", e));
-    }
+    model_registry
+        .scan_downloaded_models(&app_handle, custom_path.as_deref())
+        .map_err(|_| {
+            ModelError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "App data directory not found",
+            ))
+        });
 
     // Check if model exists
     let model_exists = model_registry
@@ -399,21 +424,21 @@ pub async fn check_model_exists(
     Ok(model_exists)
 }
 
-pub fn initialize_model_registry(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+pub fn initialize_model_registry(app: &mut tauri::App) -> Result<()> {
     // Create and initialize the registry
     let registry = ModelRegistry::new();
     registry.initialize();
 
-    // Register it with the app
+    // add it to the app state
     app.manage(registry);
 
-    // Scan for existing models
-    let app_handle = app.app_handle();
-    let registry_state = app.state::<ModelRegistry>();
+    // Capture app_handle for async task
+    let app_handle = app.app_handle().clone();
 
     // Don't block initialization on this
     tokio::spawn(async move {
-        if let Err(e) = registry_state.find_downloaded_models(&app_handle) {
+        let registry_state = app_handle.state::<ModelRegistry>();
+        if let Err(e) = registry_state.scan_downloaded_models(&app_handle, None) {
             eprintln!("Error scanning models during init: {}", e);
         }
     });
