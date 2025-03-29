@@ -9,7 +9,7 @@ use tokio::time::timeout;
 
 use dirs;
 use reqwest::Client;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use thiserror::Error;
 
 const SERVER_PORT: u16 = 8080;
@@ -143,9 +143,13 @@ impl LLMServer {
     }
 
     async fn prepare_server_binary(&self) -> Result<PathBuf, LLMServerError> {
-        // Get the app's local data directory
-        let local_data_dir = self.app_handle.path_resolver().app_data_dir().unwrap();
-        let bin_dir = local_data_dir.join("bin");
+        // Get the app's data directory using the path() method instead of path_resolver
+        let app_data_dir =
+            self.app_handle.path().app_data_dir().map_err(|_| {
+                LLMServerError::CommandError("Failed to get app data directory".into())
+            })?;
+
+        let bin_dir = app_data_dir.join("bin");
         let server_path = bin_dir.join(SERVER_BINARY_NAME);
 
         // Create bin directory if it doesn't exist
@@ -163,12 +167,17 @@ impl LLMServer {
         // Otherwise, extract it from resources
         println!("Extracting server binary from resources...");
 
-        // Get the path to the resource
+        // Get the path to the resource using path() approach
         let resource_path = self
             .app_handle
-            .path_resolver()
-            .resolve_resource(SERVER_BINARY_NAME)
-            .ok_or(LLMServerError::ResourceExtractionError)?;
+            .path()
+            .resource_dir()
+            .map_err(|_| LLMServerError::CommandError("Failed to get resource directory".into()))?
+            .join(SERVER_BINARY_NAME);
+
+        if !resource_path.exists() {
+            return Err(LLMServerError::ResourceExtractionError);
+        }
 
         // Copy from resources to local data directory
         fs::copy(&resource_path, &server_path).map_err(|e| {
@@ -335,7 +344,7 @@ impl LLMServer {
     }
 }
 
-impl Drop for LlamaServer {
+impl Drop for LLMServer {
     fn drop(&mut self) {
         if let Some(mut child) = self.server_process.take() {
             println!("Automatically stopping server on drop...");
@@ -348,7 +357,7 @@ impl Drop for LlamaServer {
 #[tauri::command]
 pub async fn ask_llm(app_handle: AppHandle, prompt: String) -> Result<String, String> {
     // Create a new server instance
-    let mut server = LlamaServer::new(app_handle)
+    let mut server = LLMServer::new(app_handle)
         .await
         .map_err(|e| format!("Failed to create server: {}", e))?;
 

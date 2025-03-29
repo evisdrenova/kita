@@ -59,6 +59,7 @@ pub fn run() {
             serve::get_available_models,
             serve::start_model_download,
             serve::check_model_exists,
+            model::ask_llm
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
