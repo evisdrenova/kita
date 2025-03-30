@@ -3,19 +3,9 @@ use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
 use tauri::AppHandle;
 use tauri::Manager;
-use thiserror::Error;
 
 use crate::AppResult;
 
-#[derive(Error, Debug)]
-pub enum DbError {
-    #[error("SQLite error: {0}")]
-    SQLite(#[from] rusqlite::Error),
-    #[error("No app data directory found")]
-    NoAppDataDir,
-    #[error("Tauri path error: {0}")]
-    TauriPath(#[from] tauri::Error),
-}
 /// Initialize the database and return the path to the created database file
 pub fn init_database(app_handle: AppHandle) -> AppResult<std::path::PathBuf> {
     let app_data_dir: PathBuf = match app_handle.path().app_data_dir() {
@@ -64,7 +54,6 @@ pub fn init_database(app_handle: AppHandle) -> AppResult<std::path::PathBuf> {
 
     let statements = vec![files_table, settings_table, fts_table];
 
-    // Execute all statements
     for (i, stmt) in statements.iter().enumerate() {
         if let Err(e) = conn.execute(stmt, []) {
             let error_msg = format!("Error executing statement #{}: {}", i + 1, e);

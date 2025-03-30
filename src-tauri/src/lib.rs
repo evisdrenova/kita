@@ -13,8 +13,7 @@ mod vectordb_manager;
 
 use file_processor::FileProcessorState;
 use model::register_llm_commands;
-use std::io::{Error, ErrorKind};
-use tauri::{AppHandle, Manager};
+use tauri::Manager;
 
 type AppResult<T> = Result<T, Box<dyn std::error::Error>>;
 
