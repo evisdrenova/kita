@@ -17,6 +17,8 @@ use tauri::{AppHandle, Manager};
 
 type AppResult<T> = Result<T, Box<dyn std::error::Error>>;
 
+use window_vibrancy::*;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -27,6 +29,11 @@ pub fn run() {
             let window = app.get_webview_window("main").unwrap();
             window.open_devtools();
             window.close_devtools();
+
+            // applies a blur effect to the window
+            #[cfg(target_os = "macos")]
+            apply_vibrancy(&window, NSVisualEffectMaterial::HudWindow, None, None)
+                .expect("Unsupported platform! 'apply_vibrancy' is only supported on macOS");
 
             let db_path = init_database(app.app_handle().clone())?;
             let db_path_str = db_path.to_string_lossy().to_string();

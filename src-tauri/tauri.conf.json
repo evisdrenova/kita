@@ -20,7 +20,12 @@
         "decorations": false,
         "transparent": true,
         "dragDropEnabled": true,
-        "shadow": false
+        "shadow": false,
+        "windowEffects": {
+          "color": "#ffffff",
+          "effects": ["blur"],
+          "state": "active"
+        }
       }
     ],
     "security": {
