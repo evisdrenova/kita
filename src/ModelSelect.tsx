@@ -14,6 +14,7 @@ import { Download, Check, AlertCircle, FolderOpen } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { Badge } from "./components/ui/badge";
 
 // Interface for model data
 interface Model {
@@ -165,6 +166,8 @@ export default function ModelSelect() {
     return <Skeleton className="h-10 w-[250px]" />;
   }
 
+  console.log("models", models);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
@@ -183,6 +186,7 @@ export default function ModelSelect() {
                   <span className="text-xs text-gray-500">
                     {(model.size / 1024).toFixed(1)}GB
                   </span>
+                  {model.is_downloaded && <Badge>Downloaded</Badge>}
                 </div>
               </SelectItem>
             ))}
