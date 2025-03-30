@@ -32,8 +32,7 @@ pub fn run() {
 
             // applies a blur effect to the window
             #[cfg(target_os = "macos")]
-            apply_vibrancy(&window, NSVisualEffectMaterial::HudWindow, None, None)
-                .expect("Unsupported platform! 'apply_vibrancy' is only supported on macOS");
+            apply_vibrancy(&window, NSVisualEffectMaterial::HudWindow, None, None)?;
 
             let db_path = init_database(app.app_handle().clone())?;
             let db_path_str = db_path.to_string_lossy().to_string();
