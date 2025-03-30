@@ -72,7 +72,11 @@ pub fn run() {
             serve::get_available_models,
             serve::start_model_download,
             serve::check_model_exists,
-            model::ask_llm
+            model::ask_llm,
+            settings::get_settings,
+            settings::update_settings,
+            settings::set_selected_model,
+            settings::get_selected_model
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
