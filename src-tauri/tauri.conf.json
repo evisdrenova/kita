@@ -10,12 +10,17 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "kita",
         "width": 800,
         "height": 600,
-        "resizable": true
+        "resizable": true,
+        "decorations": false,
+        "transparent": true,
+        "dragDropEnabled": true,
+        "shadow": false
       }
     ],
     "security": {

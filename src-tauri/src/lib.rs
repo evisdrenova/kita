@@ -35,7 +35,7 @@ pub fn run() {
 
             init_vector_db(app)?;
 
-            serve::initialize_model_registry(app)?;
+            // serve::initialize_model_registry(app)?;
 
             resource_monitor::init(app)?;
 

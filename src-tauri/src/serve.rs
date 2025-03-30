@@ -3,11 +3,10 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 use thiserror::Error;
-use tokio::sync::broadcast;
 
 // --- Error Handling ---
 #[derive(Error, Debug)]
