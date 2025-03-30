@@ -45,7 +45,6 @@ pub enum SettingValue {
 }
 
 impl SettingsManager {
-    // Create a new settings manager
     pub fn new(db_path: &str) -> Self {
         Self {
             settings: Mutex::new(AppSettings::default()),
@@ -53,28 +52,15 @@ impl SettingsManager {
         }
     }
 
-    // Get database connection
     fn get_connection(&self) -> Result<Connection> {
         Connection::open(&self.db_path).map_err(SettingsError::Database)
     }
 
-    // Initialize from database, or create with defaults if it doesn't exist
     pub fn initialize(&self) -> Result<()> {
         let conn = self.get_connection()?;
 
-        // Make sure the settings table exists - although it should have been created
-        // in the database initialization already
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS settings_json (
-                id INTEGER PRIMARY KEY CHECK (id = 1),  -- Only one row allowed
-                data TEXT NOT NULL,                     -- JSON blob
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )",
-            [],
-        )?;
-
         // Try to load existing settings
-        let mut stmt = conn.prepare("SELECT data FROM settings_json WHERE id = 1")?;
+        let mut stmt = conn.prepare("SELECT data FROM settings WHERE id = 1")?;
         let settings_result = stmt.query_row([], |row| {
             let json: String = row.get(0)?;
             Ok(json)
@@ -82,10 +68,8 @@ impl SettingsManager {
 
         match settings_result {
             Ok(json) => {
-                // Parse the JSON
                 let loaded_settings: AppSettings = serde_json::from_str(&json)?;
 
-                // Update the settings
                 let mut settings = self.settings.lock().unwrap();
                 *settings = loaded_settings;
             }

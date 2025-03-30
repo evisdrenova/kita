@@ -40,9 +40,8 @@ pub fn init_database(app_handle: AppHandle) -> AppResult<std::path::PathBuf> {
         );"#;
 
     let settings_table = r#"CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                value_type TEXT NOT NULL,
+                id INTEGER PRIMARY KEY CHECK (id = 1), 
+                data TEXT NOT NULL,               
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );"#;
 
