@@ -15,15 +15,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Badge } from "../components/ui/badge";
-
-// Interface for model data
-interface Model {
-  id: string;
-  name: string;
-  size: number; // Size in MB
-  quantization: string;
-  is_downloaded: boolean;
-}
+import { AppSettings, Model } from "../types/types";
 
 interface DownloadProgress {
   progress: number;
@@ -36,6 +28,7 @@ export default function Models() {
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [customPath, setCustomPath] = useState<string>("");
   const [useCustomPath, setUseCustomPath] = useState<boolean>(false);
+  const [settings, setSettings] = useState<AppSettings>({});
   const [downloadStatus, setDownloadStatus] = useState<{
     isDownloading: boolean;
     progress: number;
@@ -47,39 +40,63 @@ export default function Models() {
     error: null,
     model_id: null,
   });
-
+  // Load settings and models
   useEffect(() => {
-    const fetchModels = async () => {
+    const fetchData = async () => {
       try {
         setIsLoading(true);
 
-        // Fetch available models
-        const availableModels = await invoke<Model[]>("get_available_models");
+        // First get settings
+        const appSettings = await invoke<AppSettings>("get_settings");
+        setSettings(appSettings);
 
-        // Get saved model preference
-        const savedModelId = await invoke<string | null>("get_selected_model");
+        // Set custom path if available
+        if (appSettings.custom_model_path) {
+          setCustomPath(appSettings.custom_model_path);
+          setUseCustomPath(true);
+        }
 
+        // Then fetch available models
+        const availableModels = await invoke<Model[]>("get_available_models", {
+          customPath: useCustomPath ? customPath : null,
+        });
         setModels(availableModels);
 
-        if (savedModelId) {
-          setSelectedModel(savedModelId);
+        // Set selected model from settings
+        if (appSettings.selected_model_id) {
+          setSelectedModel(appSettings.selected_model_id);
         } else if (availableModels.length > 0) {
           // Auto-select first downloaded model if available
           const downloadedModel = availableModels.find((m) => m.is_downloaded);
           if (downloadedModel) {
             setSelectedModel(downloadedModel.id);
-            await invoke("set_selected_model", { modelId: downloadedModel.id });
+
+            // Update settings with selected model
+            await updateSettings({
+              ...appSettings,
+              selected_model_id: downloadedModel.id,
+            });
           }
         }
       } catch (error) {
-        console.error("Failed to load models:", error);
+        console.error("Failed to fetch data:", error);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchModels();
+    fetchData();
   }, []);
+
+  // Update settings helper function
+  const updateSettings = async (newSettings: AppSettings) => {
+    try {
+      await invoke("update_settings", { settings: newSettings });
+      setSettings(newSettings);
+    } catch (error) {
+      console.error("Failed to update settings:", error);
+    }
+  };
 
   // Listen for download progress events from Rust backend
   useEffect(() => {
@@ -146,6 +163,12 @@ export default function Models() {
       if (selected && typeof selected === "string") {
         setCustomPath(selected);
         setUseCustomPath(true);
+
+        // Update settings with custom path
+        await updateSettings({
+          ...settings,
+          custom_model_path: selected,
+        });
       }
     } catch (error) {
       console.error("Failed to select directory:", error);
@@ -178,18 +201,19 @@ export default function Models() {
     }
   };
 
+  // Handle model selection with settings update
+  const handleSetModel = async (modelId: string) => {
+    setSelectedModel(modelId);
+
+    // Update settings with selected model
+    await updateSettings({
+      ...settings,
+      selected_model_id: modelId,
+    });
+  };
+
   if (isLoading) {
     return <Skeleton className="h-10 w-[250px]" />;
-  }
-
-  async function handleSetModel(modelId: string) {
-    try {
-      setSelectedModel(modelId);
-      await invoke("set_selected_model", { modelId });
-      console.log("Model selection saved:", modelId);
-    } catch (error) {
-      console.error("Failed to save model selection:", error);
-    }
   }
 
   return (
@@ -262,6 +286,11 @@ export default function Models() {
             onChange={(e) => {
               setCustomPath(e.target.value);
               setUseCustomPath(e.target.value !== "");
+              // Update settings with custom path
+              updateSettings({
+                ...settings,
+                custom_model_path: e.target.value || "",
+              });
             }}
             className="flex-1"
             disabled={downloadStatus.isDownloading}

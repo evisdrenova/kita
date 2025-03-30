@@ -74,9 +74,7 @@ pub fn run() {
             serve::check_model_exists,
             model::ask_llm,
             settings::get_settings,
-            settings::update_settings,
-            settings::set_selected_model,
-            settings::get_selected_model
+            settings::update_settings
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

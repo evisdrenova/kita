@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, Result as SqliteResult};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
@@ -20,9 +20,6 @@ pub struct AppSettings {
 pub enum SettingsError {
     #[error("Database error: {0}")]
     Database(#[from] rusqlite::Error),
-
-    #[error("Path error: {0}")]
-    Path(String),
 
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
@@ -59,7 +56,6 @@ impl SettingsManager {
     pub fn initialize(&self) -> Result<()> {
         let conn = self.get_connection()?;
 
-        // Try to load existing settings
         let mut stmt = conn.prepare("SELECT data FROM settings WHERE id = 1")?;
         let settings_result = stmt.query_row([], |row| {
             let json: String = row.get(0)?;
@@ -104,42 +100,13 @@ impl SettingsManager {
         Ok(settings.clone())
     }
 
-    // Update specific settings
-    pub fn update<F>(&self, updater: F) -> Result<()>
-    where
-        F: FnOnce(&mut AppSettings),
-    {
+    // Update the entire settings object
+    pub fn update(&self, new_settings: AppSettings) -> Result<()> {
         let mut settings = self.settings.lock().unwrap();
-        updater(&mut settings);
+        *settings = new_settings;
         drop(settings); // Release the lock
         self.save()?;
         Ok(())
-    }
-
-    // Set the selected model
-    pub fn set_selected_model(&self, model_id: Option<String>) -> Result<()> {
-        self.update(|settings| {
-            settings.selected_model_id = model_id;
-        })
-    }
-
-    // Get the selected model
-    pub fn get_selected_model(&self) -> Result<Option<String>> {
-        let settings = self.settings.lock().unwrap();
-        Ok(settings.selected_model_id.clone())
-    }
-
-    // Set the theme
-    pub fn set_theme(&self, theme: String) -> Result<()> {
-        self.update(|settings| {
-            settings.theme = Some(theme);
-        })
-    }
-
-    // Get the theme
-    pub fn get_theme(&self) -> Result<Option<String>> {
-        let settings = self.settings.lock().unwrap();
-        Ok(settings.theme.clone())
     }
 }
 
@@ -180,29 +147,6 @@ pub async fn update_settings(
 ) -> Result<(), String> {
     settings_manager
         .0
-        .update(|current| {
-            *current = settings;
-        })
+        .update(settings)
         .map_err(|e| format!("Failed to update settings: {}", e))
-}
-
-#[tauri::command]
-pub async fn set_selected_model(
-    settings_manager: tauri::State<'_, SettingsManagerState>,
-    model_id: String,
-) -> Result<(), String> {
-    settings_manager
-        .0
-        .set_selected_model(Some(model_id))
-        .map_err(|e| format!("Failed to set selected model: {}", e))
-}
-
-#[tauri::command]
-pub async fn get_selected_model(
-    settings_manager: tauri::State<'_, SettingsManagerState>,
-) -> Result<Option<String>, String> {
-    settings_manager
-        .0
-        .get_selected_model()
-        .map_err(|e| format!("Failed to get selected model: {}", e))
 }

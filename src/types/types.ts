@@ -123,3 +123,22 @@ export interface Column<T> {
   width?: number;
   render?: (item: T) => React.ReactNode;
 }
+
+export interface Model {
+  id: string;
+  name: string;
+  size: number; // Size in MB
+  quantization: string;
+  is_downloaded: boolean;
+}
+
+export interface AppSettings {
+  theme?: string;
+  custom_model_path?: string;
+  selected_model_id?: string;
+  window_width?: number;
+  window_height?: number;
+  global_hotkey?: string;
+  index_concurrency?: number;
+  selected_categories?: string[];
+}
