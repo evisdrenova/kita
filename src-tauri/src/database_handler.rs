@@ -26,8 +26,7 @@ pub fn initialize_database(app_handle: AppHandle) -> Result<PathBuf, DbError> {
 
     let conn: Connection = Connection::open(&db_path)?;
 
-    let statements = [
-        r#"CREATE TABLE IF NOT EXISTS files (
+    let files_table = r#"CREATE TABLE IF NOT EXISTS files (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             path TEXT UNIQUE,
             name TEXT,
@@ -36,18 +35,22 @@ pub fn initialize_database(app_handle: AppHandle) -> Result<PathBuf, DbError> {
             category TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );"#,
-        r#"CREATE TABLE IF NOT EXISTS recents (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            path TEXT UNIQUE,
-            lastClicked DATETIME DEFAULT CURRENT_TIMESTAMP
-        );"#,
-        r#"CREATE VIRTUAL TABLE IF NOT EXISTS files_fts
+        );"#;
+
+    let settings_table = r#"CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                value_type TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );"#;
+
+    let fts_table = r#"CREATE VIRTUAL TABLE IF NOT EXISTS files_fts
         USING fts5 (
             doc_text,
             content=''
-        );"#,
-    ];
+        );"#;
+
+    let statements = vec![files_table, settings_table, fts_table];
 
     for (i, stmt) in statements.iter().enumerate() {
         match conn.execute(stmt, []) {

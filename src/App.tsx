@@ -16,14 +16,13 @@ import Header from "./Header";
 import { errorToast } from "./components/ui/toast";
 import { open } from "@tauri-apps/plugin-dialog";
 import { documentDir } from "@tauri-apps/api/path";
-import Settings from "./Settings";
+import Settings from "./settings/Settings";
 import AppTable from "./AppTable";
 import FilesTable from "./FilesTable";
 import SectionNav from "./SectionNav";
 import { Command, File } from "lucide-react";
 import { register } from "@tauri-apps/plugin-global-shortcut";
 import { handleShortcut } from "./globalShortcut";
-import ModelSelect from "./ModelSelect";
 
 await register("CommandOrControl+Shift+C", handleShortcut).then(() =>
   console.log("shortcut successfully registered")
@@ -42,8 +41,6 @@ export default function App() {
   const [filesData, setFilesData] = useState<FileMetadata[]>([]);
   const [semanticData, setSemanticData] = useState<SemanticMetadata[]>([]);
   const [selectedItem, setSelectedItem] = useState<string>();
-  // const [recents, setRecents] = useState<FileMetadata[]>([]);
-  // const [isSearchActive, setIsSearchActive] = useState(false);
   const [resourceData, setResourceData] = useState<
     Record<number, { cpu_usage: number; memory_bytes: number }>
   >({});
@@ -54,6 +51,7 @@ export default function App() {
   );
   const [currentItemIndex, setCurrentItemIndex] = useState<number>(-1);
   const [activeSection, setActiveSection] = useState<number | null>(null);
+
   // base section definition
   const sectionDefinitions = [
     {
@@ -579,7 +577,7 @@ export default function App() {
           />
         ),
         // Add a method to get a limited component
-        getLimitedComponent: (limit: number) => (
+        getLimitedComponent: () => (
           <FilesTable
             data={filteredFiles}
             onRowClick={(file) => {
@@ -625,7 +623,6 @@ export default function App() {
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-border h-screen ">
       <Header setSearchQuery={setSearchQuery} searchQuery={searchQuery} />
-      <ModelSelect />
       <main className="flex-1 overflow-auto scrollbar">
         <SectionNav
           sections={sections}

@@ -4,14 +4,15 @@ import {
   DialogContent,
   DialogDescription,
   DialogTitle,
-} from "./components/ui/dialog";
-import { Button } from "./components/ui/button";
-import { Checkbox } from "./components/ui/checkbox";
+} from "../components/ui/dialog";
+import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
 import { forwardRef, useState } from "react";
-import { IndexingProgress, SearchCategory } from "./types/types";
-import { ScrollArea } from "./components/ui/scroll-area";
-import { Separator } from "./components/ui/separator";
-import { Badge } from "./components/ui/badge";
+import { IndexingProgress, SearchCategory } from "../types/types";
+import { ScrollArea } from "../components/ui/scroll-area";
+import { Separator } from "../components/ui/separator";
+import { Badge } from "../components/ui/badge";
+import Models from "./Models";
 
 interface FolderSettingsProps {
   toggleCategory: (category: SearchCategory) => void;
@@ -30,7 +31,8 @@ type SettingCategory =
   | "Appearance"
   | "Indexing"
   | "Shortcuts"
-  | "Advanced";
+  | "Advanced"
+  | "Models";
 
 const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
   (props, ref) => {
@@ -65,6 +67,7 @@ const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
           indexElapsedTime={indexElapsedTime}
         />
       ),
+      Models: <Models />,
       Shortcuts: <Shortcuts />,
       Advanced: <Advanced />,
     };

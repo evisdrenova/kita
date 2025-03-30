@@ -480,3 +480,5 @@ pub fn initialize_model_registry(app: &mut tauri::App) -> Result<()> {
 
     Ok(())
 }
+
+

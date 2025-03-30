@@ -5,16 +5,16 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "./components/ui/select";
-import { Skeleton } from "./components/ui/skeleton";
-import { Button } from "./components/ui/button";
-import { Progress } from "./components/ui/progress";
-import { Input } from "./components/ui/input";
+} from "../components/ui/select";
+import { Skeleton } from "../components/ui/skeleton";
+import { Button } from "../components/ui/button";
+import { Progress } from "../components/ui/progress";
+import { Input } from "../components/ui/input";
 import { Download, Check, AlertCircle, FolderOpen } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Badge } from "./components/ui/badge";
+import { Badge } from "../components/ui/badge";
 
 // Interface for model data
 interface Model {
@@ -30,7 +30,7 @@ interface DownloadProgress {
   model_id: string;
 }
 
-export default function ModelSelect() {
+export default function Models() {
   const [models, setModels] = useState<Model[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
@@ -168,12 +168,16 @@ export default function ModelSelect() {
 
   console.log("models", models);
 
+  async function handleSetModel() {
+    // set selected model in db
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
         <Select
           value={selectedModel || undefined}
-          onValueChange={setSelectedModel}
+          onValueChange={handleSetModel}
         >
           <SelectTrigger className="w-[250px]">
             <SelectValue placeholder="Select a model" />

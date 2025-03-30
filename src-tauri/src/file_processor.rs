@@ -1,7 +1,9 @@
+use crate::AppResult;
 use arrow_array::{Array, RecordBatch};
 use rusqlite::{params, Connection, Rows};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -430,21 +432,6 @@ pub fn get_file_metadata(
 pub struct FileProcessorState(Mutex<Option<FileProcessor>>);
 
 #[tauri::command]
-pub fn initialize_file_processor(
-    db_path: String,
-    concurrency: usize,
-    app_handle: AppHandle,
-) -> Result<(), String> {
-    let state: State<'_, FileProcessorState> = app_handle.state::<FileProcessorState>();
-    let mut processor_guard = state.0.lock().map_err(|e| e.to_string())?;
-    *processor_guard = Some(FileProcessor {
-        db_path: PathBuf::from(db_path),
-        concurrency_limit: concurrency,
-    });
-    Ok(())
-}
-
-#[tauri::command]
 pub async fn process_paths_command(
     paths: Vec<String>,
     state: tauri::State<'_, FileProcessorState>,
@@ -776,5 +763,31 @@ pub fn open_file(file_path: &str) -> Result<(), String> {
             "Failed to open file, exit code: {:?}",
             status.code()
         ))
+    }
+}
+
+pub fn init_file_processor(
+    db_path: &str,
+    concurrency: usize,
+    app_handle: AppHandle,
+) -> AppResult<()> {
+    let state: State<'_, FileProcessorState> = app_handle.state::<FileProcessorState>();
+    let lock_result = state.0.lock();
+
+    match lock_result {
+        Ok(mut processor_guard) => {
+            *processor_guard = Some(FileProcessor {
+                db_path: PathBuf::from(db_path),
+                concurrency_limit: concurrency,
+            });
+
+            println!("File processor successfully initialized.");
+            Ok(())
+        }
+        Err(e) => {
+            let error_msg = format!("Failed to initialize file processor: {}", e);
+            eprintln!("{}", error_msg);
+            Err(Box::new(Error::new(ErrorKind::Other, error_msg)))
+        }
     }
 }

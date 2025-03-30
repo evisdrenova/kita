@@ -6,6 +6,7 @@ mod file_processor;
 mod model;
 mod resource_monitor;
 mod serve;
+mod settings;
 mod tokenizer;
 mod utils;
 mod vectordb_manager;
@@ -44,7 +45,9 @@ pub fn run() {
             let db_path = init_database(app.app_handle().clone())?;
             let db_path_str = db_path.to_string_lossy().to_string();
 
-            init_file_processor(db_path_str, 4, app.app_handle().clone())?;
+            settings::init_settings(&db_path_str, app.app_handle().clone())?;
+
+            file_processor::init_file_processor(&db_path_str, 4, app.app_handle().clone())?;
 
             init_vector_db(app)?;
 
@@ -90,27 +93,6 @@ fn init_database(app_handle: AppHandle) -> AppResult<std::path::PathBuf> {
             Err(Box::new(Error::new(
                 ErrorKind::Other,
                 format!("Failed to initialize database: {}", e),
-            )))
-        }
-    }
-}
-
-/// Initialize the file processor
-fn init_file_processor(
-    db_path: String,
-    concurrency: usize,
-    app_handle: AppHandle,
-) -> AppResult<()> {
-    match file_processor::initialize_file_processor(db_path, concurrency, app_handle) {
-        Ok(()) => {
-            println!("File processor successfully initialized.");
-            Ok(())
-        }
-        Err(e) => {
-            eprintln!("Failed to initialize file processor: {e}");
-            Err(Box::new(Error::new(
-                ErrorKind::Other,
-                format!("Failed to initialize file processor: {}", e),
             )))
         }
     }
