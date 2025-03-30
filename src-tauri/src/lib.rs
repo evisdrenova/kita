@@ -31,18 +31,16 @@ pub fn run() {
             window.open_devtools();
             window.close_devtools();
 
-            let radius = 12 as f64;
-
             // applies a blur effect to the window
             #[cfg(target_os = "macos")]
             apply_vibrancy(
                 &window,
                 NSVisualEffectMaterial::HudWindow,
                 Some(NSVisualEffectState::Active),
-                Some(radius),
+                Some(12 as f64),
             )?;
 
-            let db_path = init_database(app.app_handle().clone())?;
+            let db_path = database_handler::init_database(app.app_handle().clone())?;
             let db_path_str = db_path.to_string_lossy().to_string();
 
             settings::init_settings(&db_path_str, app.app_handle().clone())?;
@@ -79,23 +77,6 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-/// Initialize the database
-fn init_database(app_handle: AppHandle) -> AppResult<std::path::PathBuf> {
-    match database_handler::initialize_database(app_handle) {
-        Ok(path) => {
-            println!("Database successfully initialized");
-            Ok(path)
-        }
-        Err(e) => {
-            eprintln!("Failed to initialize database: {e}");
-            Err(Box::new(Error::new(
-                ErrorKind::Other,
-                format!("Failed to initialize database: {}", e),
-            )))
-        }
-    }
 }
 
 /// Initialize the vectior and store the state in the app

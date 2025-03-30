@@ -1,8 +1,11 @@
 use rusqlite::Connection;
+use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
 use tauri::AppHandle;
 use tauri::Manager;
 use thiserror::Error;
+
+use crate::AppResult;
 
 #[derive(Error, Debug)]
 pub enum DbError {
@@ -13,18 +16,27 @@ pub enum DbError {
     #[error("Tauri path error: {0}")]
     TauriPath(#[from] tauri::Error),
 }
-
-// handles creating the database and returns the db_path
-#[tauri::command]
-pub fn initialize_database(app_handle: AppHandle) -> Result<PathBuf, DbError> {
-    let app_data_dir: PathBuf = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|_| DbError::NoAppDataDir)?;
+/// Initialize the database and return the path to the created database file
+pub fn init_database(app_handle: AppHandle) -> AppResult<std::path::PathBuf> {
+    let app_data_dir: PathBuf = match app_handle.path().app_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => {
+            let error_msg = "Failed to get app data directory";
+            eprintln!("{}", error_msg);
+            return Err(Box::new(Error::new(ErrorKind::NotFound, error_msg)));
+        }
+    };
 
     let db_path: PathBuf = app_data_dir.join("kita-database.sqlite");
 
-    let conn: Connection = Connection::open(&db_path)?;
+    let conn: Connection = match Connection::open(&db_path) {
+        Ok(conn) => conn,
+        Err(e) => {
+            let error_msg = format!("Failed to open database connection: {}", e);
+            eprintln!("{}", error_msg);
+            return Err(Box::new(Error::new(ErrorKind::Other, error_msg)));
+        }
+    };
 
     let files_table = r#"CREATE TABLE IF NOT EXISTS files (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,15 +64,15 @@ pub fn initialize_database(app_handle: AppHandle) -> Result<PathBuf, DbError> {
 
     let statements = vec![files_table, settings_table, fts_table];
 
+    // Execute all statements
     for (i, stmt) in statements.iter().enumerate() {
-        match conn.execute(stmt, []) {
-            Ok(_) => println!("Statement #{} executed successfully", i + 1),
-            Err(e) => {
-                println!("Error executing statement #{}: {}", i + 1, e);
-                return Err(e.into());
-            }
+        if let Err(e) = conn.execute(stmt, []) {
+            let error_msg = format!("Error executing statement #{}: {}", i + 1, e);
+            eprintln!("{}", error_msg);
+            return Err(Box::new(Error::new(ErrorKind::Other, error_msg)));
         }
     }
 
+    println!("Database successfully initialized at {}", db_path.display());
     Ok(db_path)
 }
