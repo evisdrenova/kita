@@ -37,7 +37,7 @@ pub fn run() {
             apply_vibrancy(
                 &window,
                 NSVisualEffectMaterial::HudWindow,
-                None,
+                Some(NSVisualEffectState::Active),
                 Some(radius),
             )?;
 
@@ -48,7 +48,7 @@ pub fn run() {
 
             init_vector_db(app)?;
 
-            // serve::initialize_model_registry(app)?;
+            serve::initialize_model_registry(app)?;
 
             resource_monitor::init(app)?;
 

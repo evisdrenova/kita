@@ -9,23 +9,19 @@ import {
 import { Skeleton } from "./components/ui/skeleton";
 import { Button } from "./components/ui/button";
 import { Progress } from "./components/ui/progress";
-import { Download, Check, AlertCircle } from "lucide-react";
+import { Input } from "./components/ui/input";
+import { Download, Check, AlertCircle, FolderOpen } from "lucide-react";
+import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+// Interface for model data
 interface Model {
   id: string;
   name: string;
-  size: number; //in MB
+  size: number; // Size in MB
   quantization: string;
   is_downloaded: boolean;
-}
-
-interface DownloadStatus {
-  isDownloading: boolean;
-  progress: number;
-  error: string | null;
-  model_id: string | null;
 }
 
 interface DownloadProgress {
@@ -37,7 +33,14 @@ export default function ModelSelect() {
   const [models, setModels] = useState<Model[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
-  const [downloadStatus, setDownloadStatus] = useState<DownloadStatus>({
+  const [customPath, setCustomPath] = useState<string>("");
+  const [useCustomPath, setUseCustomPath] = useState<boolean>(false);
+  const [downloadStatus, setDownloadStatus] = useState<{
+    isDownloading: boolean;
+    progress: number;
+    error: string | null;
+    model_id: string | null;
+  }>({
     isDownloading: false,
     progress: 0,
     error: null,
@@ -114,6 +117,24 @@ export default function ModelSelect() {
     };
   }, []);
 
+  const selectModelPath = async () => {
+    try {
+      // Open a directory selection dialog
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "Select Model Storage Location",
+      });
+
+      if (selected && typeof selected === "string") {
+        setCustomPath(selected);
+        setUseCustomPath(true);
+      }
+    } catch (error) {
+      console.error("Failed to select directory:", error);
+    }
+  };
+
   const handleDownloadModel = async (modelId: string) => {
     try {
       // Reset any previous error
@@ -122,8 +143,11 @@ export default function ModelSelect() {
         error: null,
       }));
 
-      // Start download via backend
-      await invoke("start_model_download", { modelId });
+      // Start download via backend, passing custom path if specified
+      await invoke("start_model_download", {
+        modelId,
+        customPath: useCustomPath ? customPath : null,
+      });
 
       // The progress, completion, and errors will be handled by event listeners
     } catch (error) {
@@ -191,6 +215,37 @@ export default function ModelSelect() {
             )}
           </Button>
         )}
+      </div>
+
+      <div className="pt-2">
+        <div className="text-sm font-medium mb-2 block">
+          Model Storage Location
+          {!useCustomPath && (
+            <span className="text-gray-500 ml-2 text-xs">
+              (Default: App Data Directory)
+            </span>
+          )}
+        </div>
+        <div className="flex gap-2 items-center">
+          <Input
+            type="text"
+            placeholder="Use default app data directory"
+            value={customPath}
+            onChange={(e) => {
+              setCustomPath(e.target.value);
+              setUseCustomPath(e.target.value !== "");
+            }}
+            className="flex-1"
+            disabled={downloadStatus.isDownloading}
+          />
+          <Button
+            variant="outline"
+            onClick={selectModelPath}
+            disabled={downloadStatus.isDownloading}
+          >
+            <FolderOpen className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {downloadStatus.isDownloading && (

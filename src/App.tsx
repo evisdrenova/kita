@@ -623,28 +623,10 @@ export default function App() {
   // maybe that means combined the semantic data with the files data in the useEffect when the query changes and then returning the union of them and handling duplicates. It need to just like work...
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="flex flex-col overflow-hidden rounded-xl border border-border h-screen ">
       <Header setSearchQuery={setSearchQuery} searchQuery={searchQuery} />
       <ModelSelect />
       <main className="flex-1 overflow-auto scrollbar">
-        {/* {searchQuery.trim() === "" ? (
-          recents.length > 0 ? (
-            <Recents
-              recents={recents}
-              handleResultSelect={handleResultSelect}
-            />
-          ) : (
-            // Show empty state if no recents
-            <div className="flex h-full items-center justify-center">
-              <EmptyState />
-            </div>
-          )
-        ) : filteredResults.length === 0 ? (
-          // Show empty state if searching but no results
-          <div className="flex h-full items-center justify-center">
-            <EmptyState />
-          </div>
-        ) : ( */}
         <SectionNav
           sections={sections}
           activeSection={activeSection}

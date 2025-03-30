@@ -20,14 +20,8 @@ pub enum ModelError {
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 
-    #[error("Model not found: {0}")]
-    NotFound(String),
-
     #[error("Download failed: {0}")]
     DownloadFailed(String),
-
-    #[error("Invalid model configuration")]
-    InvalidConfig,
 }
 
 // Type alias for results
@@ -45,6 +39,7 @@ pub struct HuggingFaceModelInfo {
     quantization: String,
 }
 
+/// this represnts models that we download locally
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModelInfo {
     pub id: String,
@@ -55,7 +50,6 @@ pub struct ModelInfo {
     pub is_downloaded: bool,
 }
 
-// Structure to maintain available and downloaded models
 pub struct ModelRegistry {
     available_models: Mutex<Vec<HuggingFaceModelInfo>>,
     downloaded_models: Mutex<Vec<ModelInfo>>,
@@ -108,6 +102,7 @@ impl ModelRegistry {
         app_handle: &AppHandle,
         custom_path: Option<&str>,
     ) -> Result<()> {
+        println!("searching for downloaded models");
         let models_dir = get_models_dir(app_handle, custom_path)?;
         let mut downloaded = Vec::new();
 
@@ -220,7 +215,7 @@ impl ModelRegistry {
     }
 }
 
-// Get models directory path with option for custom path
+// Get models directory path
 fn get_models_dir(app_handle: &AppHandle, custom_path: Option<&str>) -> Result<PathBuf> {
     // If custom path is provided, use it
     if let Some(path) = custom_path {
@@ -231,7 +226,7 @@ fn get_models_dir(app_handle: &AppHandle, custom_path: Option<&str>) -> Result<P
     let app_data_dir = app_handle.path().app_data_dir().map_err(|_| {
         ModelError::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            "App data directory not found",
+            "Model file directory not found",
         ))
     })?;
 
@@ -265,8 +260,33 @@ async fn download_model_from_hf(
         fs::create_dir_all(&models_dir)?;
     }
 
-    // Setup path for the downloaded file
+    // Setup paths for the downloaded file
     let file_path = models_dir.join(&model_info.filename);
+    let temp_path = models_dir.join(format!("{}.downloading", &model_info.filename));
+
+    // Check for existing downloads
+    if file_path.exists() {
+        // If the file exists, check if it's complete by trying to verify its size
+        let metadata = fs::metadata(&file_path)?;
+        let file_size = metadata.len();
+
+        // If we know the expected size and it matches, assume file is complete
+        if model_info.size > 0 && file_size == model_info.size * 1024 * 1024 {
+            // Convert MB to bytes
+            println!("Model already downloaded and complete");
+            return Ok(file_path);
+        } else {
+            // File exists but is the wrong size - delete it
+            println!("Found incomplete or corrupted download, removing...");
+            fs::remove_file(&file_path)?;
+        }
+    }
+
+    // Also check for any temporary download in progress
+    if temp_path.exists() {
+        println!("Found partial download, removing...");
+        fs::remove_file(&temp_path)?;
+    }
 
     // Get download URL
     let url = get_hf_download_url(&model_info.repo_id, &model_info.filename);
@@ -287,8 +307,8 @@ async fn download_model_from_hf(
     // Get total size
     let total_size = res.content_length().unwrap_or(0);
 
-    // Create file for writing
-    let mut file = fs::File::create(&file_path)?;
+    // Create temporary file for writing
+    let mut file = fs::File::create(&temp_path)?;
 
     // Download the file in chunks, updating progress
     let mut downloaded: u64 = 0;
@@ -316,6 +336,23 @@ async fn download_model_from_hf(
     }
 
     file.flush()?;
+
+    // Only after successful download, move the temporary file to the final location
+    fs::rename(&temp_path, &file_path)?;
+
+    // Double check the final file size if we know the expected size
+    if model_info.size > 0 {
+        let metadata = fs::metadata(&file_path)?;
+        let file_size = metadata.len();
+        let expected_size = model_info.size * 1024 * 1024; // Convert MB to bytes
+
+        if file_size != expected_size {
+            println!(
+                "Warning: Downloaded file size ({} bytes) differs from expected size ({} bytes)",
+                file_size, expected_size
+            );
+        }
+    }
 
     Ok(file_path)
 }
@@ -407,12 +444,7 @@ pub async fn check_model_exists(
     // Rescan to make sure we have the latest info
     model_registry
         .scan_downloaded_models(&app_handle, custom_path.as_deref())
-        .map_err(|_| {
-            ModelError::Io(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "App data directory not found",
-            ))
-        });
+        .map_err(|_| "Error scanning models".to_string())?;
 
     // Check if model exists
     let model_exists = model_registry
@@ -428,17 +460,21 @@ pub fn initialize_model_registry(app: &mut tauri::App) -> Result<()> {
     let registry = ModelRegistry::new();
     registry.initialize();
 
-    // add it to the app state
+    // add registry to the app state
     app.manage(registry);
 
-    // Capture app_handle for async task
     let app_handle = app.app_handle().clone();
 
     // Don't block initialization on this
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         let registry_state = app_handle.state::<ModelRegistry>();
-        if let Err(e) = registry_state.scan_downloaded_models(&app_handle, None) {
-            eprintln!("Error scanning models during init: {}", e);
+        match registry_state.scan_downloaded_models(&app_handle, None) {
+            Ok(_) => {
+                println!("Successfully scanned models");
+            }
+            Err(e) => {
+                eprintln!("Error scanning models during init: {}", e);
+            }
         }
     });
 
