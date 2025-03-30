@@ -30,9 +30,16 @@ pub fn run() {
             window.open_devtools();
             window.close_devtools();
 
+            let radius = 12 as f64;
+
             // applies a blur effect to the window
             #[cfg(target_os = "macos")]
-            apply_vibrancy(&window, NSVisualEffectMaterial::HudWindow, None, None)?;
+            apply_vibrancy(
+                &window,
+                NSVisualEffectMaterial::HudWindow,
+                None,
+                Some(radius),
+            )?;
 
             let db_path = init_database(app.app_handle().clone())?;
             let db_path_str = db_path.to_string_lossy().to_string();
