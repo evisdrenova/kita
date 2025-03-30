@@ -48,15 +48,31 @@ export default function Models() {
     model_id: null,
   });
 
-  // Load available models from backend
   useEffect(() => {
     const fetchModels = async () => {
       try {
         setIsLoading(true);
+
+        // Fetch available models
         const availableModels = await invoke<Model[]>("get_available_models");
+
+        // Get saved model preference
+        const savedModelId = await invoke<string | null>("get_selected_model");
+
         setModels(availableModels);
+
+        if (savedModelId) {
+          setSelectedModel(savedModelId);
+        } else if (availableModels.length > 0) {
+          // Auto-select first downloaded model if available
+          const downloadedModel = availableModels.find((m) => m.is_downloaded);
+          if (downloadedModel) {
+            setSelectedModel(downloadedModel.id);
+            await invoke("set_selected_model", { modelId: downloadedModel.id });
+          }
+        }
       } catch (error) {
-        console.error("Failed to fetch models:", error);
+        console.error("Failed to load models:", error);
       } finally {
         setIsLoading(false);
       }
@@ -166,10 +182,14 @@ export default function Models() {
     return <Skeleton className="h-10 w-[250px]" />;
   }
 
-  console.log("models", models);
-
-  async function handleSetModel() {
-    // set selected model in db
+  async function handleSetModel(modelId: string) {
+    try {
+      setSelectedModel(modelId);
+      await invoke("set_selected_model", { modelId });
+      console.log("Model selection saved:", modelId);
+    } catch (error) {
+      console.error("Failed to save model selection:", error);
+    }
   }
 
   return (
