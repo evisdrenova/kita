@@ -16,10 +16,9 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>({});
-  const [theme, setTheme] = useState<Theme>("dark"); // Default until settings load
+  const [theme, setTheme] = useState<Theme>("dark");
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load settings when provider mounts
   useEffect(() => {
     async function loadSettings() {
       try {
@@ -59,7 +58,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     loadSettings();
   }, []);
 
-  // Update document class when theme changes
   useEffect(() => {
     if (isLoading) return;
 
@@ -69,15 +67,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       document.documentElement.classList.remove("dark");
     }
   }, [theme, isLoading]);
-
-  // Listen for system theme changes
   useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const handleChange = async (e: MediaQueryListEvent) => {
       const newTheme = e.matches ? "dark" : "light";
       setTheme(newTheme);
 
-      // Update settings when system theme changes
       try {
         const updatedSettings = { ...settings, theme: newTheme };
         await invoke("update_settings", { settings: updatedSettings });
@@ -91,13 +86,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     return () => mediaQuery.removeEventListener("change", handleChange);
   }, [settings]);
 
-  // Update settings helper function
   const updateSettings = async (newSettings: AppSettings) => {
     try {
       await invoke("update_settings", { settings: newSettings });
       setSettings(newSettings);
 
-      // Update theme if it changed
       if (newSettings.theme && newSettings.theme !== theme) {
         setTheme(newSettings.theme as Theme);
       }
@@ -110,7 +103,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const newTheme = theme === "light" ? "dark" : "light";
     setTheme(newTheme);
 
-    // Update settings with new theme
     try {
       const updatedSettings = { ...settings, theme: newTheme };
       await invoke("update_settings", { settings: updatedSettings });
