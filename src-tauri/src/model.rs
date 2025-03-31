@@ -166,58 +166,71 @@ impl LLMServer {
     }
 
     async fn prepare_server_binary(&self) -> Result<PathBuf, LLMServerError> {
-        // Get the app's data directory using the path() method instead of path_resolver
-        let app_data_dir =
-            self.app_handle.path().app_data_dir().map_err(|_| {
-                LLMServerError::CommandError("Failed to get app data directory".into())
-            })?;
+        println!("Checking for server binary in current directory...");
 
-        let bin_dir = app_data_dir.join("bin");
-        let server_path = bin_dir.join(SERVER_BINARY_NAME);
-
-        // Create bin directory if it doesn't exist
-        if !bin_dir.exists() {
-            fs::create_dir_all(&bin_dir).map_err(|e| {
-                LLMServerError::CommandError(format!("Failed to create bin directory: {}", e))
-            })?;
-        }
-
-        // If the server binary already exists in the data directory, use it
-        if server_path.exists() {
-            return Ok(server_path);
-        }
-
-        // Otherwise, extract it from resources
-        println!("Extracting server binary from resources...");
-
-        // Get the path to the resource using path() approach
-        let resource_path = self
-            .app_handle
-            .path()
-            .resource_dir()
-            .map_err(|_| LLMServerError::CommandError("Failed to get resource directory".into()))?
+        // First try the src-tauri/resources path (for development)
+        let cwd_path = std::env::current_dir()?
+            .join("resources")
             .join(SERVER_BINARY_NAME);
 
-        if !resource_path.exists() {
-            return Err(LLMServerError::ResourceExtractionError);
+        println!("Looking for binary at: {}", cwd_path.display());
+
+        if cwd_path.exists() {
+            println!(
+                "Found server binary in development resources: {}",
+                cwd_path.display()
+            );
+
+            // Check if we need to set executable permissions
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = fs::metadata(&cwd_path)?.permissions();
+                if perms.mode() & 0o111 == 0 {
+                    // Set executable permissions if not already set
+                    perms.set_mode(0o755); // rwxr-xr-x
+                    fs::set_permissions(&cwd_path, perms)?;
+                    println!("Set executable permissions on development binary");
+                }
+            }
+
+            return Ok(cwd_path);
         }
 
-        // Copy from resources to local data directory
-        fs::copy(&resource_path, &server_path).map_err(|e| {
-            LLMServerError::CommandError(format!("Failed to copy server binary: {}", e))
-        })?;
+        // Try the resource directory (for production)
+        // should handle this with an envar
+        if let Ok(resource_dir) = self.app_handle.path().resource_dir() {
+            let resource_path = resource_dir.join(SERVER_BINARY_NAME);
+            println!(
+                "Looking for binary at resource path: {}",
+                resource_path.display()
+            );
 
-        // On Unix systems, we need to set the executable permission
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&server_path)?.permissions();
-            perms.set_mode(0o755); // rwxr-xr-x
-            fs::set_permissions(&server_path, perms)?;
+            if resource_path.exists() {
+                println!(
+                    "Found server binary in resources: {}",
+                    resource_path.display()
+                );
+
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mut perms = fs::metadata(&resource_path)?.permissions();
+                    if perms.mode() & 0o111 == 0 {
+                        perms.set_mode(0o755);
+                        fs::set_permissions(&resource_path, perms)?;
+                    }
+                }
+
+                return Ok(resource_path);
+            }
         }
 
-        println!("Server binary prepared at: {}", server_path.display());
-        Ok(server_path)
+        // Binary not found
+        Err(LLMServerError::CommandError(format!(
+            "Could not find {}. Searched in src-tauri/resources and resource directory.",
+            SERVER_BINARY_NAME
+        )))
     }
 
     async fn start_server(
