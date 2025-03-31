@@ -12,6 +12,8 @@ use reqwest::Client;
 use tauri::{AppHandle, Manager};
 use thiserror::Error;
 
+use crate::settings::SettingsManagerState;
+
 const SERVER_PORT: u16 = 8080;
 const SERVER_BINARY_NAME: &str = "llama-server";
 
@@ -22,7 +24,7 @@ const PROMPT_TEXT: &str = "Explain the importance of Rust's ownership system in 
 const SERVER_READY_TIMEOUT_SECS: u64 = 180;
 
 #[derive(Error, Debug)]
-enum LLMServerError {
+pub enum LLMServerError {
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
 
@@ -62,6 +64,7 @@ pub struct LLMServer {
     server_process: Option<tokio::process::Child>,
     port: u16,
     app_handle: AppHandle,
+    model_path: Option<PathBuf>,
 }
 
 impl LLMServer {
@@ -70,13 +73,19 @@ impl LLMServer {
             server_process: None,
             port: SERVER_PORT,
             app_handle,
+            model_path: None,
         })
     }
 
     pub async fn start(&mut self) -> Result<(), LLMServerError> {
-        // Find the model path in Downloads directory
-        let downloads_dir = dirs::download_dir().ok_or(LLMServerError::DownloadsDirNotFound)?;
-        let model_path = downloads_dir.join(MODEL_FILENAME);
+        // Check if we have a model path set
+        let model_path = if let Some(path) = &self.model_path {
+            path.clone()
+        } else {
+            // Fallback to default behavior if no model path is set
+            let downloads_dir = dirs::download_dir().ok_or(LLMServerError::DownloadsDirNotFound)?;
+            downloads_dir.join(MODEL_FILENAME)
+        };
 
         println!("Using model path: {}", model_path.display());
 
@@ -125,6 +134,21 @@ impl LLMServer {
                 ))
             }
         }
+    }
+
+    pub async fn set_model_path(&mut self, path: &str) -> Result<(), LLMServerError> {
+        let model_path = PathBuf::from(path);
+
+        // Verify the model exists
+        if !model_path.exists() {
+            return Err(LLMServerError::CommandError(format!(
+                "Model file not found at: {}",
+                model_path.display()
+            )));
+        }
+
+        self.model_path = Some(model_path);
+        Ok(())
     }
 
     pub async fn send_prompt(&self, prompt: &str) -> Result<String, LLMServerError> {
@@ -356,47 +380,81 @@ impl Drop for LLMServer {
 // Example of how to use this in a Tauri command
 #[tauri::command]
 pub async fn ask_llm(app_handle: AppHandle, prompt: String) -> Result<String, String> {
-    // Create a new server instance
-    let mut server = LLMServer::new(app_handle)
-        .await
-        .map_err(|e| format!("Failed to create server: {}", e))?;
+    println!("Incoming prompt: {:?}", prompt);
 
-    // Start the server
-    server
-        .start()
-        .await
-        .map_err(|e| format!("Failed to start server: {}", e))?;
+    // Get the server state
+    let server_state = app_handle.state::<tokio::sync::Mutex<Option<LLMServer>>>();
+    let server_guard = server_state.lock().await;
 
-    // Send the prompt
-    let response = server
-        .send_prompt(&prompt)
-        .await
-        .map_err(|e| format!("Failed to get response: {}", e))?;
-
-    // Stop the server
-    server
-        .stop()
-        .await
-        .map_err(|e| format!("Failed to stop server: {}", e))?;
-
-    Ok(response)
+    // Check if we have a server instance
+    if let Some(server) = &*server_guard {
+        // Use the existing server to send the prompt
+        server
+            .send_prompt(&prompt)
+            .await
+            .map_err(|e| format!("Failed to get response: {}", e))
+    } else {
+        // No server instance available
+        Err("No LLM server is currently running. Please select a model first.".into())
+    }
 }
 
-// Example of how to register this command in main.rs
 pub fn register_llm_commands(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(tokio::sync::Mutex::new(None::<LLMServer>));
     Ok(())
 }
 
-#[derive(Default)]
-struct MyState {
-    s: std::sync::Mutex<String>,
-    t: std::sync::Mutex<std::collections::HashMap<String, String>>,
-}
-// remember to call `.manage(MyState::default())`
-#[tauri::command]
-async fn command_name(state: tauri::State<'_, MyState>) -> Result<(), String> {
-    *state.s.lock().unwrap() = "new string".into();
-    state.t.lock().unwrap().insert("key".into(), "value".into());
-    Ok(())
-}
+// #[tauri::command]
+// pub async fn change_llm_model(app_handle: AppHandle, model_id: String) -> Result<(), String> {
+//     // Get model info
+//     let registry_state = app_handle.state::<ModelRegistry>();
+//     let model = registry_state
+//         .get_model(&model_id)
+//         .ok_or_else(|| "Model not found".to_string())?;
+
+//     if !model.is_downloaded {
+//         return Err("Selected model is not downloaded".to_string());
+//     }
+
+//     // Get the server state
+//     let server_state = app_handle.state::<tokio::sync::Mutex<Option<LLMServer>>>();
+//     let mut server_guard = server_state.lock().await;
+
+//     // Restart the server with the new model
+//     if let Some(mut server) = server_guard.take() {
+//         // Stop existing server
+//         if let Err(e) = server.stop().await {
+//             eprintln!("Error stopping LLM server: {}", e);
+//             // Continue anyway, we'll try to start a new one
+//         }
+//     }
+
+//     // Create a new server
+//     let mut new_server = LLMServer::new(app_handle.clone())
+//         .await
+//         .map_err(|e| format!("Failed to create server: {}", e))?;
+
+//     // Set the model path
+//     new_server
+//         .set_model_path(&model.path)
+//         .await
+//         .map_err(|e| format!("Failed to set model path: {}", e))?;
+
+//     // Start the server
+//     new_server
+//         .start()
+//         .await
+//         .map_err(|e| format!("Failed to start server: {}", e))?;
+
+//     // Store the new server
+//     *server_guard = Some(new_server);
+
+//     // Update the selected model in settings
+//     let settings_state = app_handle.state::<SettingsManagerState>();
+//     settings_state
+//         .0
+//         .set_selected_model(Some(model_id))
+//         .map_err(|e| format!("Failed to update settings: {}", e))?;
+
+//     Ok(())
+// }

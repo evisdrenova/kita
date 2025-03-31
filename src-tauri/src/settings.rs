@@ -99,7 +99,7 @@ impl SettingsManager {
     }
 
     // Get a copy of all settings
-    pub fn get_all(&self) -> Result<AppSettings> {
+    pub fn get_settings(&self) -> Result<AppSettings> {
         let settings = self.settings.lock().unwrap();
         Ok(settings.clone())
     }
@@ -140,7 +140,7 @@ pub async fn get_settings(
 ) -> Result<AppSettings, String> {
     settings_manager
         .0
-        .get_all()
+        .get_settings()
         .map_err(|e| format!("Failed to get settings: {}", e))
 }
 

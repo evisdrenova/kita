@@ -75,6 +75,7 @@ pub fn run() {
             serve::start_model_download,
             serve::check_model_exists,
             model::ask_llm,
+            // model::change_llm_model,
             settings::get_settings,
             settings::update_settings
         ])
