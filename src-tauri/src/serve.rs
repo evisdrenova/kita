@@ -463,99 +463,135 @@ pub fn initialize_model_registry(app: &mut tauri::App) -> Result<()> {
     let registry = ModelRegistry::new();
     registry.initialize();
 
-    // add registry to the app state
+    // Add registry to the app state
     app.manage(registry);
 
+    // Launch background scan and server initialization
     let app_handle = app.app_handle().clone();
-
-    // Don't block initialization on this
     tauri::async_runtime::spawn(async move {
-        // First scan for models
-        let registry_state = app_handle.state::<ModelRegistry>();
-        match registry_state.scan_downloaded_models(&app_handle, None) {
-            Ok(_) => {
-                println!("Successfully scanned models");
-
-                // Get settings to find selected model
-                let settings_state = app_handle.state::<SettingsManagerState>();
-                let settings = match settings_state.0.get_settings() {
-                    Ok(s) => s,
-                    Err(e) => {
-                        eprintln!("Error getting settings: {}", e);
-                        return;
-                    }
-                };
-
-                let selected_model_id: Option<String> = settings.selected_model_id;
-
-                match selected_model_id {
-                    None => {
-                        // No model selected, emit an event to notify frontend
-                        println!("No model selected, user needs to select one");
-                        let _ = app_handle.emit(
-                            "model-selection-required",
-                            "Please select a model to use for AI features",
-                        );
-                    }
-                    Some(model_id) => {
-                        // A model is selected, try to use it
-                        if let Some(model) = registry_state.get_model(&model_id) {
-                            if model.is_downloaded {
-                                // The selected model exists and is downloaded
-                                println!("Starting LLM server with model: {}", model.name);
-
-                                // Create and start server
-                                match LLMServer::new(app_handle.clone()).await {
-                                    Ok(mut server) => {
-                                        // Set the model path based on the selected model
-                                        if let Err(e) = server.set_model_path(&model.path).await {
-                                            eprintln!("Error setting model path: {}", e);
-                                            return;
-                                        }
-
-                                        // Start the server
-                                        if let Err(e) = server.start().await {
-                                            eprintln!("Error starting LLM server: {}", e);
-                                            return;
-                                        }
-
-                                        // Store the server in app state
-                                        let mut server_state = app_handle
-                                            .state::<tokio::sync::Mutex<Option<LLMServer>>>();
-                                        let mut server_guard = server_state.lock().await;
-                                        *server_guard = Some(server);
-
-                                        println!("LLM server started successfully");
-                                    }
-                                    Err(e) => {
-                                        eprintln!("Failed to create LLM server: {}", e);
-                                    }
-                                }
-                            } else {
-                                // Model is not downloaded
-                                println!("Selected model '{}' is not downloaded", model.name);
-                                let _ = app_handle.emit(
-                                    "model-download-required",
-                                    format!(
-                                        "The selected model '{}' needs to be downloaded before use",
-                                        model.name
-                                    ),
-                                );
-                            }
-                        } else {
-                            // Selected model not found
-                            println!("Selected model ID '{}' not found", model_id);
-                            let _ = app_handle.emit("model-selection-required", 
-                                "The previously selected model is no longer available. Please select a new model.");
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("Error scanning models during init: {}", e);
-            }
-        }
+        scan_and_initialize_server(app_handle).await;
     });
 
     Ok(())
+}
+
+// Scan models and initialize server if appropriate
+async fn scan_and_initialize_server(app_handle: AppHandle) {
+    // First scan for models
+    let registry_state = app_handle.state::<ModelRegistry>();
+    match registry_state.scan_downloaded_models(&app_handle, None) {
+        Ok(_) => {
+            println!("Successfully scanned models");
+            initialize_server_from_settings(&app_handle).await;
+        }
+        Err(e) => {
+            eprintln!("Error scanning models during init: {}", e);
+        }
+    }
+}
+
+async fn initialize_server_from_settings(app_handle: &AppHandle) {
+    // Get selected model from settings
+    let selected_model_id = match get_selected_model_from_settings(app_handle) {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            notify_model_selection_required(app_handle);
+            return;
+        }
+        Err(e) => {
+            eprintln!("Error getting settings: {}", e);
+            return;
+        }
+    };
+
+    // Try to load the selected model
+    handle_selected_model(app_handle, &selected_model_id).await;
+}
+
+// Get the selected model ID from settings
+fn get_selected_model_from_settings(app_handle: &AppHandle) -> Result<Option<String>, String> {
+    let settings_state = app_handle.state::<SettingsManagerState>();
+    let settings = settings_state.0.get_settings().map_err(|e| e.to_string())?;
+
+    Ok(settings.selected_model_id)
+}
+
+// Handle the selected model: check if it exists and is downloaded
+async fn handle_selected_model(app_handle: &AppHandle, model_id: &str) {
+    let registry_state = app_handle.state::<ModelRegistry>();
+
+    match registry_state.get_model(model_id) {
+        Some(model) if model.is_downloaded => {
+            // Model exists and is downloaded
+            start_server_with_model(app_handle, model).await;
+        }
+        Some(model) => {
+            // Model exists but is not downloaded
+            notify_model_download_required(app_handle, &model.name);
+        }
+        None => {
+            // Model not found
+            notify_model_not_found(app_handle, model_id);
+        }
+    }
+}
+
+// Start the LLM server with the specified model
+async fn start_server_with_model(app_handle: &AppHandle, model: ModelInfo) {
+    println!("Starting LLM server with model: {}", model.name);
+
+    // Create server
+    match LLMServer::new(app_handle.clone()).await {
+        Ok(mut server) => {
+            // Set the model path
+            if let Err(e) = server.set_model_path(&model.path).await {
+                eprintln!("Error setting model path: {}", e);
+                return;
+            }
+
+            // Start the server
+            if let Err(e) = server.start().await {
+                eprintln!("Error starting LLM server: {}", e);
+                return;
+            }
+
+            // Store the server in app state
+            let server_state = app_handle.state::<tokio::sync::Mutex<Option<LLMServer>>>();
+            let mut server_guard = server_state.lock().await;
+            *server_guard = Some(server);
+
+            println!("LLM server started successfully");
+        }
+        Err(e) => {
+            eprintln!("Failed to create LLM server: {}", e);
+        }
+    }
+}
+
+// Notification functions
+fn notify_model_selection_required(app_handle: &AppHandle) {
+    println!("No model selected, user needs to select one");
+    let _ = app_handle.emit(
+        "model-selection-required",
+        "Please select a model to use for AI features",
+    );
+}
+
+fn notify_model_download_required(app_handle: &AppHandle, model_name: &str) {
+    println!("Selected model '{}' is not downloaded", model_name);
+    let _ = app_handle.emit(
+        "model-download-required",
+        format!(
+            "The selected model '{}' needs to be downloaded before use",
+            model_name
+        ),
+    );
+}
+
+fn notify_model_not_found(app_handle: &AppHandle, model_id: &str) {
+    println!("Selected model ID '{}' not found", model_id);
+    let _ = app_handle.emit(
+        "model-selection-required",
+        "The previously selected model is no longer available. Please select a new model.",
+    );
 }

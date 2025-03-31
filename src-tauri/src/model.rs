@@ -59,7 +59,6 @@ struct CompletionRequest {
 struct CompletionResponse {
     content: String,
 }
-
 pub struct LLMServer {
     server_process: Option<tokio::process::Child>,
     port: u16,
