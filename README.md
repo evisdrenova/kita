@@ -59,4 +59,14 @@ xls -> read row by row or cell ranges
 
 // when we do the embeddings, we count all of the files that we're going to embed, but only do the ones that aren't empty, so it turns out saying something like 9 out of 60 completed, we need to return the statuses for the other ones too i.e. 9 completed, 52 skipped
 
-// update the semantic search to return back the semantic type instead of the filemetadata type
+
+
+// staticially link the llama.cpp server and its deps so that they're all in one executable like:
+
+```bash
+mkdir build && cd build
+cmake .. -DBUILD_SHARED_LIBS=OFF
+cmake --build . --config Release
+```
+
+which is going to spit out a 
