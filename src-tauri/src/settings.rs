@@ -56,6 +56,8 @@ impl SettingsManager {
     pub fn initialize(&self) -> Result<()> {
         let conn = self.get_connection()?;
 
+        println!("initilaizing");
+
         let mut stmt = conn.prepare("SELECT data FROM settings WHERE id = 1")?;
         let settings_result = stmt.query_row([], |row| {
             let json: String = row.get(0)?;
@@ -70,6 +72,8 @@ impl SettingsManager {
                 *settings = loaded_settings;
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => {
+                println!("error");
+
                 // No settings found, save defaults
                 self.save()?;
             }
@@ -86,7 +90,7 @@ impl SettingsManager {
 
         let conn = self.get_connection()?;
         conn.execute(
-            "INSERT OR REPLACE INTO settings_json (id, data, updated_at) 
+            "INSERT OR REPLACE INTO settings(id, data, updated_at) 
              VALUES (1, ?, CURRENT_TIMESTAMP)",
             params![json],
         )?;

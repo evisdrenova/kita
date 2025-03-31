@@ -44,6 +44,8 @@ pub fn run() {
 
             settings::init_settings(&db_path_str, app.app_handle().clone())?;
 
+            println!("init settings done");
+
             file_processor::init_file_processor(&db_path_str, 4, app.app_handle().clone())?;
 
             init_vector_db(app)?;
