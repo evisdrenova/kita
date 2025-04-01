@@ -217,7 +217,11 @@ export default function Models() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2 p-4 text-gray-100">
+      <h3 className="text-lg font-medium mb-1">Models</h3>
+      <p className="text-sm text-muted-foreground mb-4">
+        Choose a default model to use
+      </p>
       <div className="flex items-center gap-4">
         <Select
           value={selectedModel || undefined}
@@ -226,12 +230,12 @@ export default function Models() {
           <SelectTrigger className="w-[250px]">
             <SelectValue placeholder="Select a model" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="border border-border">
             {models.map((model) => (
               <SelectItem value={model.id} key={model.id}>
-                <div className="flex justify-between items-center w-full">
+                <div className="flex flex-row gap-2 justify-between items-center w-full text-white">
                   <span>{model.name}</span>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-gray-300">
                     {(model.size / 1024).toFixed(1)}GB
                   </span>
                   {model.is_downloaded && <Badge>Downloaded</Badge>}
@@ -241,32 +245,33 @@ export default function Models() {
           </SelectContent>
         </Select>
 
-        {selectedModel && (
-          <Button
-            onClick={() => handleDownloadModel(selectedModel)}
-            disabled={
-              downloadStatus.isDownloading ||
-              models.find((m) => m.id === selectedModel)?.is_downloaded
-            }
-            className="ml-2"
-          >
-            {models.find((m) => m.id === selectedModel)?.is_downloaded ? (
-              <>
-                <Check className="mr-2 h-4 w-4" /> Downloaded
-              </>
-            ) : downloadStatus.isDownloading &&
-              downloadStatus.model_id === selectedModel ? (
-              <>
-                <Download className="mr-2 h-4 w-4 animate-pulse" />{" "}
-                Downloading...
-              </>
-            ) : (
-              <>
-                <Download className="mr-2 h-4 w-4" /> Download
-              </>
-            )}
-          </Button>
-        )}
+        {selectedModel &&
+          !models.find((m) => m.id === selectedModel)?.is_downloaded && (
+            <Button
+              onClick={() => handleDownloadModel(selectedModel)}
+              disabled={
+                downloadStatus.isDownloading ||
+                models.find((m) => m.id === selectedModel)?.is_downloaded
+              }
+              className="ml-2"
+            >
+              {models.find((m) => m.id === selectedModel)?.is_downloaded ? (
+                <>
+                  <Check className="mr-2 h-4 w-4" /> Downloaded
+                </>
+              ) : downloadStatus.isDownloading &&
+                downloadStatus.model_id === selectedModel ? (
+                <>
+                  <Download className="mr-2 h-4 w-4 animate-pulse" />{" "}
+                  Downloading...
+                </>
+              ) : (
+                <>
+                  <Download className="mr-2 h-4 w-4" /> Download
+                </>
+              )}
+            </Button>
+          )}
       </div>
 
       <div className="pt-2">

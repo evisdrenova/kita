@@ -27,13 +27,7 @@ interface FolderSettingsProps {
   indexElapsedTime: number;
 }
 
-type SettingCategory =
-  | "General"
-  | "Appearance"
-  | "Indexing"
-  | "Shortcuts"
-  | "Advanced"
-  | "Models";
+type SettingCategory = "Indexing" | "Models";
 
 const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
   (props, ref) => {
@@ -54,8 +48,6 @@ const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
       useState<SettingCategory>("Indexing");
 
     const settingCategoryComponents: Record<SettingCategory, JSX.Element> = {
-      General: <General />,
-      Appearance: <Appearance />,
       Indexing: (
         <IndexingSettings
           selectedCategories={selectedCategories}
@@ -69,23 +61,23 @@ const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
         />
       ),
       Models: <Models />,
-      Shortcuts: <Shortcuts />,
-      Advanced: <Advanced />,
     };
 
     return (
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
         <DialogContent
           ref={ref}
-          className="sm:max-w-lg md:max-w-2xl lg:max-w-3xl xl:max-w-4xl h-max-3/4 overflow-hidden p-0"
+          className="sm:max-w-lg md:max-w-2xl lg:max-w-3xl xl:max-w-4xl h-max-3/4 overflow-hidden p-0 border border-border"
         >
           <div className="flex flex-col">
-            <div className="flex items-center border-b p-4">
-              <DialogTitle className="font-normal">Settings</DialogTitle>
+            <div className="flex items-center border-b border-border p-4">
+              <DialogTitle className="font-normal text-gray-200">
+                Settings
+              </DialogTitle>
               <DialogDescription />
             </div>
             <div className="flex flex-1 overflow-hidden">
-              <div className="w-[200px] border-r">
+              <div className="w-[200px] border-r border-border">
                 <ScrollArea className="h-full">
                   <div className="p-2">
                     <nav className="flex flex-col gap-0.5">
@@ -114,7 +106,7 @@ const FolderSettings = forwardRef<HTMLDivElement, FolderSettingsProps>(
                 </ScrollArea>
               </div>
               <div className="flex-1">
-                <ScrollArea className="h-full">
+                <ScrollArea className="p-4 h-[480px]">
                   {settingCategoryComponents[selectedSettingCategory]}
                 </ScrollArea>
               </div>
@@ -162,7 +154,7 @@ function IndexingSettings(props: IndexSettingsProps) {
   };
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-2 p-4 text-white">
       <h3 className="text-lg font-medium mb-1">Indexing</h3>
       <p className="text-sm text-muted-foreground mb-4">
         Choose which folders and file types to include in search results.
@@ -264,53 +256,5 @@ function IndexingSettings(props: IndexSettingsProps) {
   );
 }
 
-function General() {
-  return (
-    <div className="space-y-6 p-6">
-      <h3 className="text-lg font-medium mb-1">General Settings</h3>
-      <p className="text-sm text-muted-foreground mb-4">
-        Configure general application settings.
-      </p>
-      {/* Add general settings content here */}
-      <div className="text-sm">General settings content will go here.</div>
-    </div>
-  );
-}
-
-function Appearance() {
-  return (
-    <div className="space-y-6 p-6">
-      <h3 className="text-lg font-medium mb-1">Appearance</h3>
-      <p className="text-sm text-muted-foreground mb-4">
-        Customize the look and feel of the application.
-      </p>
-      <div className="text-sm">Appearance settings content will go here.</div>
-    </div>
-  );
-}
-
-function Shortcuts() {
-  return (
-    <div className="space-y-6 p-6">
-      <h3 className="text-lg font-medium mb-1">Keyboard Shortcuts</h3>
-      <p className="text-sm text-muted-foreground mb-4">
-        Customize keyboard shortcuts for common actions.
-      </p>
-      <div className="text-sm">Keyboard shortcuts content will go here.</div>
-    </div>
-  );
-}
-
-function Advanced() {
-  return (
-    <div className="space-y-6 p-6">
-      <h3 className="text-lg font-medium mb-1">Advanced Settings</h3>
-      <p className="text-sm text-muted-foreground mb-4">
-        Configure advanced application settings.
-      </p>
-      <div className="text-sm">Advanced settings content will go here.</div>
-    </div>
-  );
-}
 FolderSettings.displayName = "FolderSettings";
 export default FolderSettings;

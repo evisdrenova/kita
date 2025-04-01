@@ -23,7 +23,7 @@ export default function Header(props: Props) {
   const [showModelMissingPrompt, setShowModelMissingPrompt] =
     useState<boolean>(false);
 
-  const doesModelExist = Boolean(settings?.selected_model_id);
+  const doesModelExist = Boolean(!settings?.selected_model_id);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -174,12 +174,12 @@ export default function Header(props: Props) {
 
       {/* Model Missing Prompt */}
       {isRagMode && showModelMissingPrompt && !doesModelExist && (
-        <div className="mt-4 px-2">
+        <div className="mt-4 px-2 flex justify-center">
           <Button
-            className="text-xs w-full justify-between"
+            className="text-xs text-gray-200 justify-between hover:cursor-pointer"
             onClick={handleSelectModel}
           >
-            <span>No model detected, please click to select a model</span>
+            <span>No model detected, please select a model</span>
             <RxArrowTopRight />
           </Button>
         </div>
