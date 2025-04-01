@@ -33,7 +33,7 @@ const PaginatedSection = ({
       {shouldPaginate && !showMore && (section.counts || 0) > 5 && (
         <button
           onClick={() => setShowMore(true)}
-          className="text-xs  text-blue-700 hover:text-blue-800 flex items-center gap-1 py-1 self-start cursor-pointer"
+          className="text-xs  text-gray-400 hover:text-gray-200 flex items-center gap-1 py-1 self-start cursor-pointer"
         >
           <ChevronDown className="w-3 h-3" />
           Show {(section.counts || 0) - 5} more

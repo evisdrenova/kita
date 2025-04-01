@@ -125,37 +125,55 @@ export default function Header(props: Props) {
         />
       </div>
       {isRagMode && chatMessages.length > 0 && (
-        <div className="mt-4 space-y-4 max-h-[60vh] overflow-y-auto">
-          {chatMessages.map((message, index) => (
-            <div
-              key={index}
-              className={`p-3 rounded-lg ${
-                message.role === "user"
-                  ? "bg-primary/10 ml-8"
-                  : "bg-secondary mr-8"
-              }`}
-            >
-              <div className="text-sm">{message.content}</div>
-            </div>
-          ))}
-
-          {isProcessing && (
-            <div className="p-3 rounded-lg bg-secondary mr-8">
-              <div className="flex space-x-2">
-                <div className="w-2 h-2 rounded-full bg-primary/50 animate-bounce"></div>
-                <div
-                  className="w-2 h-2 rounded-full bg-primary/50 animate-bounce"
-                  style={{ animationDelay: "0.2s" }}
-                ></div>
-                <div
-                  className="w-2 h-2 rounded-full bg-primary/50 animate-bounce"
-                  style={{ animationDelay: "0.4s" }}
-                ></div>
-              </div>
-            </div>
-          )}
-        </div>
+        <ChatInterface
+          chatMessages={chatMessages}
+          isProcessing={isProcessing}
+        />
       )}
+    </div>
+  );
+}
+
+interface ChatInterfaceProps {
+  chatMessages: ChatMessage[];
+  isProcessing: boolean;
+}
+
+function ChatInterface(props: ChatInterfaceProps) {
+  const { chatMessages, isProcessing } = props;
+
+  return (
+    <div className="mt-4 space-y-4 max-h-[60vh] overflow-y-auto">
+      {chatMessages.map((message, index) => (
+        <div
+          key={index}
+          className={`p-3 rounded-lg ${
+            message.role === "user" ? "bg-primary/10 ml-8" : "bg-secondary mr-8"
+          }`}
+        >
+          <div className="text-sm">{message.content}</div>
+        </div>
+      ))}
+
+      {isProcessing && <ProcessingAnimation />}
+    </div>
+  );
+}
+
+function ProcessingAnimation() {
+  return (
+    <div className="p-3 rounded-lg bg-secondary mr-8">
+      <div className="flex space-x-2">
+        <div className="w-2 h-2 rounded-full bg-primary/50 animate-bounce"></div>
+        <div
+          className="w-2 h-2 rounded-full bg-primary/50 animate-bounce"
+          style={{ animationDelay: "0.2s" }}
+        ></div>
+        <div
+          className="w-2 h-2 rounded-full bg-primary/50 animate-bounce"
+          style={{ animationDelay: "0.4s" }}
+        ></div>
+      </div>
     </div>
   );
 }

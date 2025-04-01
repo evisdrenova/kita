@@ -158,20 +158,33 @@ export default function AppTable(props: Props) {
       return app;
     });
 
-    // Then sort the processed apps
-    return appsWithData.sort((a, b) => {
-      // ALWAYS sort running apps first, regardless of sort column
-      if (a.pid && !b.pid) return -1; // a is running, b is not
-      if (!a.pid && b.pid) return 1; // b is running, a is not
+    // If there's no explicit sort column selected, maintain the pre-sorted order
+    if (sortKey === null) {
+      return appsWithData;
+    }
 
-      // If no sort key or in default state, sort alphabetically by name within running groups
-      if (!sortKey) {
-        const aValue = a.name.toLowerCase();
-        const bValue = b.name.toLowerCase();
-        return aValue.localeCompare(bValue);
+    // Otherwise, separate active and inactive apps for sorting
+    const activeApps: AppMetadata[] = [];
+    const inactiveApps: AppMetadata[] = [];
+
+    appsWithData.forEach((app) => {
+      if (app.pid) {
+        activeApps.push(app);
+      } else {
+        inactiveApps.push(app);
+      }
+    });
+
+    // Sort active apps based on sort key
+    activeApps.sort((a, b) => {
+      if (sortKey === "name") {
+        const aName = a.name.toLowerCase();
+        const bName = b.name.toLowerCase();
+        return sortDirection === "asc"
+          ? aName.localeCompare(bName)
+          : bName.localeCompare(aName);
       }
 
-      // If both apps have the same running status, then sort by the selected column
       if (sortKey === "memory") {
         const memA = a.resource_usage?.memory_bytes || 0;
         const memB = b.resource_usage?.memory_bytes || 0;
@@ -184,16 +197,26 @@ export default function AppTable(props: Props) {
         return sortDirection === "asc" ? cpuA - cpuB : cpuB - cpuA;
       }
 
-      if (sortKey === "name") {
-        const aValue = a.name.toLowerCase();
-        const bValue = b.name.toLowerCase();
-        return sortDirection === "asc"
-          ? aValue.localeCompare(bValue)
-          : bValue.localeCompare(aValue);
-      }
-
       return 0;
     });
+
+    // Sort inactive apps by name
+    inactiveApps.sort((a, b) => {
+      const aName = a.name.toLowerCase();
+      const bName = b.name.toLowerCase();
+
+      if (sortKey === "name") {
+        return sortDirection === "asc"
+          ? aName.localeCompare(bName)
+          : bName.localeCompare(aName);
+      }
+
+      // Otherwise, always sort A-Z
+      return aName.localeCompare(bName);
+    });
+
+    // Return active apps first, then inactive
+    return [...activeApps, ...inactiveApps];
   }, [data, appResourceData, sortKey, sortDirection]);
 
   return (

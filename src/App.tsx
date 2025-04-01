@@ -5,7 +5,6 @@ import "./globals.css";
 import Footer from "./Footer";
 import {
   AppMetadata,
-  AppSettings,
   FileMetadata,
   IndexingProgress,
   searchCategories,
@@ -24,7 +23,6 @@ import SectionNav from "./SectionNav";
 import { Command, File } from "lucide-react";
 import { register } from "@tauri-apps/plugin-global-shortcut";
 import { handleShortcut } from "./globalShortcut";
-import ModelManager from "./NoModelSelected";
 
 await register("CommandOrControl+Shift+C", handleShortcut).then(() =>
   console.log("shortcut successfully registered")
@@ -514,15 +512,30 @@ export default function App() {
     handleFileSelect,
   ]);
 
+  const sortAppsByRunningStatusAndName = (
+    apps: AppMetadata[]
+  ): AppMetadata[] => {
+    return [...apps].sort((a, b) => {
+      // First sort by running status (running apps first)
+      if (a.pid && !b.pid) return -1;
+      if (!a.pid && b.pid) return 1;
+
+      // Then sort alphabetically within each group
+      return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+    });
+  };
+
   // memoized full section array
   const sections: Section[] = useMemo(() => {
+    const sortedApps = sortAppsByRunningStatusAndName(filteredApps);
+
     return [
       {
         ...sectionDefinitions[0],
         counts: filteredApps.length,
         component: (
           <AppTable
-            data={filteredApps}
+            data={sortedApps}
             onRowClick={(app) => {
               setSelectedItem(app.name);
               setCurrentSection("apps");
@@ -538,10 +551,10 @@ export default function App() {
             }
           />
         ),
-        // Add a method to get a limited component
+        // Add a method to get a limited component with pre-sorted data
         getLimitedComponent: (limit: number) => (
           <AppTable
-            data={filteredApps.slice(0, limit)}
+            data={sortedApps.slice(0, limit)}
             onRowClick={(app) => {
               setSelectedItem(app.name);
               setCurrentSection("apps");
