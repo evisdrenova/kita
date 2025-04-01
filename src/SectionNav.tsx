@@ -88,7 +88,7 @@ const SectionNav = (props: SectionNavProps) => {
               .filter((sect) => sect.counts && sect.counts > 0)
               .map((section, index) => (
                 <div key={section.id}>
-                  <h2 className="text-sm font-medium text-gray-800 dark:text-gray-400 mb-2">
+                  <h2 className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-2">
                     {section.name}
                     {section.counts !== undefined && (
                       <span className="ml-2 text-gray-800 dark:text-gray-500">
@@ -134,7 +134,7 @@ const NavButton = memo(
       transition-colors duration-150 cursor-pointer
       ${
         isActive
-          ? "bg-blue-500/20 text-gray-900 dark:text-white-400 ring-1 ring-blue-400/30"
+          ? "bg-blue-500/20 text-gray-200 dark:text-white-400 ring-1 ring-blue-400/30"
           : "text-gray-400 hover:bg-white/5"
       }
     `}

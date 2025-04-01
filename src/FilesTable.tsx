@@ -48,13 +48,13 @@ const getColumns = (
 
       return (
         <div className="flex flex-col min-w-0 max-w-md">
-          <div className="flex items-center space-x-2 overflow-hidden">
+          <div className="flex items-center space-x-2 overflow-hidden text-white">
             {getFileIcon(file.extension)}
-            <span className="text-sm truncate">
+            <span className="text-sm truncate text-white">
               {truncateFilename(file.name, 40, true)}
             </span>
             {file.path && (
-              <div className="flex items-center text-xs text-gray-500">
+              <div className="flex items-center text-xs text-gray-400">
                 <CopyPathButton path={file.path} />
               </div>
             )}
@@ -82,7 +82,7 @@ const getColumns = (
     header: "Size",
     width: 20,
     render: (file) => (
-      <div className="flex items-center justify-start gap-1 text-xs text-gray-500">
+      <div className="flex items-center justify-start gap-1 text-xs text-gray-200">
         {FormatFileSize(file.size)}
       </div>
     ),
@@ -92,7 +92,7 @@ const getColumns = (
     header: "Type",
     width: 20,
     render: (file) => (
-      <div className="flex items-center justify-start gap-1 text-xs text-gray-500">
+      <div className="flex items-center justify-start gap-1 text-xs text-gray-200">
         {file.extension ? file.extension.toUpperCase() : "—"}
       </div>
     ),
@@ -163,7 +163,7 @@ export default function FilesTable(props: Props) {
                   {columns.map((column) => (
                     <th
                       key={column.key}
-                      className="text-left p-2 text-sm font-medium text-gray-500"
+                      className="text-left p-2 text-xs font-medium text-gray-400"
                       onClick={() => handleSort(column.key)}
                       style={{
                         cursor: "pointer",
@@ -311,7 +311,7 @@ const CopyPathButton = memo(({ path }: { path: string }) => {
   return (
     <button
       onClick={handleCopy}
-      className="p-1 rounded-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+      className="p-1 rounded-sm hover:bg-gray-200 hover:text-white dark:hover:bg-gray-700 transition-colors"
       title="Copy full path"
     >
       {copied ? (

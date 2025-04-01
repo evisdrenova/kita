@@ -29,7 +29,7 @@ const columns: Column<AppMetadata>[] = [
         ) : (
           <Package className="h-4 w-4 mr-2" />
         )}
-        <span className="text-sm truncate">{app?.name}</span>
+        <span className="text-sm truncate text-white">{app?.name}</span>
         {app?.pid && (
           <div className="relative flex items-center justify-center ml-2">
             <div className="absolute w-2 h-2 bg-green-500/30 rounded-full animate-ping" />
@@ -77,7 +77,7 @@ const MemoryCell = React.memo(
     if (!pid || memoryBytes === undefined) return null;
 
     return (
-      <div className="flex items-center justify-start gap-1 text-xs text-gray-500">
+      <div className="flex items-center justify-start gap-1 text-xs text-gray-200">
         <MemoryStick className="w-3 h-3" />
         {typeof memoryBytes === "number"
           ? FormatFileSize(memoryBytes)
@@ -95,7 +95,7 @@ const CpuCell = React.memo(
     if (!pid || cpuUsage === undefined) return null;
 
     return (
-      <div className="flex items-center justify-start gap-1 text-xs text-gray-500">
+      <div className="flex items-center justify-start gap-1 text-xs text-gray-200">
         <Cpu className="w-3 h-3" />
         {typeof cpuUsage === "number" ? cpuUsage.toFixed(1) : cpuUsage}%
       </div>
@@ -210,7 +210,7 @@ export default function AppTable(props: Props) {
                   {columns.map((column) => (
                     <th
                       key={column.key}
-                      className="text-left p-2 text-sm font-medium text-gray-500"
+                      className="text-left p-2 text-xs font-medium text-gray-400"
                       onClick={() =>
                         column.key !== "actions" && handleSort(column.key)
                       }
