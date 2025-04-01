@@ -23,6 +23,10 @@ export default function Header(props: Props) {
   const [showModelMissingPrompt, setShowModelMissingPrompt] =
     useState<boolean>(false);
 
+  // Use a ref to track if we're clearing the input due to submission
+  // This helps prevent turning off RAG mode when submitting
+  const isSubmitting = useRef(false);
+
   const doesModelExist = Boolean(settings?.selected_model_id);
 
   useEffect(() => {
@@ -38,9 +42,15 @@ export default function Header(props: Props) {
 
   // This useEffect monitors searchQuery changes to detect when "/" is deleted
   useEffect(() => {
-    if (isRagMode && searchQuery === "") {
+    // Only turn off RAG mode if it's empty and we're not in the process of submitting
+    if (isRagMode && searchQuery === "" && !isSubmitting.current) {
       setIsRagMode(false);
       setShowModelMissingPrompt(false);
+    }
+
+    // Reset the submitting flag once searchQuery has been updated
+    if (isSubmitting.current) {
+      isSubmitting.current = false;
     }
   }, [searchQuery, isRagMode]);
 
@@ -91,7 +101,9 @@ export default function Header(props: Props) {
         { role: "user", content: userQuery },
       ]);
 
-      setSearchQuery("");
+      // Set the submitting flag before clearing search query
+      isSubmitting.current = true;
+      setSearchQuery("/"); // Keep the "/" to maintain RAG mode
       setIsProcessing(true);
 
       try {
@@ -128,7 +140,8 @@ export default function Header(props: Props) {
     setSearchQuery(newValue);
 
     // If in RAG mode and user completely deletes the input, exit RAG mode
-    if (isRagMode && newValue === "") {
+    // But don't exit if we're submitting
+    if (isRagMode && newValue === "" && !isSubmitting.current) {
       setIsRagMode(false);
       setShowModelMissingPrompt(false);
     }
@@ -209,17 +222,60 @@ function ChatInterface(props: ChatInterfaceProps) {
       {chatMessages.map((message, index) => (
         <div
           key={index}
-          className={`p-3 rounded-lg ${
-            message.role === "user" ? "bg-primary/10 ml-8" : "bg-secondary mr-8"
-          }`}
+          className={cn(
+            message.role === "user" ? "justify-end" : "justify-start ",
+            `flex `
+          )}
         >
-          <div className="text-sm">{message.content}</div>
+          <div className="flex flex-col max-w-[60%]">
+            <div
+              className={cn(
+                message.role == "user" ? "justify-end" : "justify-start",
+                "flex flex-row gap-1"
+              )}
+            >
+              <div
+                className={cn(
+                  message.role === "user"
+                    ? "bg-background justify-end"
+                    : "bg-primary",
+                  `rounded-lg px-4 py-2 text-primary-foreground  border border-border`
+                )}
+              >
+                <div className="text-sm">{message.content}</div>
+              </div>
+            </div>
+          </div>
         </div>
       ))}
 
       {isProcessing && <ProcessingAnimation />}
     </div>
   );
+}
+
+interface MessageContentProps {
+  message: ChatMessage;
+}
+
+function RenderMessageContent(props: MessageContentProps) {
+  const { message } = props;
+
+  const content =
+    typeof message.content === "string"
+      ? JSON.parse(message.content)
+      : message.content;
+
+  const actualContent = Array.isArray(content)
+    ? content
+    : Array.isArray(content?.content)
+    ? content.content
+    : content;
+
+  return <div>{message.content}</div>;
+
+  // Fallback for unsupported content types
+  return <div className="text-red-500">Unsupported message content</div>;
 }
 
 function ProcessingAnimation() {
