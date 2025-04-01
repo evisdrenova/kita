@@ -150,7 +150,7 @@ impl VectorDbManager {
         let embedder = app_handle.state::<Arc<Embedder>>();
         let query_embedding: Vec<f32> = embedder.embed_single_text(query_text);
 
-        println!("single text query embedding: {:?}", query_embedding);
+        // println!("single text query embedding: {:?}", query_embedding);
 
         let table = manager
             .client
@@ -179,7 +179,7 @@ impl VectorDbManager {
                 VectorDbError::LanceError(format!("Vector search collection failed: {}", e))
             })?;
 
-        println!("the reuslts: {:?}", results);
+        // println!("the reuslts: {:?}", results);
 
         Ok(results)
     }

@@ -5,6 +5,7 @@ import "./globals.css";
 import Footer from "./Footer";
 import {
   AppMetadata,
+  AppSettings,
   FileMetadata,
   IndexingProgress,
   searchCategories,
@@ -51,6 +52,25 @@ export default function App() {
   );
   const [currentItemIndex, setCurrentItemIndex] = useState<number>(-1);
   const [activeSection, setActiveSection] = useState<number | null>(null);
+  const [settings, setSettings] = useState<AppSettings>();
+  const [loadingSettings, setLoadingSettings] = useState<boolean>(false);
+
+  // loads settings
+  useEffect(() => {
+    const getSettings = async () => {
+      try {
+        setLoadingSettings(true);
+        const appSettings = await invoke<AppSettings>("get_settings");
+        setSettings(appSettings);
+      } catch (error) {
+        errorToast("Unable to fetch settings");
+      } finally {
+        setLoadingSettings(false);
+      }
+    };
+
+    getSettings();
+  }, []);
 
   // base section definition
   const sectionDefinitions = [
@@ -637,7 +657,12 @@ export default function App() {
 
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-border h-screen ">
-      <Header setSearchQuery={setSearchQuery} searchQuery={searchQuery} />
+      <Header
+        setSearchQuery={setSearchQuery}
+        searchQuery={searchQuery}
+        settings={settings ?? {}}
+        setIsSettingsOpen={setIsSettingsOpen}
+      />
       <main className="flex-1 overflow-auto scrollbar">
         <SectionNav
           sections={sections}
