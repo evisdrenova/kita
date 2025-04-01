@@ -23,7 +23,7 @@ export default function Header(props: Props) {
   const [showModelMissingPrompt, setShowModelMissingPrompt] =
     useState<boolean>(false);
 
-  const doesModelExist = Boolean(!settings?.selected_model_id);
+  const doesModelExist = Boolean(settings?.selected_model_id);
 
   useEffect(() => {
     inputRef.current?.focus();
