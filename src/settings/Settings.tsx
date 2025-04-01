@@ -26,6 +26,7 @@ interface FolderSettingsProps {
   showProgress: boolean;
   indexElapsedTime: number;
 }
+
 type SettingCategory =
   | "General"
   | "Appearance"

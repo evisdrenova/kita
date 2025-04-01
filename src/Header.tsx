@@ -19,9 +19,16 @@ export default function Header(props: Props) {
   const [isRagMode, setIsRagMode] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (wrapperRef.current) {
+      wrapperRef.current.setAttribute("data-tauri-drag-region", "");
+    }
   }, []);
 
   const handleKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
@@ -80,8 +87,15 @@ export default function Header(props: Props) {
   };
 
   return (
-    <div className="sticky top-0 flex flex-col gap-2 border-b border-b-border p-2">
-      <div className="flex flex-row items-center justify-between">
+    <div
+      className="sticky top-0 flex flex-col gap-2 border-b border-b-border p-2"
+      ref={wrapperRef}
+      data-tauri-drag-region=""
+    >
+      <div
+        className="flex flex-row items-center justify-between"
+        data-tauri-drag-region=""
+      >
         <Input
           placeholder={
             isRagMode

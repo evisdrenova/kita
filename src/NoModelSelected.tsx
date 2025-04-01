@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect } from "react";
 
-export default function ModelManager() {
+export default function NoModelSelected() {
   useEffect(() => {
     // Listen for model selection required event
     const unlistenSelection = listen("model-selection-required", (event) => {

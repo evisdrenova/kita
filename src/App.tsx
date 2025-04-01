@@ -5,6 +5,7 @@ import "./globals.css";
 import Footer from "./Footer";
 import {
   AppMetadata,
+  AppSettings,
   FileMetadata,
   IndexingProgress,
   searchCategories,
@@ -623,7 +624,6 @@ export default function App() {
 
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-border h-screen ">
-      <ModelManager />
       <Header setSearchQuery={setSearchQuery} searchQuery={searchQuery} />
       <main className="flex-1 overflow-auto scrollbar">
         <SectionNav
