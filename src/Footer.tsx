@@ -12,19 +12,22 @@ import { RxSlash } from "react-icons/rx";
 
 interface FooterProps {
   setIsSettingsOpen: (val: boolean) => void;
+  searchQuery: string;
 }
 
 export default function Footer(props: FooterProps) {
-  const { setIsSettingsOpen } = props;
+  const { setIsSettingsOpen, searchQuery } = props;
 
   return (
     <div className="h-8 flex justify-between items-center px-3 my-1 border-t border-t-border">
       <div className="flex flex-row items-center gap-4 text-primary-foreground/80">
         <div className="flex flex-row items-center gap-1 text-xs">
-          <div className=" border border-border p-1 rounded-lg bg-gray-200 dark:bg-zinc-950">
-            <RxSlash className="w-3 h-3 " />{" "}
+          <div className=" border border-border p-1 rounded-lg bg-gray-200 dark:bg-zinc-950 text-[9px]">
+            {searchQuery ? "esc" : <RxSlash className="w-3 h-3 " />}{" "}
           </div>
-          <div className="text-[10px]">to chat</div>
+          <div className="text-[10px]">
+            {searchQuery ? "to quit" : "to chat"}
+          </div>
         </div>
         <div className="flex flex-row items-center gap-1 text-xs">
           <div className=" border border-border p-1 rounded-lg bg-gray-200 dark:bg-zinc-950">
@@ -39,7 +42,9 @@ export default function Footer(props: FooterProps) {
           <div className=" border border-border p-1 rounded-lg bg-gray-200 dark:bg-zinc-950">
             <CornerDownLeft className="w-3 h-3 " />{" "}
           </div>
-          <div className="text-[10px]">to select</div>
+          <div className="text-[10px]">
+            {searchQuery ? "to chat" : "to select"}
+          </div>
         </div>
       </div>
       <div className="flex flex-row items-center gap-2">

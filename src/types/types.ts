@@ -142,3 +142,8 @@ export interface AppSettings {
   index_concurrency?: number;
   selected_categories?: string[];
 }
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}

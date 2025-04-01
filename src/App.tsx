@@ -634,7 +634,10 @@ export default function App() {
         />
       </main>
       <div className="sticky bottom-0">
-        <Footer setIsSettingsOpen={setIsSettingsOpen} />
+        <Footer
+          setIsSettingsOpen={setIsSettingsOpen}
+          searchQuery={searchQuery}
+        />
       </div>
       <Settings
         selectedCategories={selectedCategories}

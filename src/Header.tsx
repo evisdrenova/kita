@@ -2,11 +2,7 @@ import { useState, useEffect, useRef, KeyboardEvent } from "react";
 import { Input } from "./components/ui/input";
 import { invoke } from "@tauri-apps/api/core";
 import { cn } from "./lib/utils";
-
-interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-}
+import { ChatMessage } from "./types/types";
 
 interface Props {
   searchQuery: string;
@@ -25,25 +21,37 @@ export default function Header(props: Props) {
     inputRef.current?.focus();
   }, []);
 
+  // handles making the window draggable by clicking on the area above the input
   useEffect(() => {
     if (wrapperRef.current) {
       wrapperRef.current.setAttribute("data-tauri-drag-region", "");
     }
   }, []);
 
+  // This useEffect monitors searchQuery changes to detect when "/" is deleted
+  useEffect(() => {
+    if (isRagMode && searchQuery === "") {
+      setIsRagMode(false);
+    }
+  }, [searchQuery, isRagMode]);
+
   const handleKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
-    // If "/" is pressed as the first character and RAG mode is not active
     if (e.key === "/" && searchQuery === "" && !isRagMode) {
       e.preventDefault();
       setIsRagMode(true);
       setSearchQuery("/");
     }
 
+    if (searchQuery === "/" && e.key === "Backspace") {
+      e.preventDefault();
+      setIsRagMode(false);
+      setSearchQuery("");
+    }
+
     // Handle submitting a RAG query with Enter
     if (e.key === "Enter" && isRagMode && searchQuery.length > 1) {
       e.preventDefault();
 
-      // Add user message to chat
       const userQuery = searchQuery.startsWith("/")
         ? searchQuery.substring(1)
         : searchQuery;
@@ -52,10 +60,8 @@ export default function Header(props: Props) {
         { role: "user", content: userQuery },
       ]);
 
-      // Clear input after submission
       setSearchQuery("");
 
-      // Process the RAG query
       setIsProcessing(true);
       try {
         const response = await invoke<string>("ask_llm", { prompt: userQuery });
@@ -74,7 +80,6 @@ export default function Header(props: Props) {
         ]);
       } finally {
         setIsProcessing(false);
-        // Focus the input again for the next query
         inputRef.current?.focus();
       }
     }
@@ -83,6 +88,15 @@ export default function Header(props: Props) {
       setIsRagMode(false);
       setSearchQuery("");
       setChatMessages([]);
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setSearchQuery(newValue);
+
+    if (isRagMode && newValue === "") {
+      setIsRagMode(false);
     }
   };
 
@@ -97,17 +111,13 @@ export default function Header(props: Props) {
         data-tauri-drag-region=""
       >
         <Input
-          placeholder={
-            isRagMode
-              ? "Ask a question about your documents..."
-              : "Type a command or search..."
-          }
+          placeholder={"Type a command or search..."}
           value={searchQuery}
           autoCorrect="off"
           spellCheck="false"
           ref={inputRef}
           autoFocus
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={handleChange}
           onKeyDown={handleKeyDown}
           className={cn(
             `text-xs placeholder:pl-2 border-0 focus-visible:outline-hidden focus-visible:ring-0 shadow-none dark:text-white text-gray-900`
