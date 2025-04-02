@@ -83,8 +83,6 @@ impl LLMServer {
             downloads_dir.join(MODEL_FILENAME)
         };
 
-        println!("Using model path: {}", model_path.display());
-
         // Verify the model exists
         if !model_path.exists() {
             return Err(LLMServerError::CommandError(format!(
@@ -93,9 +91,7 @@ impl LLMServer {
             )));
         }
 
-        // Prepare the server binary from resources
         let server_path = self.prepare_server_binary().await?;
-        println!("Using server binary: {}", server_path.display());
 
         // Start the server
         let child = self.start_server(&server_path, &model_path).await?;
@@ -104,10 +100,7 @@ impl LLMServer {
         // Poll for server readiness
         let ready_timeout = Duration::from_secs(SERVER_READY_TIMEOUT_SECS);
         match timeout(ready_timeout, self.wait_for_server_ready()).await {
-            Ok(Ok(_)) => {
-                println!("Server is ready!");
-                Ok(())
-            }
+            Ok(Ok(_)) => Ok(()),
             Ok(Err(e)) => {
                 eprintln!("Error during server readiness check: {}", e);
                 // Kill the server process if it's still running
@@ -163,21 +156,12 @@ impl LLMServer {
     }
 
     async fn prepare_server_binary(&self) -> Result<PathBuf, LLMServerError> {
-        println!("Checking for server binary in current directory...");
-
         // First try the src-tauri/resources path (for development)
         let cwd_path = std::env::current_dir()?
             .join("resources")
             .join(SERVER_BINARY_NAME);
 
-        println!("Looking for binary at: {}", cwd_path.display());
-
         if cwd_path.exists() {
-            println!(
-                "Found server binary in development resources: {}",
-                cwd_path.display()
-            );
-
             // Check if we need to set executable permissions
             #[cfg(unix)]
             {
@@ -187,7 +171,6 @@ impl LLMServer {
                     // Set executable permissions if not already set
                     perms.set_mode(0o755); // rwxr-xr-x
                     fs::set_permissions(&cwd_path, perms)?;
-                    println!("Set executable permissions on development binary");
                 }
             }
 
@@ -198,17 +181,7 @@ impl LLMServer {
         // should handle this with an envar
         if let Ok(resource_dir) = self.app_handle.path().resource_dir() {
             let resource_path = resource_dir.join(SERVER_BINARY_NAME);
-            println!(
-                "Looking for binary at resource path: {}",
-                resource_path.display()
-            );
-
             if resource_path.exists() {
-                println!(
-                    "Found server binary in resources: {}",
-                    resource_path.display()
-                );
-
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
@@ -314,7 +287,6 @@ impl LLMServer {
                 match client.get(endpoint).send().await {
                     Ok(response) => {
                         if response.status().is_success() {
-                            println!("Server is ready at {}", endpoint);
                             success = true;
                             break;
                         }

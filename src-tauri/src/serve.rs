@@ -177,10 +177,6 @@ impl ModelRegistry {
     // Get info for a specific model
     pub fn get_model(&self, model_id: &str) -> Option<ModelInfo> {
         // First check downloaded models
-
-        println!("downloaded models: {:?}", self.downloaded_models);
-
-        println!("available models: {:?}", self.available_models);
         let downloaded = self.downloaded_models.lock().unwrap();
         if let Some(model) = downloaded.iter().find(|m| m.id == model_id) {
             return Some(model.clone());
@@ -572,7 +568,7 @@ async fn start_server_with_model(app_handle: &AppHandle, model: ModelInfo) {
             let mut server_guard = server_state.lock().await;
             *server_guard = Some(server);
 
-            println!("LLM server started successfully");
+            println!("LLM server initialized");
         }
         Err(e) => {
             eprintln!("Failed to create LLM server: {}", e);
