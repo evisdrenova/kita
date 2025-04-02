@@ -61,6 +61,6 @@ pub fn init_database(app_handle: AppHandle) -> AppResult<std::path::PathBuf> {
         }
     }
 
-    println!("Database successfully initialized at {}", db_path.display());
+    println!("Database initialized");
     Ok(db_path)
 }

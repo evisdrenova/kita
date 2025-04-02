@@ -51,7 +51,6 @@ impl VectorDbManager {
 
         let manager: VectorDbManager = Self::new_vectordb_client(&vectordb_path).await?;
 
-        println!("Vector database initialized. Path: {:?}", vectordb_path);
         Ok(Arc::new(Mutex::new(manager)))
     }
 
@@ -73,16 +72,9 @@ impl VectorDbManager {
 
     async fn ensure_embedding_table_exists(&self) -> VectorDbResult<()> {
         let table_exists = match self.client.open_table(TABLE_NAME).execute().await {
-            Ok(_) => {
-                println!("Table '{}' exists", TABLE_NAME);
-                true
-            }
-            Err(Error::TableNotFound { name }) if name == TABLE_NAME => {
-                println!("Table '{}' doesn't exist, will create it", TABLE_NAME);
-                false
-            }
+            Ok(_) => true,
+            Err(Error::TableNotFound { name }) if name == TABLE_NAME => false,
             Err(e) => {
-                println!("Error checking table: {:?}", e);
                 return Err(VectorDbError::LanceError(format!(
                     "Error checking table: {}",
                     e

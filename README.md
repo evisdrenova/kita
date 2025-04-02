@@ -60,3 +60,7 @@ xls -> read row by row or cell ranges
 // when we do the embeddings, we count all of the files that we're going to embed, but only do the ones that aren't empty, so it turns out saying something like 9 out of 60 completed, we need to return the statuses for the other ones too i.e. 9 completed, 52 skipped
 
 // maybe we need to count tokens so we know how big the context window is getting and show that on the front-end???
+
+// debug the LLM chat<->flow so that it's smooth and we're able to go back and forth
+
+// then start sendign in the vectorized files into the context window so we can start to actually do that RAG

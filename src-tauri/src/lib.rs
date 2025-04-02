@@ -44,8 +44,6 @@ pub fn run() {
 
             settings::init_settings(&db_path_str, app.app_handle().clone())?;
 
-            println!("init settings done");
-
             file_processor::init_file_processor(&db_path_str, 4, app.app_handle().clone())?;
 
             init_vector_db(app)?;
@@ -99,7 +97,7 @@ fn init_vector_db(app: &tauri::App) -> AppResult<()> {
     match embedder::Embedder::new() {
         Ok(embedder) => {
             app.manage(std::sync::Arc::new(embedder));
-            println!("Embedder initialized successfully");
+            println!("Embedder initialized");
         }
         Err(e) => {
             eprintln!("Failed to initialize embedder: {}", e);
@@ -113,7 +111,7 @@ fn init_vector_db(app: &tauri::App) -> AppResult<()> {
     match result {
         Ok(manager) => {
             app.manage(manager);
-            println!("Vector DB initialized successfully");
+            println!("Vector DB initialized");
             Ok(())
         }
         Err(e) => {

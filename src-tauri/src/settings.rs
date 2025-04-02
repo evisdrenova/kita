@@ -56,8 +56,6 @@ impl SettingsManager {
     pub fn initialize(&self) -> Result<()> {
         let conn = self.get_connection()?;
 
-        println!("initilaizing");
-
         let mut stmt = conn.prepare("SELECT data FROM settings WHERE id = 1")?;
         let settings_result = stmt.query_row([], |row| {
             let json: String = row.get(0)?;
@@ -130,7 +128,7 @@ pub fn init_settings(
     // Store in app state
     app_handle.manage(SettingsManagerState(Arc::new(settings_manager)));
 
-    println!("Settings successfully initialized.");
+    println!("Settings initialized");
     Ok(())
 }
 

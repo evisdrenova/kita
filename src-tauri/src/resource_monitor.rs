@@ -29,7 +29,7 @@ pub struct ResourceMonitorState {
 /// Initialize and register the ResourceMonitorState with your Tauri app.
 pub fn init<R: tauri::Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(ResourceMonitorState::default());
-    println!("Resource monitoring system initialized");
+    println!("Resource monitoring initialized");
     Ok(())
 }
 

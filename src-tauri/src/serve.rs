@@ -105,7 +105,6 @@ impl ModelRegistry {
         app_handle: &AppHandle,
         custom_path: Option<&str>,
     ) -> Result<()> {
-        println!("searching for downloaded models");
         let models_dir = get_models_dir(app_handle, custom_path)?;
         let mut downloaded = Vec::new();
 
@@ -481,7 +480,6 @@ async fn scan_and_initialize_server(app_handle: AppHandle) {
     let registry_state = app_handle.state::<ModelRegistry>();
     match registry_state.scan_downloaded_models(&app_handle, None) {
         Ok(_) => {
-            println!("Successfully scanned models");
             initialize_server_from_settings(&app_handle).await;
         }
         Err(e) => {
@@ -570,7 +568,6 @@ async fn start_server_with_model(app_handle: &AppHandle, model: ModelInfo) {
 
 // Notification functions
 fn notify_model_selection_required(app_handle: &AppHandle) {
-    println!("No model selected, user needs to select one");
     let _ = app_handle.emit(
         "model-selection-required",
         "Please select a model to use for AI features",
@@ -578,7 +575,6 @@ fn notify_model_selection_required(app_handle: &AppHandle) {
 }
 
 fn notify_model_download_required(app_handle: &AppHandle, model_name: &str) {
-    println!("Selected model '{}' is not downloaded", model_name);
     let _ = app_handle.emit(
         "model-download-required",
         format!(
@@ -589,7 +585,6 @@ fn notify_model_download_required(app_handle: &AppHandle, model_name: &str) {
 }
 
 fn notify_model_not_found(app_handle: &AppHandle, model_id: &str) {
-    println!("Selected model ID '{}' not found", model_id);
     let _ = app_handle.emit(
         "model-selection-required",
         "The previously selected model is no longer available. Please select a new model.",

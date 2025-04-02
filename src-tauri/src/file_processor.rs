@@ -491,7 +491,7 @@ pub async fn get_files_data(
     query: String,
     state: State<'_, FileProcessorState>,
 ) -> Result<Vec<FileMetadata>, String> {
-    println!("the query in get files: {:?}", query);
+    // println!("the query in get files: {:?}", query);
 
     let processor: FileProcessor = get_processor(&state)?;
 
@@ -781,7 +781,7 @@ pub fn init_file_processor(
                 concurrency_limit: concurrency,
             });
 
-            println!("File processor successfully initialized.");
+            println!("File processor initialized.");
             Ok(())
         }
         Err(e) => {
