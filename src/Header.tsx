@@ -347,34 +347,47 @@ export default function Header(props: Props) {
           )}
         />
       </div>
-
-      {/* Model Missing or Not Downloaded Prompt */}
       {isRagMode && showModelMissingPrompt && modelStatus !== "ready" && (
-        <div className="mt-4 px-2 flex justify-center">
-          <Button
-            className="text-xs text-gray-200 justify-between hover:cursor-pointer"
-            onClick={handleSelectModel}
-            disabled={isCheckingModel}
-          >
-            {isCheckingModel ? (
-              <span>Checking model status...</span>
-            ) : (
-              <>
-                <span>{getModelErrorMessage()}</span>
-                <RxArrowTopRight />
-              </>
-            )}
-          </Button>
-        </div>
+        <MissingModel
+          handleSelectModel={handleSelectModel}
+          isCheckingModel={isCheckingModel}
+          getModelErrorMessage={getModelErrorMessage}
+        />
       )}
-
-      {/* Chat Interface */}
       {isRagMode && chatMessages.length > 0 && (
         <ChatInterface
           chatMessages={chatMessages}
           isProcessing={isProcessing}
         />
       )}
+    </div>
+  );
+}
+
+interface MissingModelProps {
+  handleSelectModel: () => void;
+  isCheckingModel: boolean;
+  getModelErrorMessage: () => string;
+}
+
+function MissingModel(props: MissingModelProps) {
+  const { handleSelectModel, isCheckingModel, getModelErrorMessage } = props;
+  return (
+    <div className="mt-4 px-2 flex justify-center">
+      <Button
+        className="text-xs text-gray-200 justify-between hover:cursor-pointer"
+        onClick={handleSelectModel}
+        disabled={isCheckingModel}
+      >
+        {isCheckingModel ? (
+          <span>Checking model status...</span>
+        ) : (
+          <>
+            <span>{getModelErrorMessage()}</span>
+            <RxArrowTopRight />
+          </>
+        )}
+      </Button>
     </div>
   );
 }
