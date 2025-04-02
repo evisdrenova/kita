@@ -426,15 +426,15 @@ function ChatInterface(props: ChatInterfaceProps) {
 
 function ProcessingAnimation() {
   return (
-    <div className="p-3 rounded-lg bg-secondary mr-8">
+    <div className="p-3 rounded-lg bg-secondary mr-8 w-[60%]">
       <div className="flex space-x-2">
-        <div className="w-2 h-2 rounded-full bg-primary/50 animate-bounce"></div>
+        <div className="w-2 h-2 rounded-full bg-gray-700 animate-bounce"></div>
         <div
-          className="w-2 h-2 rounded-full bg-primary/50 animate-bounce"
+          className="w-2 h-2 rounded-full bg-gray-700 animate-bounce"
           style={{ animationDelay: "0.2s" }}
         ></div>
         <div
-          className="w-2 h-2 rounded-full bg-primary/50 animate-bounce"
+          className="w-2 h-2 rounded-full bg-gray-700 animate-bounce"
           style={{ animationDelay: "0.4s" }}
         ></div>
       </div>
