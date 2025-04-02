@@ -12,15 +12,12 @@ use reqwest::Client;
 use tauri::{AppHandle, Manager};
 use thiserror::Error;
 
-use crate::settings::SettingsManagerState;
-
 const SERVER_PORT: u16 = 8080;
 const SERVER_BINARY_NAME: &str = "llama-server";
 
 // !! Define your model filename in Downloads folder !!
 const MODEL_FILENAME: &str = "mistral-7b-instruct-v0.2.Q5_K_M.gguf";
 
-const PROMPT_TEXT: &str = "Explain the importance of Rust's ownership system in 50 words.";
 const SERVER_READY_TIMEOUT_SECS: u64 = 180;
 
 #[derive(Error, Debug)]

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, KeyboardEvent } from "react";
 import { Input } from "./components/ui/input";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { cn } from "./lib/utils";
 import { AppSettings, ChatMessage } from "./types/types";
 import { Button } from "./components/ui/button";
@@ -54,12 +55,41 @@ export default function Header(props: Props) {
     }
   }, [searchQuery, isRagMode]);
 
-  // Hide model missing prompt if settings update and model is selected
+  // Handle model events and monitor model selection changes
   useEffect(() => {
+    // Check for model existence
     if (doesModelExist) {
       setShowModelMissingPrompt(false);
     }
-  }, [doesModelExist]);
+
+    // Listen for model selection required event
+    const unlistenSelectionPromise = listen("model-selection-required", () => {
+      console.log("Model selection required event received");
+      setShowModelMissingPrompt(true);
+      // Open settings dialog if we're in RAG mode
+      if (isRagMode) {
+        setIsSettingsOpen(true);
+      }
+    });
+
+    // Listen for model download required event
+    const unlistenDownloadPromise = listen(
+      "model-download-required",
+      (event) => {
+        console.log("Model download required:", event.payload);
+        // If we're in RAG mode, open settings to allow download
+        if (isRagMode) {
+          setIsSettingsOpen(true);
+        }
+      }
+    );
+
+    // Clean up listeners on component unmount
+    return () => {
+      unlistenSelectionPromise.then((unlistenFn) => unlistenFn());
+      unlistenDownloadPromise.then((unlistenFn) => unlistenFn());
+    };
+  }, [doesModelExist, isRagMode, setIsSettingsOpen]);
 
   const handleKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
     // If "/" is pressed as the first character to activate RAG mode
@@ -273,9 +303,6 @@ function RenderMessageContent(props: MessageContentProps) {
     : content;
 
   return <div>{message.content}</div>;
-
-  // Fallback for unsupported content types
-  return <div className="text-red-500">Unsupported message content</div>;
 }
 
 function ProcessingAnimation() {
