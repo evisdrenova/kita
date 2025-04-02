@@ -3,7 +3,7 @@ import { Input } from "./components/ui/input";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { cn } from "./lib/utils";
-import { AppSettings, ChatMessage } from "./types/types";
+import { AppSettings, ChatMessage, Model } from "./types/types";
 import { Button } from "./components/ui/button";
 import { RxArrowTopRight } from "react-icons/rx";
 
@@ -23,12 +23,18 @@ export default function Header(props: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [showModelMissingPrompt, setShowModelMissingPrompt] =
     useState<boolean>(false);
+  const [modelStatus, setModelStatus] = useState<
+    "none" | "not-downloaded" | "ready"
+  >("none");
+  const [availableModels, setAvailableModels] = useState<Model[]>([]);
+  const [isCheckingModel, setIsCheckingModel] = useState(false);
+
+  // Track the previous selected model ID to detect changes
+  const previousModelIdRef = useRef<string | null>(null);
 
   // Use a ref to track if we're clearing the input due to submission
   // This helps prevent turning off RAG mode when submitting
   const isSubmitting = useRef(false);
-
-  const doesModelExist = Boolean(settings?.selected_model_id);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -40,6 +46,116 @@ export default function Header(props: Props) {
       wrapperRef.current.setAttribute("data-tauri-drag-region", "");
     }
   }, []);
+
+  // Check model status whenever settings change (especially selected_model_id)
+  useEffect(() => {
+    // Skip if settings aren't loaded yet
+    if (!settings) return;
+
+    const currentModelId = settings.selected_model_id || null;
+    const modelChanged = previousModelIdRef.current !== currentModelId;
+
+    // Update the ref for future change detection
+    previousModelIdRef.current = currentModelId;
+
+    // If in RAG mode or the model has changed, check model status
+    if (isRagMode || modelChanged) {
+      checkModelStatus();
+    }
+  }, [settings, isRagMode]);
+
+  // Function to check model status - pulled out to reuse
+  const checkModelStatus = async () => {
+    if (!settings) return;
+
+    // No model selected
+    if (!settings.selected_model_id) {
+      setModelStatus("none");
+      setShowModelMissingPrompt(true);
+      return;
+    }
+
+    try {
+      setIsCheckingModel(true);
+
+      // Get all available models
+      const models = await invoke<Model[]>("get_available_models", {
+        customPath: settings.custom_model_path || null,
+      });
+      setAvailableModels(models);
+
+      // Find the selected model
+      const selectedModel = models.find(
+        (m) => m.id === settings.selected_model_id
+      );
+
+      if (!selectedModel) {
+        setModelStatus("none");
+        setShowModelMissingPrompt(true);
+        console.error("Selected model not found in available models");
+        return;
+      }
+
+      // Check if selected model is downloaded
+      if (!selectedModel.is_downloaded) {
+        setModelStatus("not-downloaded");
+        setShowModelMissingPrompt(true);
+      } else {
+        setModelStatus("ready");
+        setShowModelMissingPrompt(false);
+      }
+    } catch (error) {
+      console.error("Failed to check model status:", error);
+      setModelStatus("none");
+      setShowModelMissingPrompt(true);
+    } finally {
+      setIsCheckingModel(false);
+    }
+  };
+
+  // Listen for settings panel close to refresh model status
+  useEffect(() => {
+    let isMounted = true;
+
+    // Create a function that checks model status when settings are closed
+    const handleSettingsClose = async () => {
+      // Small delay to ensure settings are updated
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      if (isMounted && isRagMode) {
+        await checkModelStatus();
+      }
+    };
+
+    // Use MutationObserver to detect when settings panel is removed from DOM
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === "childList" && mutation.removedNodes.length > 0) {
+          // Check if any removed node could be the settings panel
+          const removedSettings = Array.from(mutation.removedNodes).some(
+            (node) => {
+              return (
+                node instanceof HTMLElement &&
+                (node.classList.contains("settings") ||
+                  node.querySelector(".settings"))
+              );
+            }
+          );
+
+          if (removedSettings) {
+            handleSettingsClose();
+          }
+        }
+      });
+    });
+
+    // Start observing the document body
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      isMounted = false;
+      observer.disconnect();
+    };
+  }, [isRagMode]);
 
   // This useEffect monitors searchQuery changes to detect when "/" is deleted
   useEffect(() => {
@@ -57,14 +173,10 @@ export default function Header(props: Props) {
 
   // Handle model events and monitor model selection changes
   useEffect(() => {
-    // Check for model existence
-    if (doesModelExist) {
-      setShowModelMissingPrompt(false);
-    }
-
     // Listen for model selection required event
     const unlistenSelectionPromise = listen("model-selection-required", () => {
       console.log("Model selection required event received");
+      setModelStatus("none");
       setShowModelMissingPrompt(true);
       // Open settings dialog if we're in RAG mode
       if (isRagMode) {
@@ -77,6 +189,8 @@ export default function Header(props: Props) {
       "model-download-required",
       (event) => {
         console.log("Model download required:", event.payload);
+        setModelStatus("not-downloaded");
+        setShowModelMissingPrompt(true);
         // If we're in RAG mode, open settings to allow download
         if (isRagMode) {
           setIsSettingsOpen(true);
@@ -84,12 +198,19 @@ export default function Header(props: Props) {
       }
     );
 
+    // Listen for model updates
+    const unlistenModelUpdatePromise = listen("model-updated", () => {
+      console.log("Model update event received, rechecking status");
+      checkModelStatus();
+    });
+
     // Clean up listeners on component unmount
     return () => {
       unlistenSelectionPromise.then((unlistenFn) => unlistenFn());
       unlistenDownloadPromise.then((unlistenFn) => unlistenFn());
+      unlistenModelUpdatePromise.then((unlistenFn) => unlistenFn());
     };
-  }, [doesModelExist, isRagMode, setIsSettingsOpen]);
+  }, [isRagMode, setIsSettingsOpen]);
 
   const handleKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
     // If "/" is pressed as the first character to activate RAG mode
@@ -98,10 +219,8 @@ export default function Header(props: Props) {
       setIsRagMode(true);
       setSearchQuery("/");
 
-      // Check if model exists when entering RAG mode
-      if (!doesModelExist) {
-        setShowModelMissingPrompt(true);
-      }
+      // Check model status when entering RAG mode
+      checkModelStatus();
     }
 
     // Handle backspace when only "/" is present
@@ -112,13 +231,15 @@ export default function Header(props: Props) {
       setShowModelMissingPrompt(false);
     }
 
-    // Handle submitting a RAG query with Enter - only allow if model exists
+    // Handle submitting a RAG query with Enter - only allow if model exists and is downloaded
     if (e.key === "Enter" && isRagMode && searchQuery.length > 1) {
       e.preventDefault();
 
-      // Don't process if no model is selected
-      if (!doesModelExist) {
-        // Ensure the model missing prompt is shown
+      // First check model status to be sure it's up to date
+      await checkModelStatus();
+
+      // Don't process if model status isn't ready
+      if (modelStatus !== "ready") {
         setShowModelMissingPrompt(true);
         return;
       }
@@ -183,6 +304,18 @@ export default function Header(props: Props) {
     }
   };
 
+  const getModelErrorMessage = () => {
+    if (modelStatus === "none") {
+      return "No model selected, please select a model";
+    } else if (modelStatus === "not-downloaded") {
+      const selectedModelName =
+        availableModels.find((m) => m.id === settings?.selected_model_id)
+          ?.name || "selected model";
+      return `${selectedModelName} needs to be downloaded`;
+    }
+    return "";
+  };
+
   return (
     <div
       className="sticky top-0 flex flex-col gap-2 border-b border-b-border p-2"
@@ -196,9 +329,9 @@ export default function Header(props: Props) {
         <Input
           placeholder={
             isRagMode
-              ? doesModelExist
+              ? modelStatus === "ready"
                 ? "Ask a question about your documents..."
-                : "Please select a model first to ask questions"
+                : "Please select or download a model first"
               : "Type a command or search..."
           }
           value={searchQuery}
@@ -210,20 +343,27 @@ export default function Header(props: Props) {
           onKeyDown={handleKeyDown}
           className={cn(
             `text-xs placeholder:pl-2 border-0 focus-visible:outline-hidden focus-visible:ring-0 shadow-none dark:text-white text-gray-900`,
-            !doesModelExist && isRagMode ? "text-gray-400" : ""
+            modelStatus !== "ready" && isRagMode ? "text-gray-400" : ""
           )}
         />
       </div>
 
-      {/* Model Missing Prompt */}
-      {isRagMode && showModelMissingPrompt && !doesModelExist && (
+      {/* Model Missing or Not Downloaded Prompt */}
+      {isRagMode && showModelMissingPrompt && modelStatus !== "ready" && (
         <div className="mt-4 px-2 flex justify-center">
           <Button
             className="text-xs text-gray-200 justify-between hover:cursor-pointer"
             onClick={handleSelectModel}
+            disabled={isCheckingModel}
           >
-            <span>No model detected, please select a model</span>
-            <RxArrowTopRight />
+            {isCheckingModel ? (
+              <span>Checking model status...</span>
+            ) : (
+              <>
+                <span>{getModelErrorMessage()}</span>
+                <RxArrowTopRight />
+              </>
+            )}
           </Button>
         </div>
       )}
@@ -282,27 +422,6 @@ function ChatInterface(props: ChatInterfaceProps) {
       {isProcessing && <ProcessingAnimation />}
     </div>
   );
-}
-
-interface MessageContentProps {
-  message: ChatMessage;
-}
-
-function RenderMessageContent(props: MessageContentProps) {
-  const { message } = props;
-
-  const content =
-    typeof message.content === "string"
-      ? JSON.parse(message.content)
-      : message.content;
-
-  const actualContent = Array.isArray(content)
-    ? content
-    : Array.isArray(content?.content)
-    ? content.content
-    : content;
-
-  return <div>{message.content}</div>;
 }
 
 function ProcessingAnimation() {

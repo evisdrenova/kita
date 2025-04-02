@@ -70,6 +70,7 @@ pub fn run() {
             file_processor::get_semantic_files_data,
             file_processor::open_file,
             serve::get_available_models,
+            serve::get_downloaded_models,
             serve::start_model_download,
             serve::check_model_exists,
             model::ask_llm,

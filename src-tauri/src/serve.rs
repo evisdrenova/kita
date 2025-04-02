@@ -1,6 +1,5 @@
 use futures_util::StreamExt;
 use reqwest::Client;
-use rusqlite::types::Null;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
@@ -441,6 +440,18 @@ pub async fn start_model_download(
 }
 
 #[tauri::command]
+pub async fn get_downloaded_models(
+    model_registry: State<'_, ModelRegistry>,
+) -> Result<Vec<ModelInfo>, String> {
+    let downloaded_models = model_registry
+        .downloaded_models
+        .lock()
+        .map_err(|e| format!("Failed to lock"))?;
+
+    Ok(downloaded_models.clone())
+}
+
+#[tauri::command]
 pub async fn check_model_exists(
     app_handle: AppHandle,
     model_registry: State<'_, ModelRegistry>,
@@ -485,7 +496,6 @@ async fn scan_and_initialize_server(app_handle: AppHandle) {
     let registry_state = app_handle.state::<ModelRegistry>();
     match registry_state.scan_downloaded_models(&app_handle, None) {
         Ok(_) => {
-            println!("scanned models, trying to initialize");
             initialize_server_from_settings(&app_handle).await;
         }
         Err(e) => {
@@ -508,8 +518,6 @@ async fn initialize_server_from_settings(app_handle: &AppHandle) {
         }
     };
 
-    println!("got selected model: {:?}", selected_model_id);
-
     // Try to load the selected model
     handle_selected_model(app_handle, &selected_model_id).await;
 }
@@ -529,25 +537,21 @@ async fn handle_selected_model(app_handle: &AppHandle, model_id: &str) {
     match registry_state.get_model(model_id) {
         Some(model) if model.is_downloaded => {
             // Model exists and is downloaded
-            println!("starting server with the model");
             start_server_with_model(app_handle, model).await;
         }
         Some(model) => {
             // Model exists but is not downloadeds
-            println!("the model exists but isn't downloaded, sending notification");
             notify_model_download_required(app_handle, &model.name);
         }
         None => {
             // Model not found
-            notify_model_not_found(app_handle, model_id);
+            notify_model_not_found(app_handle);
         }
     }
 }
 
 // Start the LLM server with the specified model
 async fn start_server_with_model(app_handle: &AppHandle, model: ModelInfo) {
-    println!("Starting LLM server with model: {}", model.name);
-
     // Create server
     match LLMServer::new(app_handle.clone()).await {
         Ok(mut server) => {
@@ -585,7 +589,6 @@ fn notify_model_selection_required(app_handle: &AppHandle) {
 }
 
 fn notify_model_download_required(app_handle: &AppHandle, model_name: &str) {
-    println!("model needs to be downloaded");
     let _ = app_handle.emit(
         "model-download-required",
         format!(
@@ -595,8 +598,7 @@ fn notify_model_download_required(app_handle: &AppHandle, model_name: &str) {
     );
 }
 
-fn notify_model_not_found(app_handle: &AppHandle, model_id: &str) {
-    println!("model not found");
+fn notify_model_not_found(app_handle: &AppHandle) {
     let _ = app_handle.emit(
         "model-selection-required",
         "The previously selected model is no longer available. Please select a new model.",
