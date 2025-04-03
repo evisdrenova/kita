@@ -125,6 +125,7 @@ impl VectorDbManager {
         Ok(())
     }
 
+    /// given a query, this function performs similarity search and returns the chunks that matched
     pub async fn search_similar(
         app_handle: &AppHandle,
         query_text: &str,
@@ -141,8 +142,6 @@ impl VectorDbManager {
 
         let embedder = app_handle.state::<Arc<Embedder>>();
         let query_embedding: Vec<f32> = embedder.embed_single_text(query_text);
-
-        // println!("single text query embedding: {:?}", query_embedding);
 
         let table = manager
             .client
@@ -171,7 +170,7 @@ impl VectorDbManager {
                 VectorDbError::LanceError(format!("Vector search collection failed: {}", e))
             })?;
 
-        // println!("the reuslts: {:?}", results);
+        println!("the similarity search results: {:?}", results);
 
         Ok(results)
     }
@@ -238,6 +237,53 @@ fn get_embeddings_schema() -> Arc<Schema> {
         ),
         Field::new("file_id", DataType::Utf8, false),
     ]))
+}
+
+pub fn get_text_chunks_from_similarity_search(results: Vec<RecordBatch>) -> Result<String, String> {
+    let top_n = 5; // Limit to top 5 most relevant chunks
+
+    // Extract and format the chunks
+    let mut context_chunks = Vec::new();
+    for batch in &results {
+        // Access the columns
+        let ids = batch
+            .column_by_name("id")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<arrow_array::StringArray>()
+            .expect("Expected 'id' column to be a StringArray");
+
+        let texts = batch
+            .column_by_name("text")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<arrow_array::StringArray>()
+            .expect("Expected 'text' column to be a StringArray");
+
+        let file_ids = batch
+            .column_by_name("file_id")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<arrow_array::StringArray>()
+            .expect("Expected 'file_id' column to be a StringArray");
+
+        // Build formatted context chunks
+        for i in 0..std::cmp::min(batch.num_rows(), top_n) {
+            let id = ids.value(i);
+            let text = texts.value(i);
+            let file_id = file_ids.value(i);
+
+            context_chunks.push(format!(
+                "[{}] <source>{}</source>\n{}",
+                i + 1,
+                file_id,
+                text
+            ));
+        }
+    }
+
+    // Join the chunks with newlines between them
+    Ok(context_chunks.join("\n\n"))
 }
 
 // creates an index

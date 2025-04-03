@@ -2,6 +2,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -11,6 +12,12 @@ use dirs;
 use reqwest::Client;
 use tauri::{AppHandle, Manager};
 use thiserror::Error;
+
+use crate::embedder::Embedder;
+use crate::file_processor;
+use crate::file_processor::get_semantic_files_data;
+use crate::vectordb_manager::get_text_chunks_from_similarity_search;
+use crate::vectordb_manager::VectorDbManager;
 
 const SERVER_PORT: u16 = 8080;
 const SERVER_BINARY_NAME: &str = "llama-server";
@@ -134,8 +141,8 @@ impl LLMServer {
         Ok(())
     }
 
-    pub async fn send_prompt(&self, prompt: &str) -> Result<String, LLMServerError> {
-        let response = self.send_completion_request(prompt).await?;
+    pub async fn send_prompt(&self, prompt: &str, chunks: &str) -> Result<String, LLMServerError> {
+        let response = self.send_completion_request(prompt, chunks).await?;
         Ok(response.content)
     }
 
@@ -305,17 +312,50 @@ impl LLMServer {
     async fn send_completion_request(
         &self,
         prompt: &str,
+        chunks: &str,
     ) -> Result<CompletionResponse, LLMServerError> {
         let client = Client::new();
         let url = format!("http://127.0.0.1:{}/completion", self.port);
 
+        // Build context string from chunks
+        // let context = context_chunks
+        //     .iter()
+        //     .enumerate()
+        //     .map(|(i, chunk)| {
+        //         format!(
+        //             "[{}] <source>{}</source>\n{}",
+        //             i + 1,
+        //             chunk.source,
+        //             chunk.content
+        //         )
+        //     })
+        //     .collect::<Vec<String>>()
+        //     .join("\n\n");
+
+        let system_prompt = "
+        You are a helpful, accurate, and concise assistant. Your task is to answer questions based ONLY on the provided context.
+
+        When answering:
+        1. Use ONLY information from the provided context
+        2. If the context doesn't contain the answer, say \"I don't have enough information to answer that\" - never make up information
+        3. Cite your sources by referring to the document numbers [1], [2], etc.
+        4. Keep responses concise and to the point
+        5. If there are contradictions in the context, acknowledge them
+        6. Format your response in a readable way using markdown when helpful
+
+        Always prioritize accuracy over comprehensiveness.";
+
+        let formatted_prompt = format!(
+            "<s>[INST] {}\n\nCONTEXT:\n{}\n\nQUESTION: {} [/INST]",
+            system_prompt, chunks, prompt
+        );
+
         let request = CompletionRequest {
-            prompt: prompt.to_string(),
+            prompt: formatted_prompt,
             n_predict: 150,
             temperature: 0.7,
             stop: vec!["\nHuman:".to_string(), "\nUser:".to_string()],
         };
-
         println!("Sending prompt to {}...", url);
 
         // Print the request payload for debugging
@@ -345,10 +385,7 @@ impl LLMServer {
 
 impl Drop for LLMServer {
     fn drop(&mut self) {
-        if let Some(mut child) = self.server_process.take() {
-            println!("Automatically stopping server on drop...");
-            let _ = self.stop();
-        }
+        let _ = self.stop();
     }
 }
 
@@ -361,15 +398,23 @@ pub async fn ask_llm(app_handle: AppHandle, prompt: String) -> Result<String, St
     let server_state = app_handle.state::<tokio::sync::Mutex<Option<LLMServer>>>();
     let server_guard = server_state.lock().await;
 
+    let text_chunks: String = match VectorDbManager::search_similar(&app_handle, &prompt).await {
+        Ok(results) => get_text_chunks_from_similarity_search(results)?,
+        Err(e) => {
+            eprintln!("Unable to get chunks): {}", e);
+            String::new()
+        }
+    };
+
+    println!("the text chunks: {:?}", text_chunks);
+
     // Check if we have a server instance
     if let Some(server) = &*server_guard {
-        // Use the existing server to send the prompt
         server
-            .send_prompt(&prompt)
+            .send_prompt(&prompt, &text_chunks)
             .await
             .map_err(|e| format!("Failed to get response: {}", e))
     } else {
-        // No server instance available
         Err("No LLM server is currently running. Please select a model first.".into())
     }
 }

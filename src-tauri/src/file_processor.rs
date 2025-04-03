@@ -671,6 +671,11 @@ fn convert_search_results_to_metadata(
         return Ok(Vec::new());
     }
 
+    println!(
+        "the rows before we convert search to metadata, {:?}",
+        results
+    );
+
     let mut file_id_distances: HashMap<String, f32> = HashMap::new();
 
     // Extract data from results
