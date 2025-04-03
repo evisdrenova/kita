@@ -1,21 +1,17 @@
+use dirs;
+use regex::Regex;
+use reqwest::Client;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Arc;
 use std::time::Duration;
+use tauri::{AppHandle, Manager};
+use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use dirs;
-use reqwest::Client;
-use tauri::{AppHandle, Manager};
-use thiserror::Error;
-
-use crate::embedder::Embedder;
-use crate::file_processor;
-use crate::file_processor::get_semantic_files_data;
 use crate::vectordb_manager::get_text_chunks_from_similarity_search;
 use crate::vectordb_manager::VectorDbManager;
 
@@ -59,15 +55,17 @@ struct CompletionRequest {
     stop: Vec<String>,
 }
 
-#[derive(serde::Deserialize, Debug)]
-struct CompletionResponse {
-    content: String,
-}
 pub struct LLMServer {
     server_process: Option<tokio::process::Child>,
     port: u16,
     app_handle: AppHandle,
     model_path: Option<PathBuf>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct CompletionResponse {
+    pub content: String,
+    pub sources: Vec<String>,
 }
 
 impl LLMServer {
@@ -317,21 +315,6 @@ impl LLMServer {
         let client = Client::new();
         let url = format!("http://127.0.0.1:{}/completion", self.port);
 
-        // Build context string from chunks
-        // let context = context_chunks
-        //     .iter()
-        //     .enumerate()
-        //     .map(|(i, chunk)| {
-        //         format!(
-        //             "[{}] <source>{}</source>\n{}",
-        //             i + 1,
-        //             chunk.source,
-        //             chunk.content
-        //         )
-        //     })
-        //     .collect::<Vec<String>>()
-        //     .join("\n\n");
-
         let system_prompt = "
         You are a helpful, accurate, and concise assistant. Your task is to answer questions based ONLY on the provided context.
 
@@ -367,7 +350,18 @@ impl LLMServer {
         let response = client.post(&url).json(&request).send().await?;
 
         if response.status().is_success() {
-            Ok(response.json::<CompletionResponse>().await?)
+            let completion_response = response.json::<CompletionResponse>().await?;
+
+            // Extract sources from the response
+            let sources = extract_sources(&completion_response.content);
+
+            // Create enhanced response with sources
+            let enhanced_response = CompletionResponse {
+                content: completion_response.content,
+                sources,
+            };
+
+            Ok(enhanced_response)
         } else {
             let status = response.status();
             let error_body = response
@@ -381,6 +375,26 @@ impl LLMServer {
             )))
         }
     }
+}
+
+fn extract_sources(text: &str) -> Vec<String> {
+    // Look for patterns like [1] <source>3</source> or just <source>3</source>
+    let re = Regex::new(r"<source>(.*?)</source>").unwrap();
+
+    // Find all unique sources
+    let mut sources = Vec::new();
+    for cap in re.captures_iter(text) {
+        if let Some(source) = cap.get(1) {
+            let source_id = source.as_str().to_string();
+            if !sources.contains(&source_id) {
+                sources.push(source_id);
+            }
+        }
+    }
+
+    println!("the sources: {:?}", sources);
+
+    sources
 }
 
 impl Drop for LLMServer {

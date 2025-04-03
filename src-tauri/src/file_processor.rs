@@ -671,11 +671,6 @@ fn convert_search_results_to_metadata(
         return Ok(Vec::new());
     }
 
-    println!(
-        "the rows before we convert search to metadata, {:?}",
-        results
-    );
-
     let mut file_id_distances: HashMap<String, f32> = HashMap::new();
 
     // Extract data from results
@@ -770,6 +765,85 @@ pub fn open_file(file_path: &str) -> Result<(), String> {
         ))
     }
 }
+
+// pub async fn get_file_by_id(
+//     app_handle: AppHandle,
+//     file_id: String,
+// ) -> Result<FileMetadata, String> {
+//     // Get connection to SQLite database
+//     let db_path = app_handle.path().app_data_dir()?.join("files.db");
+//     let conn = Connection::open(db_path).map_err(|e| format!("Failed to open database: {e}"))?;
+
+//     // Prepare SQL query to get file by ID
+//     let mut stmt = conn
+//         .prepare(
+//             r#"
+//         SELECT
+//           id,
+//           name,
+//           path,
+//           extension,
+//           size,
+//           created_at,
+//           updated_at
+//         FROM files
+//         WHERE id = ?
+//         "#,
+//         )
+//         .map_err(|e| format!("Failed to prepare statement: {e}"))?;
+
+//     // Execute query with file_id parameter
+//     let mut rows = stmt
+//         .query([file_id])
+//         .map_err(|e| format!("Query error: {e}"))?;
+
+//     // Try to get the first (and only) row
+//     if let Some(row) = rows.next().map_err(|e| format!("Error reading row: {e}"))? {
+//         // Convert row to FileMetadata
+//         let file = FileMetadata {
+//             base: BaseMetadata {
+//                 id: row.get(0).map_err(|e| format!("Error getting id: {e}"))?,
+//                 name: row.get(1).map_err(|e| format!("Error getting name: {e}"))?,
+//                 path: row.get(2).map_err(|e| format!("Error getting path: {e}"))?,
+//             },
+//             file_type: SearchSectionType::Files,
+//             extension: row
+//                 .get(3)
+//                 .map_err(|e| format!("Error getting extension: {e}"))?,
+//             size: row.get(4).map_err(|e| format!("Error getting size: {e}"))?,
+//             created_at: row
+//                 .get(5)
+//                 .map_err(|e| format!("Error getting created_at: {e}"))?,
+//             updated_at: row
+//                 .get(6)
+//                 .map_err(|e| format!("Error getting updated_at: {e}"))?,
+//         };
+
+//         Ok(file)
+//     } else {
+//         Err(format!("File with ID {} not found", file_id))
+//     }
+// }
+
+// #[tauri::command]
+// pub async fn open_file_by_id(app_handle: AppHandle, file_id: String) -> Result<(), String> {
+//     // Get the files database or state
+//     let file_state = app_handle.state::<Mutex<FileDatabase>>();
+//     let file_db = file_state.lock().await;
+
+//     // Find the file by ID
+//     match file_db.get_file_by_id(&file_id).await {
+//         Ok(Some(file)) => {
+//             // Open the file using OS default application
+//             match open_file(&file.path) {
+//                 Ok(_) => Ok(()),
+//                 Err(e) => Err(format!("Failed to open file: {}", e)),
+//             }
+//         }
+//         Ok(None) => Err(format!("File with ID {} not found", file_id)),
+//         Err(e) => Err(format!("Error retrieving file: {}", e)),
+//     }
+// }
 
 pub fn init_file_processor(
     db_path: &str,

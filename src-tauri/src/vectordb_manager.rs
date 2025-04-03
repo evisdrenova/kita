@@ -130,8 +130,6 @@ impl VectorDbManager {
         app_handle: &AppHandle,
         query_text: &str,
     ) -> VectorDbResult<Vec<RecordBatch>> {
-        println!("the query in search similar: {:?}", query_text);
-
         let state = app_handle.state::<Arc<Mutex<VectorDbManager>>>();
         let manager = state.lock().await;
 
@@ -169,8 +167,6 @@ impl VectorDbManager {
             .map_err(|e| {
                 VectorDbError::LanceError(format!("Vector search collection failed: {}", e))
             })?;
-
-        println!("the similarity search results: {:?}", results);
 
         Ok(results)
     }

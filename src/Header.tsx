@@ -258,10 +258,20 @@ export default function Header(props: Props) {
       setIsProcessing(true);
 
       try {
-        const response = await invoke<string>("ask_llm", { prompt: userQuery });
+        const response = await invoke<{ content: string; sources: string[] }>(
+          "ask_llm",
+          {
+            prompt: userQuery,
+          }
+        );
+
         setChatMessages((prev) => [
           ...prev,
-          { role: "assistant", content: response },
+          {
+            role: "assistant",
+            content: response.content,
+            sources: response.sources,
+          },
         ]);
       } catch (error) {
         console.error("Error processing RAG query:", error);
@@ -426,6 +436,18 @@ function ChatInterface(props: ChatInterfaceProps) {
                 )}
               >
                 <div className="text-sm">{message.content}</div>
+                {message.sources && message.sources.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-primary-foreground/20">
+                    <div className="text-xs text-primary-foreground/70 mb-1">
+                      Sources:
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {message.sources.map((source, idx) => (
+                        <SourceBadge key={idx} sourceId={source} />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -434,6 +456,49 @@ function ChatInterface(props: ChatInterfaceProps) {
 
       {isProcessing && <ProcessingAnimation />}
     </div>
+  );
+}
+
+// Add a new SourceBadge component
+interface SourceBadgeProps {
+  sourceId: string;
+}
+
+// TODO: move this to the backend instead of doing it on the front end
+function SourceBadge({ sourceId }: SourceBadgeProps) {
+  const [fileName, setFileName] = useState<string | null>(null);
+
+  // Fetch file name from file ID
+  useEffect(() => {
+    async function fetchFileName() {
+      try {
+        const fileInfo = await invoke<{ name: string }>("get_file_by_id", {
+          fileId: sourceId,
+        });
+        setFileName(fileInfo.name);
+      } catch (error) {
+        console.error("Failed to fetch file name:", error);
+      }
+    }
+
+    fetchFileName();
+  }, [sourceId]);
+
+  const handleClick = async () => {
+    try {
+      await invoke("open_file_by_id", { fileId: sourceId });
+    } catch (error) {
+      console.error("Failed to open file:", error);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      className="inline-flex items-center px-2 py-1 rounded-md text-xs bg-primary-foreground/20 hover:bg-primary-foreground/30 transition-colors"
+    >
+      <span>{fileName || `Source ${sourceId}`}</span>
+    </button>
   );
 }
 
