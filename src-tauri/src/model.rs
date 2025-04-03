@@ -103,10 +103,7 @@ impl LLMServer {
             Ok(Ok(_)) => Ok(()),
             Ok(Err(e)) => {
                 eprintln!("Error during server readiness check: {}", e);
-                // Kill the server process if it's still running
-                if let Some(mut child) = self.server_process.take() {
-                    let _ = child.start_kill();
-                }
+                let _ = self.stop();
                 Err(e)
             }
             Err(_) => {
@@ -114,10 +111,7 @@ impl LLMServer {
                     "Server did not become ready within {} seconds.",
                     SERVER_READY_TIMEOUT_SECS
                 );
-                // Kill the server process if it's still running
-                if let Some(mut child) = self.server_process.take() {
-                    let _ = child.start_kill();
-                }
+                let _ = self.stop();
                 Err(LLMServerError::ServerReadyTimeout(
                     SERVER_READY_TIMEOUT_SECS,
                 ))
@@ -353,7 +347,7 @@ impl Drop for LLMServer {
     fn drop(&mut self) {
         if let Some(mut child) = self.server_process.take() {
             println!("Automatically stopping server on drop...");
-            let _ = child.start_kill();
+            let _ = self.stop();
         }
     }
 }
