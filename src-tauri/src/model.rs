@@ -18,7 +18,6 @@ use crate::vectordb_manager::VectorDbManager;
 const SERVER_PORT: u16 = 8080;
 const SERVER_BINARY_NAME: &str = "llama-server";
 
-// !! Define your model filename in Downloads folder !!
 const MODEL_FILENAME: &str = "mistral-7b-instruct-v0.2.Q5_K_M.gguf";
 
 const SERVER_READY_TIMEOUT_SECS: u64 = 180;
