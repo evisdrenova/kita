@@ -21,9 +21,11 @@ jobs:
 
       - name: Debug file listing
         run: |
-          # List some sample files to make sure we're checking the right files
-          echo "Listing sample files in the repository:"
-          find . -type f -name "*.js" -o -name "*.ts" | head -n 10
+          echo "Listing top-level directories:"
+          ls -la
+
+          echo "Listing some source files:"
+          find . -type f -name "*.js" -o -name "*.ts" | head -n 5
 
       - name: Find TODOs
         id: find-todos
@@ -31,51 +33,45 @@ jobs:
           # Create a temporary file for the results
           touch todo_results.txt
 
-          # First, try with a broader regex pattern (for debugging)
-          echo "Searching with broad pattern - looking for any 'TODO' in comments..."
-          # Make grep case insensitive to catch variations
-          TODOS=$(grep -r -i --include="*.{js,jsx,ts,tsx,java,py,rb,php,c,cpp,h,hpp,cs,go,swift,kt}" "TODO" --exclude-dir={node_modules,.git,build,dist,vendor} .)
+          echo "## TODO Finder Results" | tee -a todo_results.txt
+          echo "-------------------" | tee -a todo_results.txt
+
+          # Make sure grep doesn't fail on binary files or other issues
+          # Use -I to ignore binary files
+          # Use || true to ensure the command doesn't fail the workflow
+          echo "Searching for TODOs in text files only..."
+          TODOS=$(find . -type f -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/dist/*" -not -path "*/build/*" -not -path "*/vendor/*" -exec grep -l -I "TODO" {} \; || true)
 
           if [ -z "$TODOS" ]; then
-            echo "No 'TODO' strings found with broad pattern. Trying to examine some source files directly..."
-            # Check some files directly (random sample)
-            SAMPLE_FILES=$(find . -type f -name "*.js" -o -name "*.ts" | head -n 5)
-            echo "Sample files to check:"
-            echo "$SAMPLE_FILES"
+            echo "No TODO strings found in initial search. Checking file types..." | tee -a todo_results.txt
             
-            for file in $SAMPLE_FILES; do
-              echo "Contents of $file:"
-              cat "$file"
-              echo "-------------------"
+            # List some file types to verify what we have
+            echo "File types in repository:" | tee -a todo_results.txt
+            find . -type f -name "*.*" | grep -o "\.[^\.]*$" | sort | uniq -c | sort -nr | head -n 10 | tee -a todo_results.txt
+          else
+            echo "Found files containing 'TODO':" | tee -a todo_results.txt
+            echo "$TODOS" | tee -a todo_results.txt
+            
+            echo "Details of TODOs found:" | tee -a todo_results.txt
+            for file in $TODOS; do
+              if [ -f "$file" ]; then
+                # Use -n to show line numbers and -I to ignore binary files
+                grep -n -I "TODO" "$file" | tee -a todo_results.txt
+              fi
             done
           fi
 
-          # Now search with the proper pattern for TODOs in comments
-          echo "Searching for TODOs with specific pattern..."
-
-          # Find all TODOs and count them (try multiple patterns)
-          TODOS=$(grep -r -i --include="*.{js,jsx,ts,tsx,java,py,rb,php,c,cpp,h,hpp,cs,go,swift,kt}" -E "(//\s*TODO|/\*\s*TODO)" --exclude-dir={node_modules,.git,build,dist,vendor} .)
+          # Count total TODOs found
           TODO_COUNT=$(echo "$TODOS" | wc -l)
 
-          echo "Raw grep output:"
-          echo "$TODOS"
-
-          echo "Found $TODO_COUNT TODO comments"
-
-          # Print the results
-          echo "## TODO Locations Found"
-          echo "-------------------"
-
-          if [ $TODO_COUNT -gt 0 ] && [ -n "$TODOS" ]; then
-            echo "$TODOS" | while read -r line; do
-              echo "$line"
-            done
-            
-            echo "::notice title=TODOs Found::Found $TODO_COUNT TODOs in your codebase. Check the output for details."
+          if [ $TODO_COUNT -gt 0 ]; then
+            echo "::notice title=TODOs Found::Found $TODO_COUNT files containing TODOs in your codebase."
           else
-            echo "No TODOs found in the codebase."
             echo "::notice title=No TODOs::No TODOs found in your codebase."
           fi
+
+          # Export the results for PR comments
+          echo "$TODO_COUNT" > todo_count.txt
 
       - name: Comment on PR
         if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
@@ -83,11 +79,14 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const todoResults = require('fs').readFileSync('todo_results.txt', 'utf8');
+            const fs = require('fs');
+            const todoResults = fs.readFileSync('todo_results.txt', 'utf8');
+            const todoCount = parseInt(fs.readFileSync('todo_count.txt', 'utf8'));
 
             let commentBody = `## TODO Finder Results\n\n`;
 
-            if (todoResults.includes('TODO')) {
+            if (todoCount > 0) {
+              commentBody += `Found ${todoCount} files containing TODOs in the codebase.\n\n`;
               commentBody += todoResults;
             } else {
               commentBody += `✅ No TODOs found in the codebase! Great job keeping technical debt in check.`;
