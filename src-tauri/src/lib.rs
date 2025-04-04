@@ -4,8 +4,9 @@ mod database_handler;
 mod embedder;
 mod file_processor;
 mod model;
+mod model_registry;
 mod resource_monitor;
-mod serve;
+mod server;
 mod settings;
 mod tokenizer;
 mod utils;
@@ -48,7 +49,7 @@ pub fn run() {
 
             init_vector_db(app)?;
 
-            serve::initialize_model_registry(app)?;
+            server::initialize_server(app)?;
 
             resource_monitor::init(app)?;
 
@@ -69,10 +70,10 @@ pub fn run() {
             file_processor::get_files_data,
             file_processor::get_semantic_files_data,
             file_processor::open_file,
-            serve::get_available_models,
-            serve::get_downloaded_models,
-            serve::start_model_download,
-            serve::check_model_exists,
+            model_registry::get_models,
+            model_registry::get_downloaded_models,
+            model_registry::start_model_download,
+            model_registry::check_model_exists,
             model::ask_llm,
             // model::change_llm_model,
             settings::get_settings,

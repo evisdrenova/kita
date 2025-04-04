@@ -57,7 +57,7 @@ export default function Models() {
         }
 
         // Then fetch available models
-        const availableModels = await invoke<Model[]>("get_available_models", {
+        const availableModels = await invoke<Model[]>("get_models", {
           customPath: useCustomPath ? customPath : null,
         });
         setModels(availableModels);

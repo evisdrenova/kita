@@ -79,7 +79,7 @@ export default function Header(props: Props) {
       setIsCheckingModel(true);
 
       // Get all available models
-      const models = await invoke<Model[]>("get_available_models", {
+      const models = await invoke<Model[]>("get_models", {
         customPath: settings.custom_model_path || null,
       });
       setAvailableModels(models);

@@ -15,37 +15,6 @@ use tokio::time::timeout;
 use crate::vectordb_manager::get_text_chunks_from_similarity_search;
 use crate::vectordb_manager::VectorDbManager;
 
-const SERVER_PORT: u16 = 8080;
-const SERVER_BINARY_NAME: &str = "llama-server";
-
-const MODEL_FILENAME: &str = "mistral-7b-instruct-v0.2.Q5_K_M.gguf";
-
-const SERVER_READY_TIMEOUT_SECS: u64 = 180;
-
-#[derive(Error, Debug)]
-pub enum LLMServerError {
-    #[error("I/O error: {0}")]
-    Io(#[from] io::Error),
-
-    #[error("Network error: {0}")]
-    Network(#[from] reqwest::Error),
-
-    #[error("JSON parsing error: {0}")]
-    Json(#[from] serde_json::Error),
-
-    #[error("Command execution error: {0}")]
-    CommandError(String),
-
-    #[error("Could not find Downloads directory")]
-    DownloadsDirNotFound,
-
-    #[error("Server did not become ready within timeout ({0}s)")]
-    ServerReadyTimeout(u64),
-
-    #[error("Could not extract server binary")]
-    ResourceExtractionError,
-}
-
 #[derive(serde::Serialize, Debug)]
 struct CompletionRequest {
     prompt: String,
@@ -54,90 +23,19 @@ struct CompletionRequest {
     stop: Vec<String>,
 }
 
-pub struct LLMServer {
-    server_process: Option<tokio::process::Child>,
-    port: u16,
-    app_handle: AppHandle,
-    model_path: Option<PathBuf>,
-}
-
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct CompletionResponse {
     pub content: String,
     pub sources: Vec<String>,
 }
 
-impl LLMServer {
-    pub async fn new(app_handle: AppHandle) -> Result<Self, LLMServerError> {
-        Ok(Self {
-            server_process: None,
-            port: SERVER_PORT,
-            app_handle,
-            model_path: None,
-        })
-    }
+#[derive(Error, Debug, Clone)]
+pub enum LLMModelError {
+    #[error("Download failed: {0}")]
+    CompletionError(String),
+}
 
-    pub async fn start(&mut self) -> Result<(), LLMServerError> {
-        // Check if we have a model path set
-        let model_path = if let Some(path) = &self.model_path {
-            path.clone()
-        } else {
-            // Fallback to default behavior if no model path is set
-            let downloads_dir = dirs::download_dir().ok_or(LLMServerError::DownloadsDirNotFound)?;
-            downloads_dir.join(MODEL_FILENAME)
-        };
-
-        // Verify the model exists
-        if !model_path.exists() {
-            return Err(LLMServerError::CommandError(format!(
-                "Model file not found at: {}",
-                model_path.display()
-            )));
-        }
-
-        let server_path = self.prepare_server_binary().await?;
-
-        // Start the server
-        let child = self.start_server(&server_path, &model_path).await?;
-        self.server_process = Some(child);
-
-        // Poll for server readiness
-        let ready_timeout = Duration::from_secs(SERVER_READY_TIMEOUT_SECS);
-        match timeout(ready_timeout, self.wait_for_server_ready()).await {
-            Ok(Ok(_)) => Ok(()),
-            Ok(Err(e)) => {
-                eprintln!("Error during server readiness check: {}", e);
-                let _ = self.stop();
-                Err(e)
-            }
-            Err(_) => {
-                eprintln!(
-                    "Server did not become ready within {} seconds.",
-                    SERVER_READY_TIMEOUT_SECS
-                );
-                let _ = self.stop();
-                Err(LLMServerError::ServerReadyTimeout(
-                    SERVER_READY_TIMEOUT_SECS,
-                ))
-            }
-        }
-    }
-
-    pub async fn set_model_path(&mut self, path: &str) -> Result<(), LLMServerError> {
-        let model_path = PathBuf::from(path);
-
-        // Verify the model exists
-        if !model_path.exists() {
-            return Err(LLMServerError::CommandError(format!(
-                "Model file not found at: {}",
-                model_path.display()
-            )));
-        }
-
-        self.model_path = Some(model_path);
-        Ok(())
-    }
-
+impl LLMModel {
     pub async fn send_prompt(&self, prompt: &str, chunks: &str) -> Result<String, LLMServerError> {
         let response = self.send_completion_request(prompt, chunks).await?;
         Ok(response.content)
@@ -151,159 +49,6 @@ impl LLMServer {
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
         Ok(())
-    }
-
-    async fn prepare_server_binary(&self) -> Result<PathBuf, LLMServerError> {
-        // First try the src-tauri/resources path (for development)
-        let cwd_path = std::env::current_dir()?
-            .join("resources")
-            .join(SERVER_BINARY_NAME);
-
-        if cwd_path.exists() {
-            // Check if we need to set executable permissions
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let mut perms = fs::metadata(&cwd_path)?.permissions();
-                if perms.mode() & 0o111 == 0 {
-                    // Set executable permissions if not already set
-                    perms.set_mode(0o755); // rwxr-xr-x
-                    fs::set_permissions(&cwd_path, perms)?;
-                }
-            }
-
-            return Ok(cwd_path);
-        }
-
-        // Try the resource directory (for production)
-        // should handle this with an envar
-        if let Ok(resource_dir) = self.app_handle.path().resource_dir() {
-            let resource_path = resource_dir.join(SERVER_BINARY_NAME);
-            if resource_path.exists() {
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    let mut perms = fs::metadata(&resource_path)?.permissions();
-                    if perms.mode() & 0o111 == 0 {
-                        perms.set_mode(0o755);
-                        fs::set_permissions(&resource_path, perms)?;
-                    }
-                }
-
-                return Ok(resource_path);
-            }
-        }
-
-        // Binary not found
-        Err(LLMServerError::CommandError(format!(
-            "Could not find {}. Searched in src-tauri/resources and resource directory.",
-            SERVER_BINARY_NAME
-        )))
-    }
-
-    async fn start_server(
-        &self,
-        server_path: &Path,
-        model_path: &Path,
-    ) -> Result<tokio::process::Child, LLMServerError> {
-        println!(
-            "Starting server: {} with model: {} on port {}",
-            server_path.display(),
-            model_path.display(),
-            self.port
-        );
-
-        let model_path_str = model_path
-            .to_str()
-            .ok_or_else(|| LLMServerError::CommandError("Invalid model path".into()))?;
-
-        let mut command = Command::new(server_path);
-        command
-            .args([
-                "-m",
-                model_path_str,
-                "--port",
-                &self.port.to_string(),
-                "--host",
-                "127.0.0.1",
-                "-c",
-                "2048",
-                // Add other args as needed
-                // "--threads", "4",  // Uncomment and adjust based on your CPU
-                // "--log-disable",   // Uncomment to reduce noise
-            ])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-
-        let mut child = command
-            .spawn()
-            .map_err(|e| LLMServerError::CommandError(format!("Failed to spawn server: {}", e)))?;
-
-        println!("Server process started (PID: {})", child.id().unwrap_or(0));
-
-        // Capture and print server output
-        if let Some(stdout) = child.stdout.take() {
-            let mut reader = BufReader::new(stdout).lines();
-            tokio::spawn(async move {
-                while let Ok(Some(line)) = reader.next_line().await {
-                    println!("[SERVER]: {}", line);
-                }
-            });
-        }
-
-        if let Some(stderr) = child.stderr.take() {
-            let mut reader = BufReader::new(stderr).lines();
-            tokio::spawn(async move {
-                while let Ok(Some(line)) = reader.next_line().await {
-                    eprintln!("[SERVER ERROR]: {}", line);
-                }
-            });
-        }
-
-        Ok(child)
-    }
-
-    async fn wait_for_server_ready(&self) -> Result<(), LLMServerError> {
-        let client = Client::new();
-
-        // Try both /health and root endpoint
-        let endpoints = vec![
-            format!("http://127.0.0.1:{}/health", self.port),
-            format!("http://127.0.0.1:{}", self.port),
-        ];
-
-        println!("Waiting for server to become ready...");
-
-        loop {
-            // Sleep before checking to give the server some time
-            tokio::time::sleep(Duration::from_millis(1000)).await;
-
-            let mut success = false;
-
-            // Try each endpoint
-            for endpoint in &endpoints {
-                match client.get(endpoint).send().await {
-                    Ok(response) => {
-                        if response.status().is_success() {
-                            success = true;
-                            break;
-                        }
-                        println!(
-                            "Server responded with status: {} at {}",
-                            response.status(),
-                            endpoint
-                        );
-                    }
-                    Err(e) => {
-                        println!("Server not ready at {}: {}", endpoint, e);
-                    }
-                }
-            }
-
-            if success {
-                return Ok(());
-            }
-        }
     }
 
     async fn send_completion_request(
@@ -351,7 +96,9 @@ impl LLMServer {
         if response.status().is_success() {
             let completion_response = response.json::<CompletionResponse>().await?;
 
-            // Extract sources from the response
+            println!("the competition response: {:?}", completion_response);
+
+            // Extract sources from the response to tell which sources the LLM used to find the answer, the sources == file_id
             let sources = extract_sources(&completion_response.content);
 
             // Create enhanced response with sources
@@ -374,31 +121,14 @@ impl LLMServer {
             )))
         }
     }
-}
 
-fn extract_sources(text: &str) -> Vec<String> {
-    // Look for patterns like [1] <source>3</source> or just <source>3</source>
-    let re = Regex::new(r"<source>(.*?)</source>").unwrap();
-
-    // Find all unique sources
-    let mut sources = Vec::new();
-    for cap in re.captures_iter(text) {
-        if let Some(source) = cap.get(1) {
-            let source_id = source.as_str().to_string();
-            if !sources.contains(&source_id) {
-                sources.push(source_id);
-            }
+    fn stop_sync(&mut self) {
+        if let Some(mut child) = self.server_process.take() {
+            println!("Stopping server synchronously...");
+            let _ = child.start_kill();
+            // We can't wait asynchronously here, but that's usually okay
+            // as the OS will clean up child processes
         }
-    }
-
-    println!("the sources: {:?}", sources);
-
-    sources
-}
-
-impl Drop for LLMServer {
-    fn drop(&mut self) {
-        let _ = self.stop();
     }
 }
 
@@ -435,6 +165,32 @@ pub async fn ask_llm(app_handle: AppHandle, prompt: String) -> Result<String, St
 pub fn register_llm_commands(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(tokio::sync::Mutex::new(None::<LLMServer>));
     Ok(())
+}
+
+fn extract_sources(text: &str) -> Vec<String> {
+    // Look for patterns like [1] <source>3</source> or just <source>3</source>
+    let re = Regex::new(r"<source>(.*?)</source>").unwrap();
+
+    // Find all unique sources
+    let mut sources = Vec::new();
+    for cap in re.captures_iter(text) {
+        if let Some(source) = cap.get(1) {
+            let source_id = source.as_str().to_string();
+            if !sources.contains(&source_id) {
+                sources.push(source_id);
+            }
+        }
+    }
+
+    println!("the sources: {:?}", sources);
+
+    sources
+}
+
+impl Drop for LLMServer {
+    fn drop(&mut self) {
+        self.stop_sync();
+    }
 }
 
 // #[tauri::command]

@@ -1,0 +1,422 @@
+/*
+This file contains methods and functions to interact with the llama.cpp server that is serving the LLM model */
+
+use dirs;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use std::time::Duration;
+use tauri::{AppHandle, Emitter, Manager};
+use thiserror::Error;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::Command;
+use tokio::time::timeout;
+
+use crate::model_registry::{ModelInfo, ModelRegistry};
+use crate::settings::SettingsManagerState;
+
+#[derive(Error, Debug)]
+pub enum LLMServerError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("Network error: {0}")]
+    Network(#[from] reqwest::Error),
+
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+
+    #[error("Download failed: {0}")]
+    DownloadFailed(String),
+
+    #[error("Download problem: {0}")]
+    UnableToStart(String),
+
+    #[error("Command execution error: {0}")]
+    CommandError(String),
+
+    #[error("Could not find Downloads directory")]
+    DownloadsDirNotFound,
+
+    #[error("Server did not become ready within timeout ({0}s)")]
+    ServerReadyTimeout(u64),
+
+    #[error("Could not extract server binary")]
+    ResourceExtractionError,
+}
+
+type Result<T, E = LLMServerError> = std::result::Result<T, E>;
+
+pub struct LLMServer {
+    server_process: Option<tokio::process::Child>,
+    port: u16,
+    app_handle: AppHandle,
+    model_path: Option<PathBuf>,
+}
+
+const SERVER_PORT: u16 = 8080;
+const SERVER_BINARY_NAME: &str = "llama-server";
+const MODEL_FILENAME: &str = "mistral-7b-instruct-v0.2.Q5_K_M.gguf";
+const SERVER_READY_TIMEOUT_SECS: u64 = 180;
+
+impl LLMServer {
+    pub async fn new(app_handle: AppHandle) -> Result<Self, LLMServerError> {
+        Ok(Self {
+            server_process: None,
+            port: SERVER_PORT,
+            app_handle,
+            model_path: None,
+        })
+    }
+
+    pub async fn start(&mut self) -> Result<(), LLMServerError> {
+        // Check if we have a model path set
+        let model_path = if let Some(path) = &self.model_path {
+            path.clone()
+        } else {
+            // Fallback to default behavior if no model path is set
+            let downloads_dir = dirs::download_dir().ok_or(LLMServerError::DownloadsDirNotFound)?;
+            downloads_dir.join(MODEL_FILENAME)
+        };
+
+        // Verify the model exists
+        if !model_path.exists() {
+            return Err(LLMServerError::CommandError(format!(
+                "Model file not found at: {}",
+                model_path.display()
+            )));
+        }
+
+        let server_path = self.prepare_server_binary().await?;
+
+        // Start the server
+        let child = self.start_server(&server_path, &model_path).await?;
+        self.server_process = Some(child);
+
+        // Poll for server readiness
+        let ready_timeout = Duration::from_secs(SERVER_READY_TIMEOUT_SECS);
+        match timeout(ready_timeout, self.wait_for_server_ready()).await {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(e)) => {
+                eprintln!("Error during server readiness check: {}", e);
+                let _ = self.stop();
+                Err(e)
+            }
+            Err(_) => {
+                eprintln!(
+                    "Server did not become ready within {} seconds.",
+                    SERVER_READY_TIMEOUT_SECS
+                );
+                let _ = self.stop();
+                Err(LLMServerError::ServerReadyTimeout(
+                    SERVER_READY_TIMEOUT_SECS,
+                ))
+            }
+        }
+    }
+
+    async fn prepare_server_binary(&self) -> Result<PathBuf, LLMServerError> {
+        // First try the src-tauri/resources path (for development)
+        let cwd_path = std::env::current_dir()?
+            .join("resources")
+            .join(SERVER_BINARY_NAME);
+
+        if cwd_path.exists() {
+            // Check if we need to set executable permissions
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = fs::metadata(&cwd_path)?.permissions();
+                if perms.mode() & 0o111 == 0 {
+                    // Set executable permissions if not already set
+                    perms.set_mode(0o755); // rwxr-xr-x
+                    fs::set_permissions(&cwd_path, perms)?;
+                }
+            }
+
+            return Ok(cwd_path);
+        }
+
+        // Try the resource directory (for production)
+        // should handle this with an envar
+        if let Ok(resource_dir) = self.app_handle.path().resource_dir() {
+            let resource_path = resource_dir.join(SERVER_BINARY_NAME);
+            if resource_path.exists() {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mut perms = fs::metadata(&resource_path)?.permissions();
+                    if perms.mode() & 0o111 == 0 {
+                        perms.set_mode(0o755);
+                        fs::set_permissions(&resource_path, perms)?;
+                    }
+                }
+
+                return Ok(resource_path);
+            }
+        }
+
+        // Binary not found
+        Err(LLMServerError::CommandError(format!(
+            "Could not find {}. Searched in src-tauri/resources and resource directory.",
+            SERVER_BINARY_NAME
+        )))
+    }
+
+    async fn start_server(
+        &self,
+        server_path: &Path,
+        model_path: &Path,
+    ) -> Result<tokio::process::Child, LLMServerError> {
+        println!(
+            "Starting server: {} with model: {} on port {}",
+            server_path.display(),
+            model_path.display(),
+            self.port
+        );
+
+        let model_path_str = model_path
+            .to_str()
+            .ok_or_else(|| LLMServerError::CommandError("Invalid model path".into()))?;
+
+        let mut command = Command::new(server_path);
+        command
+            .args([
+                "-m",
+                model_path_str,
+                "--port",
+                &self.port.to_string(),
+                "--host",
+                "127.0.0.1",
+                "-c",
+                "2048",
+                "--no-system-prompt", // Add other args as needed
+                                      // "--threads", "4",  // Uncomment and adjust based on your CPU
+                                      // "--log-disable",   // Uncomment to reduce noise
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        let mut child = command
+            .spawn()
+            .map_err(|e| LLMServerError::CommandError(format!("Failed to spawn server: {}", e)))?;
+
+        println!("Server process started (PID: {})", child.id().unwrap_or(0));
+
+        // Capture and print server output
+        if let Some(stdout) = child.stdout.take() {
+            let mut reader = BufReader::new(stdout).lines();
+            tokio::spawn(async move {
+                while let Ok(Some(line)) = reader.next_line().await {
+                    println!("[SERVER]: {}", line);
+                }
+            });
+        }
+
+        if let Some(stderr) = child.stderr.take() {
+            let mut reader = BufReader::new(stderr).lines();
+            tokio::spawn(async move {
+                while let Ok(Some(line)) = reader.next_line().await {
+                    eprintln!("[SERVER ERROR]: {}", line);
+                }
+            });
+        }
+
+        Ok(child)
+    }
+
+    async fn wait_for_server_ready(&self) -> Result<(), LLMServerError> {
+        let client = Client::new();
+
+        // Try both /health and root endpoint
+        let endpoints = vec![
+            format!("http://127.0.0.1:{}/health", self.port),
+            format!("http://127.0.0.1:{}", self.port),
+        ];
+
+        println!("Waiting for server to become ready...");
+
+        loop {
+            // Sleep before checking to give the server some time
+            tokio::time::sleep(Duration::from_millis(1000)).await;
+
+            let mut success = false;
+
+            // Try each endpoint
+            for endpoint in &endpoints {
+                match client.get(endpoint).send().await {
+                    Ok(response) => {
+                        if response.status().is_success() {
+                            success = true;
+                            break;
+                        }
+                        println!(
+                            "Server responded with status: {} at {}",
+                            response.status(),
+                            endpoint
+                        );
+                    }
+                    Err(e) => {
+                        println!("Server not ready at {}: {}", endpoint, e);
+                    }
+                }
+            }
+
+            if success {
+                return Ok(());
+            }
+        }
+    }
+
+    pub async fn set_model_path(&mut self, path: &str) -> Result<(), LLMServerError> {
+        let model_path = PathBuf::from(path);
+
+        // Verify the model exists
+        if !model_path.exists() {
+            return Err(LLMServerError::CommandError(format!(
+                "Model file not found at: {}",
+                model_path.display()
+            )));
+        }
+
+        self.model_path = Some(model_path);
+        Ok(())
+    }
+}
+
+/// initializes the server with the model
+pub fn initialize_server(app: &mut tauri::App) -> Result<()> {
+    let registry_exists = app.try_state::<ModelRegistry>().is_some();
+
+    if !registry_exists {
+        let registry = ModelRegistry::new();
+        registry.initialize();
+
+        // Add registry to the app state
+        app.manage(registry);
+        println!("Model registry initialized in start_server");
+    }
+
+    // Launch background scan and server initialization
+    let app_handle = app.app_handle().clone();
+
+    tauri::async_runtime::spawn(async move {
+        let registry_state = app_handle.state::<ModelRegistry>();
+
+        match registry_state.scan_downloaded_models(&app_handle, None) {
+            Ok(_) => {
+                initialize_server_from_settings(&app_handle).await;
+            }
+            Err(e) => {
+                eprintln!("Error scanning models during init: {}", e);
+            }
+        }
+    });
+
+    Ok(())
+}
+
+/// initializes the server from the user settings
+async fn initialize_server_from_settings(app_handle: &AppHandle) {
+    // Get selected model from settings
+    let selected_model_id = match get_selected_model_from_settings(app_handle) {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            notify_model_selection_required(app_handle);
+            return;
+        }
+        Err(e) => {
+            eprintln!("Error getting settings: {}", e);
+            return;
+        }
+    };
+
+    // Try to load the selected model
+    load_selected_model(app_handle, &selected_model_id).await;
+}
+
+/// Get the selected model ID from settings
+fn get_selected_model_from_settings(app_handle: &AppHandle) -> Result<Option<String>, String> {
+    let settings_state = app_handle.state::<SettingsManagerState>();
+    let settings = settings_state.0.get_settings().map_err(|e| e.to_string())?;
+
+    Ok(settings.selected_model_id)
+}
+
+// load the model in the server
+async fn load_selected_model(app_handle: &AppHandle, model_id: &str) {
+    let registry_state = app_handle.state::<ModelRegistry>();
+
+    match registry_state.get_model(model_id) {
+        Some(model) if model.is_downloaded => {
+            // Model exists and is downloaded
+            start_server_with_model(app_handle, model).await;
+        }
+        Some(model) => {
+            // Model exists but is not downloadeds
+            notify_model_download_required(app_handle, &model.name);
+        }
+        None => {
+            // Model not found
+            notify_model_not_found(app_handle);
+        }
+    }
+}
+
+// Start the LLM server with the specified model
+async fn start_server_with_model(app_handle: &AppHandle, model: ModelInfo) {
+    // Create server
+    match LLMServer::new(app_handle.clone()).await {
+        Ok(mut server) => {
+            // Set the model path
+            if let Err(e) = server.set_model_path(&model.path).await {
+                eprintln!("Error setting model path: {}", e);
+                return;
+            }
+
+            // Start the server
+            if let Err(e) = server.start().await {
+                eprintln!("Error starting LLM server: {}", e);
+                return;
+            }
+
+            // Store the server in app state
+            let server_state = app_handle.state::<tokio::sync::Mutex<Option<LLMServer>>>();
+            let mut server_guard = server_state.lock().await;
+            *server_guard = Some(server);
+
+            println!("LLM server initialized");
+        }
+        Err(e) => {
+            eprintln!("Failed to create LLM server: {}", e);
+        }
+    }
+}
+
+// Notification functions
+fn notify_model_selection_required(app_handle: &AppHandle) {
+    let _ = app_handle.emit(
+        "model-selection-required",
+        "Please select a model to use for AI features",
+    );
+}
+
+fn notify_model_download_required(app_handle: &AppHandle, model_name: &str) {
+    let _ = app_handle.emit(
+        "model-download-required",
+        format!(
+            "The selected model '{}' needs to be downloaded before use",
+            model_name
+        ),
+    );
+}
+
+fn notify_model_not_found(app_handle: &AppHandle) {
+    let _ = app_handle.emit(
+        "model-selection-required",
+        "The previously selected model is no longer available. Please select a new model.",
+    );
+}
