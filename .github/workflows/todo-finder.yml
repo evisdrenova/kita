@@ -19,66 +19,75 @@ jobs:
         with:
           fetch-depth: 0 # Fetch all history for all branches and tags
 
+      - name: Debug file listing
+        run: |
+          # List some sample files to make sure we're checking the right files
+          echo "Listing sample files in the repository:"
+          find . -type f -name "*.js" -o -name "*.ts" | head -n 10
+
       - name: Find TODOs
         id: find-todos
         run: |
-          # Create a results file
-          echo "# TODO Finder Results" > todo_results.md
-          echo "Generated on: $(date)" >> todo_results.md
-          echo "" >> todo_results.md
+          # Create a temporary file for the results
+          touch todo_results.txt
 
-          # Find all TODOs and count them (including different TODO formats)
-          TODO_COUNT=$(grep -r --include="*.{js,jsx,ts,tsx,java,py,rb,php,c,cpp,h,hpp,cs,go,swift,kt}" -E "(//TODO|// TODO).*" --exclude-dir={node_modules,.git,build,dist,vendor} . | wc -l)
+          # First, try with a broader regex pattern (for debugging)
+          echo "Searching with broad pattern - looking for any 'TODO' in comments..."
+          # Make grep case insensitive to catch variations
+          TODOS=$(grep -r -i --include="*.{js,jsx,ts,tsx,java,py,rb,php,c,cpp,h,hpp,cs,go,swift,kt}" "TODO" --exclude-dir={node_modules,.git,build,dist,vendor} .)
 
-          # Print the total count
-          echo "## Total TODOs found: $TODO_COUNT" >> todo_results.md
-          echo "" >> todo_results.md
-
-          if [ $TODO_COUNT -gt 0 ]; then
-            echo "## TODO Locations:" >> todo_results.md
-            echo "" >> todo_results.md
+          if [ -z "$TODOS" ]; then
+            echo "No 'TODO' strings found with broad pattern. Trying to examine some source files directly..."
+            # Check some files directly (random sample)
+            SAMPLE_FILES=$(find . -type f -name "*.js" -o -name "*.ts" | head -n 5)
+            echo "Sample files to check:"
+            echo "$SAMPLE_FILES"
             
-            # Find all TODOs and output them with file and line number (including different TODO formats)
-            grep -r --include="*.{js,jsx,ts,tsx,java,py,rb,php,c,cpp,h,hpp,cs,go,swift,kt}" -n -E "(//TODO|// TODO).*" --exclude-dir={node_modules,.git,build,dist,vendor} . | while read -r line; do
-              FILE=$(echo "$line" | cut -d':' -f1)
-              LINE_NUM=$(echo "$line" | cut -d':' -f2)
-              TODO_TEXT=$(echo "$line" | cut -d':' -f3-)
-              
-              echo "- **$FILE:$LINE_NUM** - \`$TODO_TEXT\`" >> todo_results.md
+            for file in $SAMPLE_FILES; do
+              echo "Contents of $file:"
+              cat "$file"
+              echo "-------------------"
             done
-
-            # Set output for the summary
-            echo "todo_count=$TODO_COUNT" >> $GITHUB_OUTPUT
-            echo "::notice title=TODOs Found::Found $TODO_COUNT TODOs in your codebase. Check the output for details."
-          else
-            echo "No TODOs found in the codebase! 🎉" >> todo_results.md
-            echo "todo_count=0" >> $GITHUB_OUTPUT
-            echo "::notice title=No TODOs::Great job! No TODOs found in your codebase."
           fi
 
-          cat todo_results.md
+          # Now search with the proper pattern for TODOs in comments
+          echo "Searching for TODOs with specific pattern..."
 
-      - name: Upload TODO results
-        uses: actions/upload-artifact@v4
-        with:
-          name: todo-results
-          path: todo_results.md
+          # Find all TODOs and count them (try multiple patterns)
+          TODOS=$(grep -r -i --include="*.{js,jsx,ts,tsx,java,py,rb,php,c,cpp,h,hpp,cs,go,swift,kt}" -E "(//\s*TODO|/\*\s*TODO)" --exclude-dir={node_modules,.git,build,dist,vendor} .)
+          TODO_COUNT=$(echo "$TODOS" | wc -l)
 
-      # Optional: Comment on the PR with the results (if this was a PR merge)
+          echo "Raw grep output:"
+          echo "$TODOS"
+
+          echo "Found $TODO_COUNT TODO comments"
+
+          # Print the results
+          echo "## TODO Locations Found"
+          echo "-------------------"
+
+          if [ $TODO_COUNT -gt 0 ] && [ -n "$TODOS" ]; then
+            echo "$TODOS" | while read -r line; do
+              echo "$line"
+            done
+            
+            echo "::notice title=TODOs Found::Found $TODO_COUNT TODOs in your codebase. Check the output for details."
+          else
+            echo "No TODOs found in the codebase."
+            echo "::notice title=No TODOs::No TODOs found in your codebase."
+          fi
+
       - name: Comment on PR
         if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const fs = require('fs');
-            const todoResults = fs.readFileSync('todo_results.md', 'utf8');
-            const todoCount = ${{ steps.find-todos.outputs.todo_count }};
+            const todoResults = require('fs').readFileSync('todo_results.txt', 'utf8');
 
             let commentBody = `## TODO Finder Results\n\n`;
 
-            if (todoCount > 0) {
-              commentBody += `⚠️ Found ${todoCount} TODOs in the codebase after this merge.\n\n`;
+            if (todoResults.includes('TODO')) {
               commentBody += todoResults;
             } else {
               commentBody += `✅ No TODOs found in the codebase! Great job keeping technical debt in check.`;
