@@ -41,16 +41,6 @@ impl LLMModel {
         Ok(response.content)
     }
 
-    pub async fn stop(&mut self) -> Result<(), LLMServerError> {
-        if let Some(mut child) = self.server_process.take() {
-            println!("Stopping server...");
-            let _ = child.start_kill();
-            // Give it a moment to shut down
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
-        Ok(())
-    }
-
     async fn send_completion_request(
         &self,
         prompt: &str,
@@ -119,15 +109,6 @@ impl LLMModel {
                 "Server returned error {}: {}",
                 status, error_body
             )))
-        }
-    }
-
-    fn stop_sync(&mut self) {
-        if let Some(mut child) = self.server_process.take() {
-            println!("Stopping server synchronously...");
-            let _ = child.start_kill();
-            // We can't wait asynchronously here, but that's usually okay
-            // as the OS will clean up child processes
         }
     }
 }
