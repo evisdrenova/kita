@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0 # Fetch all history for all branches and tags
 
@@ -59,7 +59,7 @@ jobs:
           cat todo_results.md
 
       - name: Upload TODO results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: todo-results
           path: todo_results.md
@@ -67,7 +67,7 @@ jobs:
       # Optional: Comment on the PR with the results (if this was a PR merge)
       - name: Comment on PR
         if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
