@@ -2,7 +2,9 @@
 This file contains methods and functions to interact with the llama.cpp server that is serving the LLM model */
 
 use dirs;
+use regex::Regex;
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -15,6 +17,7 @@ use tokio::time::timeout;
 
 use crate::model_registry::{ModelInfo, ModelRegistry, ModelRegistryError};
 use crate::settings::SettingsManagerState;
+use crate::vectordb_manager::{get_text_chunks_from_similarity_search, VectorDbManager};
 
 #[derive(Error, Debug)]
 pub enum LLMServerError {
@@ -27,12 +30,6 @@ pub enum LLMServerError {
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 
-    #[error("Download failed: {0}")]
-    DownloadFailed(String),
-
-    #[error("Download problem: {0}")]
-    UnableToStart(String),
-
     #[error("Command execution error: {0}")]
     CommandError(String),
 
@@ -41,9 +38,20 @@ pub enum LLMServerError {
 
     #[error("Server did not become ready within timeout ({0}s)")]
     ServerReadyTimeout(u64),
+}
 
-    #[error("Could not extract server binary")]
-    ResourceExtractionError,
+#[derive(Debug, Deserialize, Serialize)]
+struct CompletionRequest {
+    prompt: String,
+    n_predict: i32,
+    temperature: f32,
+    stop: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CompletionResponse {
+    pub content: String,
+    pub sources: Vec<String>,
 }
 
 type Result<T, E = LLMServerError> = std::result::Result<T, E>;
@@ -266,23 +274,6 @@ impl LLMServer {
         }
     }
 
-    // checks if the server is ready or not with no inner loop to wait if it's ready,
-    async fn is_server_ready(&self) -> bool {
-        let client = Client::new();
-
-        let endpoint = format!("http://127.0.0.1:{}/health", self.port);
-
-        match client.get(&endpoint).send().await {
-            Ok(response) => {
-                if response.status().is_success() {
-                    return true;
-                }
-                false
-            }
-            Err(_) => false,
-        }
-    }
-
     pub async fn set_model_path(&mut self, path: &str) -> Result<(), LLMServerError> {
         let model_path = PathBuf::from(path);
 
@@ -304,6 +295,86 @@ impl LLMServer {
             let _ = child.start_kill();
             // We can't wait asynchronously here, but that's usually okay
             // as the OS will clean up child processes
+        }
+    }
+
+    pub async fn send_prompt(&self, prompt: &str, chunks: &str) -> Result<String, LLMServerError> {
+        let response = self.send_completion_request(prompt, chunks).await?;
+        Ok(response.content)
+    }
+
+    async fn send_completion_request(
+        &self,
+        prompt: &str,
+        chunks: &str,
+    ) -> Result<CompletionResponse, LLMServerError> {
+        let client = Client::new();
+        let url = format!("http://127.0.0.1:{}/completion", self.port);
+
+        let system_prompt = "
+        You are a helpful, accurate, and concise assistant. Your task is to answer questions based ONLY on the provided context.
+
+        When answering:
+        1. Use ONLY information from the provided context
+        2. If the context doesn't contain the answer, say \"I don't have enough information to answer that\" - never make up information
+        3. Cite your sources by referring to the document numbers [1], [2], etc.
+        4. Keep responses concise and to the point
+        5. If there are contradictions in the context, acknowledge them
+        6. Format your response in a readable way using markdown when helpful
+
+        Always prioritize accuracy over comprehensiveness.";
+
+        let formatted_prompt = format!(
+            "<s>[INST] {}\n\nCONTEXT:\n{}\n\nQUESTION: {} [/INST]",
+            system_prompt, chunks, prompt
+        );
+
+        let request = CompletionRequest {
+            prompt: formatted_prompt,
+            n_predict: 150,
+            temperature: 0.7,
+            stop: vec!["\nHuman:".to_string(), "\nUser:".to_string()],
+        };
+
+        let ready_timeout = Duration::from_secs(5);
+        match timeout(ready_timeout, self.wait_for_server_ready()).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => {
+                return Err(e);
+            }
+            Err(_) => {
+                return Err(LLMServerError::ServerReadyTimeout(30));
+            }
+        }
+
+        let response = client.post(&url).json(&request).send().await?;
+
+        if response.status().is_success() {
+            let completion_response = response.json::<CompletionResponse>().await?;
+
+            println!("the competition response: {:?}", completion_response);
+
+            // Extract sources from the response to tell which sources the LLM used to find the answer, the sources == file_id
+            let sources = extract_sources(&completion_response.content);
+
+            // Create enhanced response with sources
+            let enhanced_response = CompletionResponse {
+                content: completion_response.content,
+                sources,
+            };
+
+            Ok(enhanced_response)
+        } else {
+            let status = response.status();
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Could not read error body".to_string());
+
+            Err(LLMServerError::CommandError(format!(
+                "Server returned error {}: {}",
+                status, error_body
+            )))
         }
     }
 }
@@ -448,4 +519,54 @@ impl Drop for LLMServer {
 pub fn register_llm_commands(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(tokio::sync::Mutex::new(None::<LLMServer>));
     Ok(())
+}
+
+// Example of how to use this in a Tauri command
+#[tauri::command]
+pub async fn ask_llm(app_handle: AppHandle, prompt: String) -> Result<String, String> {
+    println!("Incoming prompt: {:?}", prompt);
+
+    // Get the server state
+    let server_state = app_handle.state::<tokio::sync::Mutex<Option<LLMServer>>>();
+    let server_guard = server_state.lock().await;
+
+    let text_chunks: String = match VectorDbManager::search_similar(&app_handle, &prompt).await {
+        Ok(results) => get_text_chunks_from_similarity_search(results)?,
+        Err(e) => {
+            eprintln!("Unable to get chunks): {}", e);
+            String::new()
+        }
+    };
+
+    println!("the text chunks: {:?}", text_chunks);
+
+    // Check if we have a server instance
+    if let Some(server) = &*server_guard {
+        server
+            .send_prompt(&prompt, &text_chunks)
+            .await
+            .map_err(|e| format!("Failed to get response: {}", e))
+    } else {
+        Err("No LLM server is currently running. Please select a model first.".into())
+    }
+}
+
+fn extract_sources(text: &str) -> Vec<String> {
+    // Look for patterns like [1] <source>3</source> or just <source>3</source>
+    let re = Regex::new(r"<source>(.*?)</source>").unwrap();
+
+    // Find all unique sources
+    let mut sources = Vec::new();
+    for cap in re.captures_iter(text) {
+        if let Some(source) = cap.get(1) {
+            let source_id = source.as_str().to_string();
+            if !sources.contains(&source_id) {
+                sources.push(source_id);
+            }
+        }
+    }
+
+    println!("the sources: {:?}", sources);
+
+    sources
 }

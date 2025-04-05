@@ -3,7 +3,6 @@ mod chunker;
 mod database_handler;
 mod embedder;
 mod file_processor;
-mod model;
 mod model_registry;
 mod resource_monitor;
 mod server;
@@ -74,7 +73,7 @@ pub fn run() {
             model_registry::get_downloaded_models,
             model_registry::start_model_download,
             model_registry::check_model_exists,
-            model::ask_llm,
+            server::ask_llm,
             // model::change_llm_model,
             settings::get_settings,
             settings::update_settings
