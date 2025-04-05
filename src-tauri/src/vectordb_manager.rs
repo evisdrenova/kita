@@ -16,7 +16,9 @@ use thiserror::Error;
 use tokio::sync::Mutex;
 
 use crate::chunker::Chunk;
+use crate::embedder;
 use crate::embedder::Embedder;
+use crate::AppResult;
 
 pub struct VectorDbManager {
     client: Connection,
@@ -241,14 +243,6 @@ pub fn get_text_chunks_from_similarity_search(results: Vec<RecordBatch>) -> Resu
     // Extract and format the chunks
     let mut context_chunks = Vec::new();
     for batch in &results {
-        // Access the columns
-        let ids = batch
-            .column_by_name("id")
-            .unwrap()
-            .as_any()
-            .downcast_ref::<arrow_array::StringArray>()
-            .expect("Expected 'id' column to be a StringArray");
-
         let texts = batch
             .column_by_name("text")
             .unwrap()
@@ -265,7 +259,6 @@ pub fn get_text_chunks_from_similarity_search(results: Vec<RecordBatch>) -> Resu
 
         // Build formatted context chunks
         for i in 0..std::cmp::min(batch.num_rows(), top_n) {
-            let id = ids.value(i);
             let text = texts.value(i);
             let file_id = file_ids.value(i);
 
@@ -282,87 +275,45 @@ pub fn get_text_chunks_from_similarity_search(results: Vec<RecordBatch>) -> Resu
     Ok(context_chunks.join("\n\n"))
 }
 
-// creates an index
-// need at least 256 rows of data
-// TODO: reinitialize this later in the flow
-// async fn create_index(
-//     client: &Connection,
-//     table: &Table,
-//     schema: Arc<Schema>,
-// ) -> VectorDbResult<()> {
-//     // open table
-//     let table = match client.open_table(table.name()).execute().await {
-//         Ok(table) => table,
-//         Err(e) => {
-//             return Err(VectorDbError::LanceError(format!(
-//                 "Failed to open table: {}",
-//                 e
-//             )));
-//         }
-//     };
+/// Initialize the vectior and store the state in the app
+pub fn init_vector_db(app: &tauri::App) -> AppResult<()> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create runtime for vector DB");
 
-//     println!("open the embeddings table");
-//     // We'll insert a single row with 384 zeros as the embedding since we can't create an index on an empty table
-//     let batches = RecordBatchIterator::new(
-//         vec![RecordBatch::try_new(
-//             schema.clone(),
-//             vec![
-//                 // 1. id (Utf8)
-//                 Arc::new(StringArray::from(vec!["dummy_id"])),
-//                 // 2. text (Utf8)
-//                 Arc::new(StringArray::from(vec!["dummy text"])),
-//                 // 3. embedding (FixedSizeList of Float32)
-//                 Arc::new(
-//                     FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
-//                         vec![Some(vec![Some(0.0); 384])], // 384-dimensional vector of zeros
-//                         384,
-//                     ),
-//                 ),
-//                 // 4. path (Utf8)
-//                 Arc::new(StringArray::from(vec!["dummy/path"])),
-//                 // 5. chunk_index (Int32)
-//                 Arc::new(Int32Array::from(vec![0])),
-//                 // 6. total_chunks (Int32, nullable)
-//                 Arc::new(Int32Array::from(vec![Some(1)])),
-//                 // 7. mime_type (Utf8, nullable)
-//                 Arc::new(StringArray::from(vec![Some("text/plain")])),
-//                 // 8. page_number (Int32, nullable)
-//                 Arc::new(Int32Array::from(vec![Some(1)])),
-//             ],
-//         )
-//         .unwrap()]
-//         .into_iter()
-//         .map(Ok),
-//         schema.clone(),
-//     );
+    let app_handle = app.app_handle().clone();
 
-//     println!("created a batch");
+    // Block on the future and handle the result
+    let result = runtime.block_on(async { init_vectordb(app_handle).await });
 
-//     match table.add(Box::new(batches)).execute().await {
-//         Ok(_) => {
-//             println!("Successfully added dummy row")
-//         }
-//         Err(e) => {
-//             return Err(VectorDbError::LanceError(format!(
-//                 "Failed to add dummy row: {}",
-//                 e
-//             )))
-//         }
-//     }
+    // Initialize the embedder and store it in the app state so we can use it
+    match embedder::Embedder::new() {
+        Ok(embedder) => {
+            app.manage(std::sync::Arc::new(embedder));
+            println!("Embedder initialized");
+        }
+        Err(e) => {
+            eprintln!("Failed to initialize embedder: {}", e);
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Embedder initialization failed: {}", e),
+            )));
+        }
+    }
 
-//     println!("Creating vector index on 'embedding' column...");
-//     if let Err(e) = table
-//         .create_index(&["embedding"], Index::Auto)
-//         .execute()
-//         .await
-//     {
-//         return Err(VectorDbError::LanceError(format!(
-//             "Failed to create index: {}",
-//             e
-//         )));
-//     }
-
-//     println!("Successfully created index on table '{}'.", table.name());
-
-//     Ok(())
-// }
+    match result {
+        Ok(manager) => {
+            app.manage(manager);
+            println!("Vector DB initialized");
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("Failed to initialize vector DB: {}", e);
+            Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Vector database initialization failed: {}", e),
+            )))
+        }
+    }
+}

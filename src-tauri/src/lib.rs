@@ -12,12 +12,9 @@ mod utils;
 mod vectordb_manager;
 
 use file_processor::FileProcessorState;
-use server::register_llm_commands;
 use tauri::Manager;
 
 type AppResult<T> = Result<T, Box<dyn std::error::Error>>;
-
-use window_vibrancy::*;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -30,29 +27,15 @@ pub fn run() {
             window.open_devtools();
             window.close_devtools();
 
-            // applies a blur effect to the window
-            #[cfg(target_os = "macos")]
-            apply_vibrancy(
-                &window,
-                NSVisualEffectMaterial::HudWindow,
-                Some(NSVisualEffectState::Active),
-                Some(12 as f64),
-            )?;
-
             let db_path = database_handler::init_database(app.app_handle().clone())?;
             let db_path_str = db_path.to_string_lossy().to_string();
 
             settings::init_settings(&db_path_str, app.app_handle().clone())?;
-
             file_processor::init_file_processor(&db_path_str, 4, app.app_handle().clone())?;
-
-            init_vector_db(app)?;
-
-            server::initialize_server(app)?;
-
-            resource_monitor::init(app)?;
-
-            register_llm_commands(app)?;
+            vectordb_manager::init_vector_db(app)?;
+            server::init_server(app)?;
+            resource_monitor::init_resource_monitor(app)?;
+            server::register_llm_commands(app)?;
 
             Ok(())
         })
@@ -74,53 +57,9 @@ pub fn run() {
             model_registry::start_model_download,
             model_registry::check_model_exists,
             server::ask_llm,
-            // model::change_llm_model,
             settings::get_settings,
             settings::update_settings
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-/// Initialize the vectior and store the state in the app
-fn init_vector_db(app: &tauri::App) -> AppResult<()> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("Failed to create runtime for vector DB");
-
-    let app_handle = app.app_handle().clone();
-
-    // Block on the future and handle the result
-    let result = runtime.block_on(async { vectordb_manager::init_vectordb(app_handle).await });
-
-    // Initialize the embedder and store it in the app state so we can use it
-    match embedder::Embedder::new() {
-        Ok(embedder) => {
-            app.manage(std::sync::Arc::new(embedder));
-            println!("Embedder initialized");
-        }
-        Err(e) => {
-            eprintln!("Failed to initialize embedder: {}", e);
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Embedder initialization failed: {}", e),
-            )));
-        }
-    }
-
-    match result {
-        Ok(manager) => {
-            app.manage(manager);
-            println!("Vector DB initialized");
-            Ok(())
-        }
-        Err(e) => {
-            eprintln!("Failed to initialize vector DB: {}", e);
-            Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Vector database initialization failed: {}", e),
-            )))
-        }
-    }
 }

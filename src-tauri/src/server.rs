@@ -380,7 +380,7 @@ impl LLMServer {
 }
 
 /// initializes the server with the model
-pub fn initialize_server(app: &mut tauri::App) -> Result<()> {
+pub fn init_server(app: &mut tauri::App) -> Result<()> {
     let registry_exists = app.try_state::<ModelRegistry>().is_some();
 
     if !registry_exists {
@@ -397,8 +397,9 @@ pub fn initialize_server(app: &mut tauri::App) -> Result<()> {
 
     tauri::async_runtime::spawn(async move {
         let registry_state = app_handle.state::<ModelRegistry>();
+
         // scan for any downlaoded models
-        registry_state
+        let _ = registry_state
             .scan_downloaded_models(&app_handle, None)
             .map_err(|e| {
                 ModelRegistryError::Io(std::io::Error::new(
