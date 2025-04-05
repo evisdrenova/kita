@@ -27,12 +27,12 @@ pub fn run() {
             let db_path = database_handler::init_database(app.app_handle().clone())?;
             let db_path_str = db_path.to_string_lossy().to_string();
 
-            // settings::init_settings(&db_path_str, app.app_handle().clone())?;
-            // file_processor::init_file_processor(&db_path_str, 4, app.app_handle().clone())?;
-            // vectordb_manager::init_vector_db(app)?;
-            // server::init_server(app)?;
-            // resource_monitor::init_resource_monitor(app)?;
-            // server::register_llm_commands(app)?;
+            settings::init_settings(&db_path_str, app.app_handle().clone())?;
+            file_processor::init_file_processor(&db_path_str, 4, app.app_handle().clone())?;
+            resource_monitor::init_resource_monitor(app)?;
+            vectordb_manager::init_vector_db(app)?;
+            server::init_server(app)?;
+            server::register_llm_commands(app)?;
 
             Ok(())
         })
