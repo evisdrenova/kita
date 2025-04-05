@@ -1,16 +1,9 @@
-use dirs;
+/* This file contains methods and functions that interact with the model itself. All of the server functions are in server.rs */
+
 use regex::Regex;
 use reqwest::Client;
-use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use std::time::Duration;
 use tauri::{AppHandle, Manager};
 use thiserror::Error;
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
-use tokio::time::timeout;
 
 use crate::vectordb_manager::get_text_chunks_from_similarity_search;
 use crate::vectordb_manager::VectorDbManager;
@@ -29,14 +22,28 @@ pub struct CompletionResponse {
     pub sources: Vec<String>,
 }
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug)]
 pub enum LLMModelError {
     #[error("Download failed: {0}")]
     CompletionError(String),
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("Network error: {0}")]
+    Network(#[from] reqwest::Error),
+
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+
+    #[error("Command execution error: {0}")]
+    CommandError(String),
 }
 
+pub struct LLMModel {}
+
 impl LLMModel {
-    pub async fn send_prompt(&self, prompt: &str, chunks: &str) -> Result<String, LLMServerError> {
+    pub async fn send_prompt(&self, prompt: &str, chunks: &str) -> Result<String, LLMModelError> {
         let response = self.send_completion_request(prompt, chunks).await?;
         Ok(response.content)
     }
@@ -45,7 +52,7 @@ impl LLMModel {
         &self,
         prompt: &str,
         chunks: &str,
-    ) -> Result<CompletionResponse, LLMServerError> {
+    ) -> Result<CompletionResponse, LLMModelError> {
         let client = Client::new();
         let url = format!("http://127.0.0.1:{}/completion", self.port);
 
@@ -105,7 +112,7 @@ impl LLMModel {
                 .await
                 .unwrap_or_else(|_| "Could not read error body".to_string());
 
-            Err(LLMServerError::CommandError(format!(
+            Err(LLMModelError::CommandError(format!(
                 "Server returned error {}: {}",
                 status, error_body
             )))
@@ -143,11 +150,6 @@ pub async fn ask_llm(app_handle: AppHandle, prompt: String) -> Result<String, St
     }
 }
 
-pub fn register_llm_commands(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    app.manage(tokio::sync::Mutex::new(None::<LLMServer>));
-    Ok(())
-}
-
 fn extract_sources(text: &str) -> Vec<String> {
     // Look for patterns like [1] <source>3</source> or just <source>3</source>
     let re = Regex::new(r"<source>(.*?)</source>").unwrap();
@@ -166,12 +168,6 @@ fn extract_sources(text: &str) -> Vec<String> {
     println!("the sources: {:?}", sources);
 
     sources
-}
-
-impl Drop for LLMServer {
-    fn drop(&mut self) {
-        self.stop_sync();
-    }
 }
 
 // #[tauri::command]

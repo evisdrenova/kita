@@ -57,7 +57,6 @@ pub struct LLMServer {
 
 const SERVER_PORT: u16 = 8080;
 const SERVER_BINARY_NAME: &str = "llama-server";
-const MODEL_FILENAME: &str = "mistral-7b-instruct-v0.2.Q5_K_M.gguf";
 const SERVER_READY_TIMEOUT_SECS: u64 = 180;
 
 impl LLMServer {
@@ -70,14 +69,14 @@ impl LLMServer {
         })
     }
 
-    pub async fn start(&mut self) -> Result<(), LLMServerError> {
+    pub async fn start(&mut self, model_name: &str) -> Result<(), LLMServerError> {
         // Check if we have a model path set
         let model_path = if let Some(path) = &self.model_path {
             path.clone()
         } else {
             // Fallback to default behavior if no model path is set
             let downloads_dir = dirs::download_dir().ok_or(LLMServerError::DownloadsDirNotFound)?;
-            downloads_dir.join(MODEL_FILENAME)
+            downloads_dir.join(model_name)
         };
 
         // Verify the model exists
@@ -236,46 +235,51 @@ impl LLMServer {
         Ok(child)
     }
 
+    /// checks /health endpoint to see if server is ready
     async fn wait_for_server_ready(&self) -> Result<(), LLMServerError> {
         let client = Client::new();
 
-        // Try both /health and root endpoint
-        let endpoints = vec![
-            format!("http://127.0.0.1:{}/health", self.port),
-            format!("http://127.0.0.1:{}", self.port),
-        ];
+        let endpoint = format!("http://127.0.0.1:{}/health", self.port);
 
         println!("Waiting for server to become ready...");
 
         loop {
-            // Sleep before checking to give the server some time
+            // Sleep for 1s before checking to give the server some time
             tokio::time::sleep(Duration::from_millis(1000)).await;
 
-            let mut success = false;
-
-            // Try each endpoint
-            for endpoint in &endpoints {
-                match client.get(endpoint).send().await {
-                    Ok(response) => {
-                        if response.status().is_success() {
-                            success = true;
-                            break;
-                        }
-                        println!(
-                            "Server responded with status: {} at {}",
-                            response.status(),
-                            endpoint
-                        );
+            match client.get(&endpoint).send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        println!("Server is ready at {}", endpoint);
+                        return Ok(());
                     }
-                    Err(e) => {
-                        println!("Server not ready at {}: {}", endpoint, e);
-                    }
+                    println!(
+                        "Server responded with status: {} at {}",
+                        response.status(),
+                        endpoint
+                    );
+                }
+                Err(e) => {
+                    println!("Server not ready at {}: {}", endpoint, e);
                 }
             }
+        }
+    }
 
-            if success {
-                return Ok(());
+    // checks if the server is ready or not with no inner loop to wait if it's ready,
+    async fn is_server_ready(&self) -> bool {
+        let client = Client::new();
+
+        let endpoint = format!("http://127.0.0.1:{}/health", self.port);
+
+        match client.get(&endpoint).send().await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    return true;
+                }
+                false
             }
+            Err(_) => false,
         }
     }
 
@@ -395,7 +399,7 @@ async fn start_server_with_model(app_handle: &AppHandle, model: ModelInfo) {
             }
 
             // Start the server
-            if let Err(e) = server.start().await {
+            if let Err(e) = server.start(&model.name).await {
                 eprintln!("Error starting LLM server: {}", e);
                 return;
             }
@@ -436,4 +440,15 @@ fn notify_model_not_found(app_handle: &AppHandle) {
         "model-selection-required",
         "The previously selected model is no longer available. Please select a new model.",
     );
+}
+
+impl Drop for LLMServer {
+    fn drop(&mut self) {
+        self.stop_sync();
+    }
+}
+
+pub fn register_llm_commands(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    app.manage(tokio::sync::Mutex::new(None::<LLMServer>));
+    Ok(())
 }
