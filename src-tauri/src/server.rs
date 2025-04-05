@@ -13,7 +13,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::model_registry::{ModelInfo, ModelRegistry};
+use crate::model_registry::{ModelInfo, ModelRegistry, ModelRegistryError};
 use crate::settings::SettingsManagerState;
 
 #[derive(Error, Debug)]
@@ -326,37 +326,34 @@ pub fn initialize_server(app: &mut tauri::App) -> Result<()> {
 
     tauri::async_runtime::spawn(async move {
         let registry_state = app_handle.state::<ModelRegistry>();
+        // scan for any downlaoded models
+        registry_state
+            .scan_downloaded_models(&app_handle, None)
+            .map_err(|e| {
+                ModelRegistryError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Unable to scan downloaded models: {}", e),
+                ))
+            });
 
-        match registry_state.scan_downloaded_models(&app_handle, None) {
-            Ok(_) => {
-                initialize_server_from_settings(&app_handle).await;
+        // get the user selected model and load it down below
+        let selected_model_id = match get_selected_model_from_settings(&app_handle) {
+            Ok(Some(id)) => id,
+            Ok(None) => {
+                notify_model_selection_required(&app_handle);
+                return;
             }
             Err(e) => {
-                eprintln!("Error scanning models during init: {}", e);
+                eprintln!("Error getting settings: {}", e);
+                return;
             }
-        }
+        };
+
+        // Try to load the selected model
+        load_selected_model(&app_handle, &selected_model_id).await;
     });
 
     Ok(())
-}
-
-/// initializes the server from the user settings
-async fn initialize_server_from_settings(app_handle: &AppHandle) {
-    // Get selected model from settings
-    let selected_model_id = match get_selected_model_from_settings(app_handle) {
-        Ok(Some(id)) => id,
-        Ok(None) => {
-            notify_model_selection_required(app_handle);
-            return;
-        }
-        Err(e) => {
-            eprintln!("Error getting settings: {}", e);
-            return;
-        }
-    };
-
-    // Try to load the selected model
-    load_selected_model(app_handle, &selected_model_id).await;
 }
 
 /// Get the selected model ID from settings
