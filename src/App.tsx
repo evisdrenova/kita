@@ -55,6 +55,20 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>();
   const [loadingSettings, setLoadingSettings] = useState<boolean>(false);
 
+  // used to load the app once it's ready so it doesn't flash a white screen
+  useEffect(() => {
+    const showWindow = async () => {
+      try {
+        await invoke("show_main_window");
+      } catch (e) {
+        console.error("Failed to show window:", e);
+      }
+    };
+
+    // Add a small delay to ensure React has fully rendered
+    setTimeout(showWindow, 100);
+  }, []);
+
   // loads settings
   useEffect(() => {
     const getSettings = async () => {

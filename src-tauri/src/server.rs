@@ -208,9 +208,8 @@ impl LLMServer {
                 "127.0.0.1",
                 "-c",
                 "2048",
-                "--no-system-prompt", // Add other args as needed
-                                      // "--threads", "4",  // Uncomment and adjust based on your CPU
-                                      // "--log-disable",   // Uncomment to reduce noise
+                // "--threads", "4",  // Uncomment and adjust based on your CPU
+                // "--log-disable",   // Uncomment to reduce noise
             ])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -432,6 +431,8 @@ pub fn init_server(app: &mut tauri::App) -> Result<()> {
 fn get_selected_model_from_settings(app_handle: &AppHandle) -> Result<Option<String>, String> {
     let settings_state = app_handle.state::<SettingsManagerState>();
     let settings = settings_state.0.get_settings().map_err(|e| e.to_string())?;
+
+    println!("the selected model id: {:?}", settings.selected_model_id);
 
     Ok(settings.selected_model_id)
 }

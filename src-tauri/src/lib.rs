@@ -10,6 +10,7 @@ mod settings;
 mod tokenizer;
 mod utils;
 mod vectordb_manager;
+mod window;
 
 use file_processor::FileProcessorState;
 use tauri::Manager;
@@ -23,19 +24,15 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let window = app.get_webview_window("main").unwrap();
-            window.open_devtools();
-            window.close_devtools();
-
             let db_path = database_handler::init_database(app.app_handle().clone())?;
             let db_path_str = db_path.to_string_lossy().to_string();
 
-            settings::init_settings(&db_path_str, app.app_handle().clone())?;
-            file_processor::init_file_processor(&db_path_str, 4, app.app_handle().clone())?;
-            vectordb_manager::init_vector_db(app)?;
-            server::init_server(app)?;
-            resource_monitor::init_resource_monitor(app)?;
-            server::register_llm_commands(app)?;
+            // settings::init_settings(&db_path_str, app.app_handle().clone())?;
+            // file_processor::init_file_processor(&db_path_str, 4, app.app_handle().clone())?;
+            // vectordb_manager::init_vector_db(app)?;
+            // server::init_server(app)?;
+            // resource_monitor::init_resource_monitor(app)?;
+            // server::register_llm_commands(app)?;
 
             Ok(())
         })
@@ -58,7 +55,8 @@ pub fn run() {
             model_registry::check_model_exists,
             server::ask_llm,
             settings::get_settings,
-            settings::update_settings
+            settings::update_settings,
+            window::show_main_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

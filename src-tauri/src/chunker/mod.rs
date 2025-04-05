@@ -65,8 +65,8 @@ pub mod common {
         #[error("Text File Parsing error: {0}")]
         TextFileError(String),
 
-        #[error("Docx File Parsing error: {0}")]
-        DocxFileError(String),
+        // #[error("Docx File Parsing error: {0}")]
+        // DocxFileError(String),
 
         // #[error("XLS parsing error: {0}")]
         // XlsError(String),
