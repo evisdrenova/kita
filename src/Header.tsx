@@ -162,7 +162,7 @@ export default function Header(props: Props) {
     };
   }, [isRagMode]);
 
-  // This useEffect monitors searchQuery changes to detect when "/" is deleted
+  // This useEffect monitors searchQuery changes to detect when ">" is deleted
   useEffect(() => {
     // Only turn off RAG mode if it's empty and we're not in the process of submitting
     if (isRagMode && searchQuery === "" && !isSubmitting.current) {
@@ -218,18 +218,18 @@ export default function Header(props: Props) {
   }, [isRagMode, setIsSettingsOpen]);
 
   const handleKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
-    // If "/" is pressed as the first character to activate RAG mode
-    if (e.key === "/" && searchQuery === "" && !isRagMode) {
+    // If ">" is pressed as the first character to activate RAG mode
+    if (e.key === ">" && searchQuery === "" && !isRagMode) {
       e.preventDefault();
       setIsRagMode(true);
-      setSearchQuery("/");
+      setSearchQuery(">");
 
       // Check model status when entering RAG mode
       checkModelStatus();
     }
 
-    // Handle backspace when only "/" is present
-    if (searchQuery === "/" && e.key === "Backspace") {
+    // Handle backspace when only ">" is present
+    if (searchQuery === ">" && e.key === "Backspace") {
       e.preventDefault();
       setIsRagMode(false);
       setSearchQuery("");
@@ -249,7 +249,7 @@ export default function Header(props: Props) {
         return;
       }
 
-      const userQuery = searchQuery.startsWith("/")
+      const userQuery = searchQuery.startsWith(">")
         ? searchQuery.substring(1)
         : searchQuery;
       setChatMessages((prev) => [
@@ -259,7 +259,7 @@ export default function Header(props: Props) {
 
       // Set the submitting flag before clearing search query
       isSubmitting.current = true;
-      setSearchQuery("/"); // Keep the "/" to maintain RAG mode
+      setSearchQuery(">"); // Keep the ">" to maintain RAG mode
       setIsProcessing(true);
 
       try {

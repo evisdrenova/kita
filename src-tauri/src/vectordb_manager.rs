@@ -252,7 +252,6 @@ pub fn get_text_chunks_from_similarity_search(
 ) -> Result<Vec<TextChunkResponse>, String> {
     let top_n = 5; // Limit to top 5 most relevant chunks
 
-    println!("the results: {:?}", results);
     // Extract and format the chunks
     let mut context_chunks: Vec<TextChunkResponse> = Vec::<TextChunkResponse>::new();
     for batch in &results {

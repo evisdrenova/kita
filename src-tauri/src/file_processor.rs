@@ -642,7 +642,6 @@ fn rows_to_semantic_metadata(
     while let Some(row) = rows.next().map_err(|e| format!("Row error: {e}"))? {
         let id: i64 = row.get(0).map_err(|e| e.to_string())?;
 
-        println!("the row {:?}", row);
         let distance = *distances.get(&id.to_string()).unwrap_or(&1.0);
         files.push(SemanticMetadata {
             base: BaseMetadata {
