@@ -306,14 +306,14 @@ impl LLMServer {
     async fn send_completion_request(
         &self,
         prompt: &str,
-        chunks: &str,
+        chunks: &Vec<TextChunkResponse>,
     ) -> Result<CompletionResponse, LLMServerError> {
-        let client = Client::new();
-        let url = format!("http://127.0.0.1:{}/completion", self.port);
+        let client: Client = Client::new();
+        let url: String = format!("http://127.0.0.1:{}/completion", self.port);
 
         let system_prompt = "
-        You are a helpful, accurate, and concise assistant. Your task is to answer questions based ONLY on the provided context.
-    
+        You are a extraoridinary helpful, accurate, and concise assistant. Your task is to answer questions based ONLY on the provided context.
+
         When answering:
         1. Use ONLY information from the provided context
         2. If the context doesn't contain the answer, say \"I don't have enough information to answer that\" - never make up information
@@ -321,22 +321,29 @@ impl LLMServer {
         4. Keep responses concise and to the point
         5. If there are contradictions in the context, acknowledge them
         6. Format your response in a readable way using markdown when helpful
-    
+
         Always return your answer first and then a newline and array of sources. For example:
-    
+
         {answer}
-    
+
         [1,2,3]
-    
+
         Where the answer is the answer to the user's question and the sources are the sources that helped you answer that question. 
-    
+
         Do not mention the sources in the answer. Simply answer the question.
-    
+
         Always prioritize accuracy over comprehensiveness.";
+
+        //
+        let text_chunks = chunks
+            .iter()
+            .map(|chunk| chunk.formatted_prompt.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
 
         let formatted_prompt = format!(
             "<s>[INST] {}\n\nCONTEXT:\n{}\n\nQUESTION: {} [/INST]",
-            system_prompt, chunks, prompt
+            system_prompt, text_chunks, prompt
         );
 
         let request = CompletionRequest {
@@ -377,12 +384,18 @@ impl LLMServer {
             };
 
             // Parse the response to extract answer and sources
-            let (content, source_ids) = parse_llm_response(&full_content);
+            let (content, sources) = parse_llm_response(&full_content);
 
-            // This will be done later with the actual chunks
-            let sources = Vec::new();
+            let source_with_file_paths = reconcile_sources(sources, chunks);
 
-            Ok(CompletionResponse { content, sources })
+            let enhanced_response = CompletionResponse {
+                content,
+                sources: source_with_file_paths,
+            };
+
+            println!("The enhanced response: {:?}", enhanced_response);
+
+            Ok(enhanced_response)
         } else {
             let status = response.status();
             let error_body = response
@@ -559,36 +572,21 @@ pub async fn ask_llm(app_handle: AppHandle, prompt: String) -> Result<Completion
     let server_state = app_handle.state::<tokio::sync::Mutex<Option<LLMServer>>>();
     let server_guard = server_state.lock().await;
 
-    // Get chunks as a vector of TextChunkResponse
-    let context_chunks = match VectorDbManager::search_similar(&app_handle, &prompt).await {
-        Ok(results) => get_text_chunks_from_similarity_search(results)?,
-        Err(e) => {
-            eprintln!("Unable to get chunks: {}", e);
-            Vec::new() // Return empty vector on error
-        }
-    };
-
-    // Extract and join just the formatted prompts
-    let text_chunks = context_chunks
-        .iter()
-        .map(|chunk| chunk.formatted_prompt.as_str())
-        .collect::<Vec<_>>()
-        .join("\n\n");
+    let context_chunks: Vec<TextChunkResponse> =
+        match VectorDbManager::search_similar(&app_handle, &prompt).await {
+            Ok(results) => get_text_chunks_from_similarity_search(results)?,
+            Err(e) => {
+                eprintln!("Unable to get chunks): {}", e);
+                Vec::new()
+            }
+        };
 
     // Check if we have a server instance
     if let Some(server) = &*server_guard {
-        let mut response = server
-            .send_completion_request(&prompt, &text_chunks)
+        server
+            .send_completion_request(&prompt, &context_chunks)
             .await
-            .map_err(|e| format!("Failed to get response: {}", e))?;
-
-        // Update the sources with full source information including paths
-        response.sources = reconcile_sources(
-            response.sources.iter().map(|s| s.id.clone()).collect(),
-            &context_chunks,
-        );
-
-        Ok(response)
+            .map_err(|e| format!("Failed to get response: {}", e))
     } else {
         Err("No LLM server is currently running. Please select a model first.".into())
     }
