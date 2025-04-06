@@ -328,6 +328,8 @@ impl LLMServer {
         let client: Client = Client::new();
         let url: String = format!("http://127.0.0.1:{}/completion", self.port);
 
+        println!("the chunks: {:?}", chunks);
+
         // flattens the formatted prompts into a single string that we can pass into the prompt as context that the LLM can use to answer the question
         let text_chunks = chunks
             .iter()
@@ -335,11 +337,14 @@ impl LLMServer {
             .collect::<Vec<_>>()
             .join("\n\n");
 
+        println!("the text chunks: {:?}", text_chunks);
+
         let formatted_prompt = format!(
             "<s>[INST] {}\n\nCONTEXT:\n{}\n\nQUESTION: {} [/INST]",
             SYSTEM_PROMPT, text_chunks, prompt
         );
 
+        println!("the formatted propmt: {:?}", formatted_prompt);
         // create LLM request
         let request = CompletionRequest {
             prompt: formatted_prompt,

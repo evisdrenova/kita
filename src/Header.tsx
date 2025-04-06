@@ -446,8 +446,7 @@ function ChatInterface(props: ChatInterfaceProps) {
                     <div className="flex flex-col flex-wrap gap-2">
                       {message.sources.map((source, idx) => (
                         <div className="flex flex-row items-center gap-2">
-                          <div>[{idx + 1}]</div>
-                          <SourceBadge key={idx} source={source} />
+                          <SourceBadge key={idx} source={source} idx={idx} />
                         </div>
                       ))}
                     </div>
@@ -467,11 +466,11 @@ function ChatInterface(props: ChatInterfaceProps) {
 // Add a new SourceBadge component
 interface SourceBadgeProps {
   source: string;
+  idx: number;
 }
 
-// TODO: move this to the backend instead of doing it on the front end
 function SourceBadge(props: SourceBadgeProps) {
-  const { source } = props;
+  const { source, idx } = props;
   const [fileName, setFileName] = useState<string | null>(null);
 
   // Fetch file name from file ID
@@ -501,9 +500,9 @@ function SourceBadge(props: SourceBadgeProps) {
   return (
     <button
       onClick={handleClick}
-      className="inline-flex items-center px-2 py-1 rounded-md text-xs bg-primary-foreground/20 hover:bg-primary-foreground/30 transition-colors"
+      className="inline-flex items-center px-2 py-1 rounded-md text-xs bg-primary-foreground/20 hover:bg-primary-foreground/30 transition-colors gap-2"
     >
-      <span>{fileName || `Source ${source}`}</span>
+      <div>[{idx + 1}]</div> <span>{fileName || `${source}`}</span>
     </button>
   );
 }
