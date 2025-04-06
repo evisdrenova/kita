@@ -6,7 +6,6 @@ import { cn } from "./lib/utils";
 import {
   AppSettings,
   ChatMessage,
-  CompletionRequest,
   CompletionResponse,
   Model,
 } from "./types/types";

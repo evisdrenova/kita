@@ -18,6 +18,7 @@ use tokio::sync::Mutex;
 use crate::chunker::Chunk;
 use crate::embedder;
 use crate::embedder::Embedder;
+use crate::server::TextChunkResponse;
 use crate::AppResult;
 
 pub struct VectorDbManager {
@@ -189,8 +190,15 @@ fn from_chunks_embeddings_to_data(
     let mut texts = Vec::with_capacity(chunk_embeddings.len());
     let mut embeddings = Vec::with_capacity(chunk_embeddings.len());
     let mut file_ids = Vec::with_capacity(chunk_embeddings.len());
+    let mut file_paths: Vec<&str> = Vec::with_capacity(chunk_embeddings.len());
 
     for (i, (chunk, embedding)) in chunk_embeddings.iter().enumerate() {
+        if let Some(path_str) = chunk.metadata.source_path.to_str() {
+            file_paths.push(path_str);
+        } else {
+            file_paths.push("");
+        }
+
         ids.push(format!("{}_chunk_{}", file_id, i));
         texts.push(chunk.content.clone());
         embeddings.push(Some(embedding.iter().map(|&f| Some(f)).collect::<Vec<_>>()));
@@ -207,6 +215,7 @@ fn from_chunks_embeddings_to_data(
                     FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(embeddings, 384),
                 ),
                 Arc::new(StringArray::from(file_ids)),
+                Arc::new(StringArray::from(file_paths)),
             ],
         )
         .unwrap()]
@@ -234,14 +243,18 @@ fn get_embeddings_schema() -> Arc<Schema> {
             false,
         ),
         Field::new("file_id", DataType::Utf8, false),
+        Field::new("file_path", DataType::Utf8, false),
     ]))
 }
 
-pub fn get_text_chunks_from_similarity_search(results: Vec<RecordBatch>) -> Result<String, String> {
+pub fn get_text_chunks_from_similarity_search(
+    results: Vec<RecordBatch>,
+) -> Result<Vec<TextChunkResponse>, String> {
     let top_n = 5; // Limit to top 5 most relevant chunks
 
+    println!("the results: {:?}", results);
     // Extract and format the chunks
-    let mut context_chunks = Vec::new();
+    let mut context_chunks: Vec<TextChunkResponse> = Vec::<TextChunkResponse>::new();
     for batch in &results {
         let texts = batch
             .column_by_name("text")
@@ -257,22 +270,28 @@ pub fn get_text_chunks_from_similarity_search(results: Vec<RecordBatch>) -> Resu
             .downcast_ref::<arrow_array::StringArray>()
             .expect("Expected 'file_id' column to be a StringArray");
 
+        let file_path = batch
+            .column_by_name("file_path")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<arrow_array::StringArray>()
+            .expect("Expected 'file_path' column to be a StringArray");
+
         // Build formatted context chunks
         for i in 0..std::cmp::min(batch.num_rows(), top_n) {
             let text = texts.value(i);
             let file_id = file_ids.value(i);
+            let file_path = file_path.value(i);
 
-            context_chunks.push(format!(
-                "[{}] <source>{}</source>\n{}",
-                i + 1,
-                file_id,
-                text
-            ));
+            context_chunks.push(TextChunkResponse {
+                file_id: file_id.to_string(),
+                formatted_prompt: format!("[{}] <source>{}</source>\n{}", i + 1, file_id, text),
+                file_path: file_path.to_string(),
+            });
         }
     }
 
-    // Join the chunks with newlines between them
-    Ok(context_chunks.join("\n\n"))
+    Ok(context_chunks)
 }
 
 /// Initialize the vectior and store the state in the app

@@ -51,7 +51,13 @@ struct CompletionRequest {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
     pub content: String,
-    pub sources: Vec<String>,
+    pub sources: Vec<CompletionResponseSource>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CompletionResponseSource {
+    pub id: String,
+    pub path: String,
 }
 
 type Result<T, E = LLMServerError> = std::result::Result<T, E>;
@@ -307,16 +313,25 @@ impl LLMServer {
 
         let system_prompt = "
         You are a helpful, accurate, and concise assistant. Your task is to answer questions based ONLY on the provided context.
-
+    
         When answering:
         1. Use ONLY information from the provided context
         2. If the context doesn't contain the answer, say \"I don't have enough information to answer that\" - never make up information
-        3. Cite your sources by referring to the document numbers and putting the source in between <source> tags like <source>1</source>, <source>2</source>, etc.
+        3. Cite your sources by referring to the document numbers.
         4. Keep responses concise and to the point
         5. If there are contradictions in the context, acknowledge them
         6. Format your response in a readable way using markdown when helpful
-
-
+    
+        Always return your answer first and then a newline and array of sources. For example:
+    
+        {answer}
+    
+        [1,2,3]
+    
+        Where the answer is the answer to the user's question and the sources are the sources that helped you answer that question. 
+    
+        Do not mention the sources in the answer. Simply answer the question.
+    
         Always prioritize accuracy over comprehensiveness.";
 
         let formatted_prompt = format!(
@@ -350,9 +365,9 @@ impl LLMServer {
             let json_value: serde_json::Value = response.json().await?;
 
             // Extract content
-            let content = match json_value.get("content").and_then(|v| v.as_str()) {
+            let full_content = match json_value.get("content").and_then(|v| v.as_str()) {
                 Some(content_str) => {
-                    println!("Content: {}", content_str);
+                    println!("Raw Content: {}", content_str);
                     content_str.to_string()
                 }
                 None => {
@@ -361,13 +376,13 @@ impl LLMServer {
                 }
             };
 
-            let sources = extract_sources(&content);
+            // Parse the response to extract answer and sources
+            let (content, source_ids) = parse_llm_response(&full_content);
 
-            let enhanced_response = CompletionResponse { content, sources };
+            // This will be done later with the actual chunks
+            let sources = Vec::new();
 
-            println!("the enhanced response: {:?}", enhanced_response);
-
-            Ok(enhanced_response)
+            Ok(CompletionResponse { content, sources })
         } else {
             let status = response.status();
             let error_body = response
@@ -528,6 +543,13 @@ pub fn register_llm_commands(app: &mut tauri::App) -> Result<(), Box<dyn std::er
     Ok(())
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TextChunkResponse {
+    pub file_id: String,
+    pub formatted_prompt: String,
+    pub file_path: String,
+}
+
 // Example of how to use this in a Tauri command
 #[tauri::command]
 pub async fn ask_llm(app_handle: AppHandle, prompt: String) -> Result<CompletionResponse, String> {
@@ -537,43 +559,90 @@ pub async fn ask_llm(app_handle: AppHandle, prompt: String) -> Result<Completion
     let server_state = app_handle.state::<tokio::sync::Mutex<Option<LLMServer>>>();
     let server_guard = server_state.lock().await;
 
-    let text_chunks: String = match VectorDbManager::search_similar(&app_handle, &prompt).await {
+    // Get chunks as a vector of TextChunkResponse
+    let context_chunks = match VectorDbManager::search_similar(&app_handle, &prompt).await {
         Ok(results) => get_text_chunks_from_similarity_search(results)?,
         Err(e) => {
-            eprintln!("Unable to get chunks): {}", e);
-            String::new()
+            eprintln!("Unable to get chunks: {}", e);
+            Vec::new() // Return empty vector on error
         }
     };
 
-    println!("the text chunks: {:?}", text_chunks);
+    // Extract and join just the formatted prompts
+    let text_chunks = context_chunks
+        .iter()
+        .map(|chunk| chunk.formatted_prompt.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n");
 
     // Check if we have a server instance
     if let Some(server) = &*server_guard {
-        server
+        let mut response = server
             .send_completion_request(&prompt, &text_chunks)
             .await
-            .map_err(|e| format!("Failed to get response: {}", e))
+            .map_err(|e| format!("Failed to get response: {}", e))?;
+
+        // Update the sources with full source information including paths
+        response.sources = reconcile_sources(
+            response.sources.iter().map(|s| s.id.clone()).collect(),
+            &context_chunks,
+        );
+
+        Ok(response)
     } else {
         Err("No LLM server is currently running. Please select a model first.".into())
     }
 }
 
-fn extract_sources(text: &str) -> Vec<String> {
-    // Look for patterns like [1] <source>3</source> or just <source>3</source>
-    let re = Regex::new(r"<source>(.*?)</source>").unwrap();
+fn parse_llm_response(text: &str) -> (String, Vec<String>) {
+    // Regex to find the first occurrence of [n, n, ...] pattern.
+    // - \s* handles optional whitespace inside brackets.
+    // - (\d+(?:\s*,\s*\d+)*) captures the comma-separated numbers (group 1).
+    // - We look for the opening bracket `\[`
+    // This regex finds the first match.
+    let re = Regex::new(r"\[\s*(\d+(?:\s*,\s*\d+)*)\s*\]").unwrap();
 
-    // Find all unique sources
-    let mut sources = Vec::new();
-    for cap in re.captures_iter(text) {
-        if let Some(source) = cap.get(1) {
-            let source_id = source.as_str().to_string();
-            if !sources.contains(&source_id) {
-                sources.push(source_id);
+    if let Some(caps) = re.captures(text) {
+        // Get the span of the entire match (e.g., "[3, 2]")
+        if let Some(overall_match) = caps.get(0) {
+            // Extract the answer as the text *before* the pattern starts
+            let answer = text[..overall_match.start()]
+                .trim_end_matches(|c: char| c.is_whitespace() || c == '.' || c == ',') // Trim trailing whitespace and common punctuation
+                .to_string();
+
+            if let Some(sources_match) = caps.get(1) {
+                let sources = sources_match
+                    .as_str()
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                return (answer, sources);
             }
         }
     }
 
-    println!("the sources: {:?}", sources);
+    (text.trim().to_string(), Vec::new())
+}
 
-    sources
+fn reconcile_sources(
+    source_ids: Vec<String>,
+    chunks: &[TextChunkResponse],
+) -> Vec<CompletionResponseSource> {
+    source_ids
+        .iter()
+        .map(|source_id| {
+            // Find the chunk with matching file_id
+            let path = chunks
+                .iter()
+                .find(|chunk| chunk.file_id == *source_id)
+                .map(|chunk| chunk.file_path.clone())
+                .unwrap_or_else(|| "unknown".to_string());
+
+            CompletionResponseSource {
+                id: source_id.clone(),
+                path,
+            }
+        })
+        .collect()
 }
