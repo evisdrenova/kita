@@ -19,6 +19,29 @@ use crate::model_registry::{ModelInfo, ModelRegistry, ModelRegistryError};
 use crate::settings::SettingsManagerState;
 use crate::vectordb_manager::{get_text_chunks_from_similarity_search, VectorDbManager};
 
+const SYSTEM_PROMPT: &str = "
+You are a extraoridinary helpful, accurate, and concise assistant. Your task is to answer questions based ONLY on the provided context.
+
+When answering:
+1. Use ONLY information from the provided context
+2. If the context doesn't contain the answer, say \"I don't have enough information to answer that\" - never make up information
+3. Cite your sources by referring to the document numbers.
+4. Keep responses concise and to the point
+5. If there are contradictions in the context, acknowledge them
+6. Format your response in a readable way using markdown when helpful
+
+Always return your answer first and then a newline and array of sources. For example:
+
+{answer}
+
+[1,2,3]
+
+Where the answer is the answer to the user's question and the sources are the sources that helped you answer that question. 
+
+Do not mention the sources in the answer. Simply answer the question.
+
+Always prioritize accuracy over comprehensiveness.";
+
 #[derive(Error, Debug)]
 pub enum LLMServerError {
     #[error("IO error: {0}")]
@@ -51,13 +74,7 @@ struct CompletionRequest {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
     pub content: String,
-    pub sources: Vec<CompletionResponseSource>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct CompletionResponseSource {
-    pub id: String,
-    pub path: String,
+    pub sources: Vec<String>,
 }
 
 type Result<T, E = LLMServerError> = std::result::Result<T, E>;
@@ -311,30 +328,7 @@ impl LLMServer {
         let client: Client = Client::new();
         let url: String = format!("http://127.0.0.1:{}/completion", self.port);
 
-        let system_prompt = "
-        You are a extraoridinary helpful, accurate, and concise assistant. Your task is to answer questions based ONLY on the provided context.
-
-        When answering:
-        1. Use ONLY information from the provided context
-        2. If the context doesn't contain the answer, say \"I don't have enough information to answer that\" - never make up information
-        3. Cite your sources by referring to the document numbers.
-        4. Keep responses concise and to the point
-        5. If there are contradictions in the context, acknowledge them
-        6. Format your response in a readable way using markdown when helpful
-
-        Always return your answer first and then a newline and array of sources. For example:
-
-        {answer}
-
-        [1,2,3]
-
-        Where the answer is the answer to the user's question and the sources are the sources that helped you answer that question. 
-
-        Do not mention the sources in the answer. Simply answer the question.
-
-        Always prioritize accuracy over comprehensiveness.";
-
-        //
+        // flattens the formatted prompts into a single string that we can pass into the prompt as context that the LLM can use to answer the question
         let text_chunks = chunks
             .iter()
             .map(|chunk| chunk.formatted_prompt.as_str())
@@ -343,9 +337,10 @@ impl LLMServer {
 
         let formatted_prompt = format!(
             "<s>[INST] {}\n\nCONTEXT:\n{}\n\nQUESTION: {} [/INST]",
-            system_prompt, text_chunks, prompt
+            SYSTEM_PROMPT, text_chunks, prompt
         );
 
+        // create LLM request
         let request = CompletionRequest {
             prompt: formatted_prompt,
             n_predict: 150,
@@ -353,11 +348,10 @@ impl LLMServer {
             stop: vec!["\nHuman:".to_string(), "\nUser:".to_string()],
         };
 
+        // ensure the server is available and ready
         let ready_timeout = Duration::from_secs(5);
         match timeout(ready_timeout, self.wait_for_server_ready()).await {
-            Ok(Ok(_)) => {
-                println!("server is ready before request");
-            }
+            Ok(Ok(_)) => {}
             Ok(Err(e)) => {
                 return Err(e);
             }
@@ -368,15 +362,13 @@ impl LLMServer {
 
         let response = client.post(&url).json(&request).send().await?;
 
+        // handle LLM response
         if response.status().is_success() {
             let json_value: serde_json::Value = response.json().await?;
 
             // Extract content
             let full_content = match json_value.get("content").and_then(|v| v.as_str()) {
-                Some(content_str) => {
-                    println!("Raw Content: {}", content_str);
-                    content_str.to_string()
-                }
+                Some(content_str) => content_str.to_string(),
                 None => {
                     println!("Content field not found or not a string");
                     String::new()
@@ -386,16 +378,16 @@ impl LLMServer {
             // Parse the response to extract answer and sources
             let (content, sources) = parse_llm_response(&full_content);
 
-            let source_with_file_paths = reconcile_sources(sources, chunks);
+            let source_with_file_paths: Vec<String> = reconcile_sources(sources, chunks);
 
-            let enhanced_response = CompletionResponse {
+            let final_response = CompletionResponse {
                 content,
                 sources: source_with_file_paths,
             };
 
-            println!("The enhanced response: {:?}", enhanced_response);
+            println!("The enhanced response: {:?}", final_response);
 
-            Ok(enhanced_response)
+            Ok(final_response)
         } else {
             let status = response.status();
             let error_body = response
@@ -592,6 +584,7 @@ pub async fn ask_llm(app_handle: AppHandle, prompt: String) -> Result<Completion
     }
 }
 
+// parses the answer and sources from the LLM stringified response so that we can separate them later
 fn parse_llm_response(text: &str) -> (String, Vec<String>) {
     // Regex to find the first occurrence of [n, n, ...] pattern.
     // - \s* handles optional whitespace inside brackets.
@@ -623,10 +616,8 @@ fn parse_llm_response(text: &str) -> (String, Vec<String>) {
     (text.trim().to_string(), Vec::new())
 }
 
-fn reconcile_sources(
-    source_ids: Vec<String>,
-    chunks: &[TextChunkResponse],
-) -> Vec<CompletionResponseSource> {
+// matches sources used by the LLM to respond to their file paths so that we can pass the file paths to the front end so the user can open the files if needed
+fn reconcile_sources(source_ids: Vec<String>, chunks: &[TextChunkResponse]) -> Vec<String> {
     source_ids
         .iter()
         .map(|source_id| {
@@ -637,10 +628,7 @@ fn reconcile_sources(
                 .map(|chunk| chunk.file_path.clone())
                 .unwrap_or_else(|| "unknown".to_string());
 
-            CompletionResponseSource {
-                id: source_id.clone(),
-                path,
-            }
+            path
         })
         .collect()
 }
