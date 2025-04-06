@@ -3,7 +3,13 @@ import { Input } from "./components/ui/input";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { cn } from "./lib/utils";
-import { AppSettings, ChatMessage, Model } from "./types/types";
+import {
+  AppSettings,
+  ChatMessage,
+  CompletionRequest,
+  CompletionResponse,
+  Model,
+} from "./types/types";
 import { Button } from "./components/ui/button";
 import { RxArrowTopRight } from "react-icons/rx";
 
@@ -258,12 +264,9 @@ export default function Header(props: Props) {
       setIsProcessing(true);
 
       try {
-        const response = await invoke<{ content: string; sources: string[] }>(
-          "ask_llm",
-          {
-            prompt: userQuery,
-          }
-        );
+        const response = await invoke<CompletionResponse>("ask_llm", {
+          prompt: userQuery,
+        });
 
         setChatMessages((prev) => [
           ...prev,

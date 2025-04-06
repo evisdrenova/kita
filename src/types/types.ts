@@ -148,3 +148,8 @@ export interface ChatMessage {
   content: string;
   sources?: string[];
 }
+
+export interface CompletionResponse {
+  content: string;
+  sources?: string[];
+}

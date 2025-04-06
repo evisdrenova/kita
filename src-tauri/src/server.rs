@@ -297,11 +297,6 @@ impl LLMServer {
         }
     }
 
-    pub async fn send_prompt(&self, prompt: &str, chunks: &str) -> Result<String, LLMServerError> {
-        let response = self.send_completion_request(prompt, chunks).await?;
-        Ok(response.content)
-    }
-
     async fn send_completion_request(
         &self,
         prompt: &str,
@@ -316,10 +311,11 @@ impl LLMServer {
         When answering:
         1. Use ONLY information from the provided context
         2. If the context doesn't contain the answer, say \"I don't have enough information to answer that\" - never make up information
-        3. Cite your sources by referring to the document numbers [1], [2], etc.
+        3. Cite your sources by referring to the document numbers and putting the source in between <source> tags like <source>1</source>, <source>2</source>, etc.
         4. Keep responses concise and to the point
         5. If there are contradictions in the context, acknowledge them
         6. Format your response in a readable way using markdown when helpful
+
 
         Always prioritize accuracy over comprehensiveness.";
 
@@ -337,7 +333,9 @@ impl LLMServer {
 
         let ready_timeout = Duration::from_secs(5);
         match timeout(ready_timeout, self.wait_for_server_ready()).await {
-            Ok(Ok(_)) => {}
+            Ok(Ok(_)) => {
+                println!("server is ready before request");
+            }
             Ok(Err(e)) => {
                 return Err(e);
             }
@@ -349,18 +347,25 @@ impl LLMServer {
         let response = client.post(&url).json(&request).send().await?;
 
         if response.status().is_success() {
-            let completion_response = response.json::<CompletionResponse>().await?;
+            let json_value: serde_json::Value = response.json().await?;
 
-            println!("the competition response: {:?}", completion_response);
-
-            // Extract sources from the response to tell which sources the LLM used to find the answer, the sources == file_id
-            let sources = extract_sources(&completion_response.content);
-
-            // Create enhanced response with sources
-            let enhanced_response = CompletionResponse {
-                content: completion_response.content,
-                sources,
+            // Extract content
+            let content = match json_value.get("content").and_then(|v| v.as_str()) {
+                Some(content_str) => {
+                    println!("Content: {}", content_str);
+                    content_str.to_string()
+                }
+                None => {
+                    println!("Content field not found or not a string");
+                    String::new()
+                }
             };
+
+            let sources = extract_sources(&content);
+
+            let enhanced_response = CompletionResponse { content, sources };
+
+            println!("the enhanced response: {:?}", enhanced_response);
 
             Ok(enhanced_response)
         } else {
@@ -525,7 +530,7 @@ pub fn register_llm_commands(app: &mut tauri::App) -> Result<(), Box<dyn std::er
 
 // Example of how to use this in a Tauri command
 #[tauri::command]
-pub async fn ask_llm(app_handle: AppHandle, prompt: String) -> Result<String, String> {
+pub async fn ask_llm(app_handle: AppHandle, prompt: String) -> Result<CompletionResponse, String> {
     println!("Incoming prompt: {:?}", prompt);
 
     // Get the server state
@@ -545,7 +550,7 @@ pub async fn ask_llm(app_handle: AppHandle, prompt: String) -> Result<String, St
     // Check if we have a server instance
     if let Some(server) = &*server_guard {
         server
-            .send_prompt(&prompt, &text_chunks)
+            .send_completion_request(&prompt, &text_chunks)
             .await
             .map_err(|e| format!("Failed to get response: {}", e))
     } else {
