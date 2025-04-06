@@ -443,9 +443,12 @@ function ChatInterface(props: ChatInterfaceProps) {
                     <div className="text-xs text-primary-foreground/70 mb-1">
                       Sources:
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-col flex-wrap gap-2">
                       {message.sources.map((source, idx) => (
-                        <SourceBadge key={idx} sourceId={source} />
+                        <div className="flex flex-row items-center gap-2">
+                          <div>[{idx + 1}]</div>
+                          <SourceBadge key={idx} source={source} />
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -463,11 +466,12 @@ function ChatInterface(props: ChatInterfaceProps) {
 
 // Add a new SourceBadge component
 interface SourceBadgeProps {
-  sourceId: string;
+  source: string;
 }
 
 // TODO: move this to the backend instead of doing it on the front end
-function SourceBadge({ sourceId }: SourceBadgeProps) {
+function SourceBadge(props: SourceBadgeProps) {
+  const { source } = props;
   const [fileName, setFileName] = useState<string | null>(null);
 
   // Fetch file name from file ID
@@ -475,7 +479,7 @@ function SourceBadge({ sourceId }: SourceBadgeProps) {
     async function fetchFileName() {
       try {
         const fileInfo = await invoke<{ name: string }>("get_file_by_id", {
-          fileId: sourceId,
+          fileId: source,
         });
         setFileName(fileInfo.name);
       } catch (error) {
@@ -484,11 +488,11 @@ function SourceBadge({ sourceId }: SourceBadgeProps) {
     }
 
     fetchFileName();
-  }, [sourceId]);
+  }, [source]);
 
   const handleClick = async () => {
     try {
-      await invoke("open_file_by_id", { fileId: sourceId });
+      await invoke("open_file_by_id", { fileId: source });
     } catch (error) {
       console.error("Failed to open file:", error);
     }
@@ -499,7 +503,7 @@ function SourceBadge({ sourceId }: SourceBadgeProps) {
       onClick={handleClick}
       className="inline-flex items-center px-2 py-1 rounded-md text-xs bg-primary-foreground/20 hover:bg-primary-foreground/30 transition-colors"
     >
-      <span>{fileName || `Source ${sourceId}`}</span>
+      <span>{fileName || `Source ${source}`}</span>
     </button>
   );
 }
