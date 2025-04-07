@@ -10,6 +10,7 @@ use tracing::error;
 
 pub mod docx;
 pub mod json;
+pub mod markdown;
 pub mod pdf;
 pub mod txt;
 
@@ -65,20 +66,6 @@ pub mod common {
         #[error("Text File Parsing error: {0}")]
         TextFileError(String),
 
-        // #[error("Docx File Parsing error: {0}")]
-        // DocxFileError(String),
-
-        // #[error("XLS parsing error: {0}")]
-        // XlsError(String),
-
-        // #[error("Encoding error: {0}")]
-        // EncodingError(String),
-
-        // #[error("Channel error")]
-        // ChannelError,
-
-        // #[error("Task join error: {0}")]
-        // JoinError(String),
         #[error("Other error: {0}")]
         Other(String),
     }
@@ -119,6 +106,7 @@ impl ChunkerOrchestrator {
         orchestrator.register_chunker(Box::new(pdf::PdfChunker::default()));
         orchestrator.register_chunker(Box::new(json::JsonChunker::default()));
         orchestrator.register_chunker(Box::new(docx::DocxChunker::default()));
+        orchestrator.register_chunker(Box::new(markdown::MarkdownChunker::default()));
 
         orchestrator
     }

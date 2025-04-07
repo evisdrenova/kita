@@ -57,15 +57,12 @@ xls -> read row by row or cell ranges
 
 // results in vectordb are returned twice, maybe duplices?
 
-// when we do the embeddings, we count all of the files that we're going to embed, but only do the ones that aren't empty, so it turns out saying something like 9 out of 60 completed, we need to return the statuses for the other ones too i.e. 9 completed, 52 skipped
-
 // maybe we need to count tokens so we know how big the context window is getting and show that on the front-end???
-
-// then start sendign in the vectorized files into the context window so we can start to actually do that RAG
 
 // implement the change_llm method so that we can swap the model if the user decides to change it in settings. if so then we need to restart the server with the new model
 
-// the sources are just the file IDs of the chunks that we get back, so we should be able to just get them from the normal similairty search -- look into this
-
 // support '@' action like email, message, etc.
 // creates a new interface for you to do that
+
+// if i want the LLM to be easy to use i can just use ollama and point it a local server
+//https://github.com/pepperoni21/ollama-rs?tab=readme-ov-file#installation

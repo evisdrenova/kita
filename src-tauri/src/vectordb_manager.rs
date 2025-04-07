@@ -284,7 +284,7 @@ pub fn get_text_chunks_from_similarity_search(
 
             context_chunks.push(TextChunkResponse {
                 file_id: file_id.to_string(),
-                formatted_prompt: format!("[{}] <source>{}</source>\n{}", i + 1, file_id, text),
+                formatted_prompt: format!("<source>{}</source>\n{}", file_id, text),
                 file_path: file_path.to_string(),
             });
         }

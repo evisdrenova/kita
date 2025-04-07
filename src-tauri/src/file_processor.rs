@@ -2,7 +2,7 @@ use crate::AppResult;
 use arrow_array::{Array, RecordBatch};
 use rusqlite::{params, Connection, Rows};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -120,8 +120,6 @@ impl FileProcessor {
     ) -> Result<serde_json::Value, FileProcessorError> {
         println!("The paths {:?}", paths);
 
-        // TODO: we might want to  parallelize this and the chunking instead of doing it sequentlly, essentially walk the tree, get to leaves, chunk and embed them and keep going
-
         // get all file paths that need to be processed
         let files: Vec<FileMetadata> = self.collect_all_files(&paths).await?;
         let total_files: usize = files.len();
@@ -217,7 +215,8 @@ impl FileProcessor {
                                 continue;
                             }
                         };
-                        // skip hidden files
+
+                        // Skip hidden files
                         if let Some(file_name) = entry.file_name().to_str() {
                             if file_name.starts_with(".") {
                                 continue;
@@ -225,17 +224,24 @@ impl FileProcessor {
                         }
 
                         if entry.file_type().is_file() {
-                            let _ = get_file_metadata(entry.path(), &mut all_files);
+                            // Check if the file has a valid extension before processing
+                            if is_valid_file_extension(entry.path()) {
+                                let _ = get_file_metadata(entry.path(), &mut all_files);
+                            }
                         }
                     }
                 } else {
+                    // Handle single file case
                     if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
                         if file_name.starts_with(".") {
                             continue;
                         }
                     }
 
-                    let _ = get_file_metadata(path, &mut all_files);
+                    // Check if the file has a valid extension before processing
+                    if is_valid_file_extension(path) {
+                        let _ = get_file_metadata(path, &mut all_files);
+                    }
                 }
             }
             Ok::<_, FileProcessorError>(all_files)
@@ -255,8 +261,6 @@ fn create_path_embedding(
     progress_fn: impl Fn(ProcessingStatus) + Send + Sync + Clone + 'static,
     app_handle: AppHandle,
 ) -> tokio::task::JoinHandle<()> {
-    println!("creating embedding for file {:?}", file_metadata.base.path);
-
     let fm_clone = file_metadata.clone();
     let file_path = fm_clone.base.path.clone();
 
@@ -491,25 +495,17 @@ pub async fn get_files_data(
     query: String,
     state: State<'_, FileProcessorState>,
 ) -> Result<Vec<FileMetadata>, String> {
-    // println!("the query in get files: {:?}", query);
-
     let processor: FileProcessor = get_processor(&state)?;
 
     let conn: Connection = Connection::open(&processor.db_path)
         .map_err(|e| format!("Failed to open database: {e}"))?;
 
-    // Handle empty queries
-    if query.trim().is_empty() {
-        return get_recent_files(&conn);
-    }
-
-    // Handle short queries with LIKE
+    // Handle short que
     if query.len() < 3 {
         return search_files_by_like(&conn, &query);
     }
 
     // For queries with >3 characters, first do an FTS search
-    // TODO: just use the execute_hybrid in lancedb to combine this with the search_simlar
     let files = search_files_by_fts(&conn, &query)?;
 
     Ok(files)
@@ -526,30 +522,6 @@ fn get_processor(state: &State<'_, FileProcessorState>) -> Result<FileProcessor,
     };
 
     Ok(processor)
-}
-
-// Get recent files when query is empty
-fn get_recent_files(conn: &Connection) -> Result<Vec<FileMetadata>, String> {
-    let mut stmt = conn
-        .prepare(
-            r#"
-             SELECT
-              id,
-              name,
-              path,
-              extension,
-              size,
-              created_at,
-              updated_at
-            FROM files
-            ORDER BY updated_at DESC
-        "#,
-        )
-        .map_err(|e| format!("Failed to prepare statement: {e}"))?;
-
-    let rows = stmt.query([]).map_err(|e| format!("Query error: {e}"))?;
-
-    rows_to_file_metadata(rows)
 }
 
 // Search files using LIKE for short queries
@@ -765,85 +737,6 @@ pub fn open_file(file_path: &str) -> Result<(), String> {
     }
 }
 
-// pub async fn get_file_by_id(
-//     app_handle: AppHandle,
-//     file_id: String,
-// ) -> Result<FileMetadata, String> {
-//     // Get connection to SQLite database
-//     let db_path = app_handle.path().app_data_dir()?.join("files.db");
-//     let conn = Connection::open(db_path).map_err(|e| format!("Failed to open database: {e}"))?;
-
-//     // Prepare SQL query to get file by ID
-//     let mut stmt = conn
-//         .prepare(
-//             r#"
-//         SELECT
-//           id,
-//           name,
-//           path,
-//           extension,
-//           size,
-//           created_at,
-//           updated_at
-//         FROM files
-//         WHERE id = ?
-//         "#,
-//         )
-//         .map_err(|e| format!("Failed to prepare statement: {e}"))?;
-
-//     // Execute query with file_id parameter
-//     let mut rows = stmt
-//         .query([file_id])
-//         .map_err(|e| format!("Query error: {e}"))?;
-
-//     // Try to get the first (and only) row
-//     if let Some(row) = rows.next().map_err(|e| format!("Error reading row: {e}"))? {
-//         // Convert row to FileMetadata
-//         let file = FileMetadata {
-//             base: BaseMetadata {
-//                 id: row.get(0).map_err(|e| format!("Error getting id: {e}"))?,
-//                 name: row.get(1).map_err(|e| format!("Error getting name: {e}"))?,
-//                 path: row.get(2).map_err(|e| format!("Error getting path: {e}"))?,
-//             },
-//             file_type: SearchSectionType::Files,
-//             extension: row
-//                 .get(3)
-//                 .map_err(|e| format!("Error getting extension: {e}"))?,
-//             size: row.get(4).map_err(|e| format!("Error getting size: {e}"))?,
-//             created_at: row
-//                 .get(5)
-//                 .map_err(|e| format!("Error getting created_at: {e}"))?,
-//             updated_at: row
-//                 .get(6)
-//                 .map_err(|e| format!("Error getting updated_at: {e}"))?,
-//         };
-
-//         Ok(file)
-//     } else {
-//         Err(format!("File with ID {} not found", file_id))
-//     }
-// }
-
-// #[tauri::command]
-// pub async fn open_file_by_id(app_handle: AppHandle, file_id: String) -> Result<(), String> {
-//     // Get the files database or state
-//     let file_state = app_handle.state::<Mutex<FileDatabase>>();
-//     let file_db = file_state.lock().await;
-
-//     // Find the file by ID
-//     match file_db.get_file_by_id(&file_id).await {
-//         Ok(Some(file)) => {
-//             // Open the file using OS default application
-//             match open_file(&file.path) {
-//                 Ok(_) => Ok(()),
-//                 Err(e) => Err(format!("Failed to open file: {}", e)),
-//             }
-//         }
-//         Ok(None) => Err(format!("File with ID {} not found", file_id)),
-//         Err(e) => Err(format!("Error retrieving file: {}", e)),
-//     }
-// }
-
 pub fn init_file_processor(
     db_path: &str,
     concurrency: usize,
@@ -868,4 +761,18 @@ pub fn init_file_processor(
             Err(Box::new(Error::new(ErrorKind::Other, error_msg)))
         }
     }
+}
+
+fn is_valid_file_extension(path: &Path) -> bool {
+    let valid_extensions: HashSet<&str> = ["txt", "pdf", "docx", "md", "json", "yaml", "yml"]
+        .iter()
+        .cloned()
+        .collect();
+
+    if let Some(extension) = path.extension() {
+        if let Some(ext_str) = extension.to_str() {
+            return valid_extensions.contains(ext_str.to_lowercase().as_str());
+        }
+    }
+    false
 }
