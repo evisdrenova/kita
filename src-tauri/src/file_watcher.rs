@@ -1,17 +1,15 @@
 use crate::AppResult;
-use futures::stream::StreamExt;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, State};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time::sleep;
 use tracing::{debug, error, info};
 
-use crate::file_processor::{
-    get_file_metadata, is_valid_file_extension, FileMetadata, FileProcessor, FileProcessorError,
+use crate::file_processor::{is_valid_file_extension, FileMetadata, FileProcessorError,
     FileProcessorState, ProcessingStatus,
 };
 
@@ -44,13 +42,13 @@ impl FileWatcher {
         {
             let mut watched_paths = self.watched_paths.lock().unwrap();
             for path in &paths {
-                let pathbuf = PathBuf::from(path.base.path);
+                let pathbuf = PathBuf::from(&path.base.path);
                 watched_paths.insert(pathbuf.clone());
             }
         }
 
         // Create a new watcher
-        let watcher: notify::FsEventWatcher = self.create_watcher(tx)?;
+        let mut watcher: notify::FsEventWatcher = self.create_watcher(tx)?;
 
         // Start monitoring each path
         for pathbuf in paths {
@@ -63,20 +61,20 @@ impl FileWatcher {
             }
         }
 
-        // Start the event processor in a separate task
-        let processor = app_handle.state::<FileProcessorState>();
-        let app_handle = self.app_handle.clone();
-        let watched_paths = self.watched_paths.clone();
+    // Start the event processor in a separate task
+    let app_handle_clone = app_handle.clone();
+    let watched_paths = self.watched_paths.clone();
 
-        tokio::spawn(async move {
-            Self::process_events(rx, processor, app_handle, watched_paths).await;
-        });
+    tokio::spawn(async move {
+        // Get the processor state inside the async task
+        FileWatcher::process_events(rx, app_handle_clone, watched_paths).await;
+    });
 
-        // Store the watcher in app state to keep it alive
-        self.app_handle.manage(Arc::new(Mutex::new(watcher)));
+    // Store the watcher in app state to keep it alive
+    self.app_handle.manage(Arc::new(Mutex::new(watcher)));
 
-        Ok(())
-    }
+    Ok(())
+}
 
     pub async fn stop_watching(&self, path: String) -> AppResult<()> {
         let mut watched_paths = self.watched_paths.lock().unwrap();
@@ -99,7 +97,6 @@ impl FileWatcher {
 
     async fn process_events(
         mut rx: Receiver<Event>,
-        processor_state: State<'_, FileProcessorState>,
         app_handle: AppHandle,
         watched_paths: Arc<Mutex<HashSet<PathBuf>>>,
     ) {
@@ -109,6 +106,9 @@ impl FileWatcher {
         while let Some(event) = rx.recv().await {
             debug!("Received file event: {:?}", event);
             last_event_time = Instant::now();
+    
+            // Get the processor state inside the loop
+            let processor_state = app_handle.state::<FileProcessorState>();
     
             // Extract paths to process based on event kind
             match event.kind {
@@ -127,10 +127,15 @@ impl FileWatcher {
                             for path in event.paths {
                                 // Handle file deletions by removing from index
                                 if is_valid_file_extension(&path) {
-                                    tokio::spawn(remove_file_from_index(
-                                        path.to_string_lossy().to_string(),
-                                        processor.db_path.clone(),
-                                    ));
+                                    let db_path = processor.db_path.clone();
+                                    tokio::spawn(async move {
+                                        if let Err(e) = remove_file_from_index(
+                                            path.to_string_lossy().to_string(),
+                                            db_path,
+                                        ).await {
+                                            error!("Failed to remove file from index: {:?}", e);
+                                        }
+                                    });
                                 }
                             }
                         }
@@ -173,10 +178,14 @@ impl FileWatcher {
                 if is_watched {
                     info!("Processing changed files: {:?}", paths_str);
                     
+                    // Get processor state again inside the condition
+                    let processor_state = app_handle.state::<FileProcessorState>();
+                    
                     // Only proceed if we can get the processor
                     if let Ok(guard) = processor_state.inner().lock() {
                         if let Some(processor) = guard.clone() {
                             let app_handle_clone = app_handle.clone();
+                            let paths_to_process = paths_str.clone();
                             
                             tokio::spawn(async move {
                                 let progress_handler = move |status: ProcessingStatus| {
@@ -184,7 +193,7 @@ impl FileWatcher {
                                 };
                                 
                                 match processor.process_paths(
-                                    paths_str,
+                                    paths_to_process,
                                     progress_handler,
                                     app_handle_clone.clone(),
                                 ).await {
