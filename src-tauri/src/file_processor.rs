@@ -169,15 +169,15 @@ impl FileProcessor {
 
         // start watching the files for changes
         let mut fw = FileWatcher::new(app_handle.clone());
-        let path_refs: Vec<&String> = files
+        let path_strings: Vec<String> = files
             .iter()
-            .map(|file_metadata| &file_metadata.base.path)
+            .map(|file_metadata| file_metadata.base.path.clone())
             .collect();
 
-        match fw.start_or_add_paths(path_refs) {
+        match fw.add_files_and_watch_parents(&path_strings) {
             Ok(_) => {}
             Err(e) => {
-                error!("Failed to start or add paths to watcher: {}", e);
+                error!("Failed to add files/watch parents: {}", e);
             }
         }
 
