@@ -12,47 +12,49 @@ use tracing::{debug, error, info};
 
 use crate::file_processor::{
     get_file_metadata, is_valid_file_extension, FileMetadata, FileProcessor, FileProcessorError,
-    ProcessingStatus,
+    FileProcessorState, ProcessingStatus,
 };
 
 const DEBOUNCE_TIMEOUT_MS: u64 = 1000;
 
 pub struct FileWatcher {
     watched_paths: Arc<Mutex<HashSet<PathBuf>>>,
-    processor: Arc<FileProcessor>,
     app_handle: AppHandle,
     event_tx: Option<Sender<Event>>,
 }
 
 impl FileWatcher {
-    pub fn new(processor: FileProcessor, app_handle: AppHandle) -> Self {
+    pub fn new(app_handle: AppHandle) -> Self {
         FileWatcher {
             watched_paths: Arc::new(Mutex::new(HashSet::new())),
-            processor: Arc::new(processor),
             app_handle,
             event_tx: None,
         }
     }
 
-    pub async fn start_watching(&mut self, paths: Vec<String>) -> AppResult<()> {
+    pub async fn start_watching(
+        &mut self,
+        paths: Vec<FileMetadata>,
+        app_handle: AppHandle,
+    ) -> AppResult<()> {
         let (tx, rx) = channel(100);
         self.event_tx = Some(tx.clone());
 
         // Add paths to watched set
         {
             let mut watched_paths = self.watched_paths.lock().unwrap();
-            for path_str in &paths {
-                let path = PathBuf::from(path_str);
-                watched_paths.insert(path.clone());
+            for path in &paths {
+                let pathbuf = PathBuf::from(path.base.path);
+                watched_paths.insert(pathbuf.clone());
             }
         }
 
         // Create a new watcher
-        let watcher = self.create_watcher(tx)?;
+        let watcher: notify::FsEventWatcher = self.create_watcher(tx)?;
 
         // Start monitoring each path
-        for path_str in paths {
-            let path = PathBuf::from(path_str);
+        for pathbuf in paths {
+            let path = PathBuf::from(pathbuf.base.path);
             if path.exists() {
                 watcher.watch(&path, RecursiveMode::Recursive)?;
                 info!("Started watching path: {:?}", path);
@@ -62,7 +64,7 @@ impl FileWatcher {
         }
 
         // Start the event processor in a separate task
-        let processor = self.processor.clone();
+        let processor = app_handle.state::<FileProcessorState>();
         let app_handle = self.app_handle.clone();
         let watched_paths = self.watched_paths.clone();
 
@@ -86,12 +88,7 @@ impl FileWatcher {
         let watcher = RecommendedWatcher::new(
             move |res: Result<Event, notify::Error>| {
                 if let Ok(event) = res {
-                    // Filter out events for files we don't care about
-                    if let Some(path) = event.paths.first() {
-                        if is_relevant_file_event(&event, path) {
-                            let _ = tx.try_send(event);
-                        }
-                    }
+                    let _ = tx.try_send(event);
                 }
             },
             Config::default(),
@@ -99,19 +96,20 @@ impl FileWatcher {
 
         Ok(watcher)
     }
+
     async fn process_events(
         mut rx: Receiver<Event>,
-        processor: Arc<FileProcessor>,
+        processor_state: State<'_, FileProcessorState>,
         app_handle: AppHandle,
         watched_paths: Arc<Mutex<HashSet<PathBuf>>>,
     ) {
         let mut pending_paths: HashSet<PathBuf> = HashSet::new();
         let mut last_event_time = Instant::now();
-
+    
         while let Some(event) = rx.recv().await {
             debug!("Received file event: {:?}", event);
             last_event_time = Instant::now();
-
+    
             // Extract paths to process based on event kind
             match event.kind {
                 EventKind::Create(_) | EventKind::Modify(_) => {
@@ -123,63 +121,79 @@ impl FileWatcher {
                     }
                 }
                 EventKind::Remove(_) => {
-                    for path in event.paths {
-                        // Handle file deletions by removing from index
-                        if is_valid_file_extension(&path) {
-                            tokio::spawn(remove_file_from_index(
-                                path.to_string_lossy().to_string(),
-                                processor.db_path.clone(),
-                            ));
+                    // For file deletions, we need to get the DB path to remove from index
+                    if let Ok(guard) = processor_state.inner().lock() {
+                        if let Some(processor) = &*guard {
+                            for path in event.paths {
+                                // Handle file deletions by removing from index
+                                if is_valid_file_extension(&path) {
+                                    tokio::spawn(remove_file_from_index(
+                                        path.to_string_lossy().to_string(),
+                                        processor.db_path.clone(),
+                                    ));
+                                }
+                            }
                         }
                     }
                 }
                 _ => {} // Ignore other event types
             }
-
+    
             // Wait for events to settle before processing
             sleep(Duration::from_millis(DEBOUNCE_TIMEOUT_MS)).await;
-
+    
             // If no new events came in during the debounce period, process the pending files
-            if last_event_time.elapsed() >= Duration::from_millis(DEBOUNCE_TIMEOUT_MS)
-                && !pending_paths.is_empty()
+            if last_event_time.elapsed() >= Duration::from_millis(DEBOUNCE_TIMEOUT_MS) 
+                && !pending_paths.is_empty() 
             {
                 let paths_to_process: Vec<PathBuf> = pending_paths.drain().collect();
-
+                
                 // Convert to strings for processing
                 let paths_str: Vec<String> = paths_to_process
                     .iter()
                     .map(|p| p.to_string_lossy().to_string())
                     .collect();
-
+                
                 // Check if paths are still in watched directories
                 let is_watched = {
                     let watched = watched_paths.lock().unwrap();
                     paths_to_process.iter().any(|path| {
-                        watched.iter().any(|watched_path| {
-                            path.starts_with(watched_path) || watched_path.starts_with(path)
-                        })
+                        watched.iter().any(|watched_path| 
+                            path.starts_with(watched_path) || 
+                            // Also check if we're watching the parent directory
+                            if let Some(parent) = path.parent() {
+                                watched_path == parent
+                            } else {
+                                false
+                            }
+                        )
                     })
                 };
-
+                
                 if is_watched {
                     info!("Processing changed files: {:?}", paths_str);
-
-                    let app_handle_clone = app_handle.clone();
-                    let processor_clone = processor.clone();
-
-                    tokio::spawn(async move {
-                        let progress_handler = move |status: ProcessingStatus| {
-                            let _ = app_handle_clone.emit("file-indexing-progress", &status);
-                        };
-
-                        match processor_clone
-                            .process_paths(paths_str, progress_handler, app_handle_clone.clone())
-                            .await
-                        {
-                            Ok(_) => info!("Successfully processed file changes"),
-                            Err(e) => error!("Error processing file changes: {:?}", e),
+                    
+                    // Only proceed if we can get the processor
+                    if let Ok(guard) = processor_state.inner().lock() {
+                        if let Some(processor) = guard.clone() {
+                            let app_handle_clone = app_handle.clone();
+                            
+                            tokio::spawn(async move {
+                                let progress_handler = move |status: ProcessingStatus| {
+                                    let _ = app_handle_clone.emit("file-indexing-progress", &status);
+                                };
+                                
+                                match processor.process_paths(
+                                    paths_str,
+                                    progress_handler,
+                                    app_handle_clone.clone(),
+                                ).await {
+                                    Ok(_) => info!("Successfully processed file changes"),
+                                    Err(e) => error!("Error processing file changes: {:?}", e),
+                                }
+                            });
                         }
-                    });
+                    }
                 }
             }
         }

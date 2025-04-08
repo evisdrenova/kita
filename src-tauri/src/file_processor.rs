@@ -15,13 +15,11 @@ use tokio::task;
 use tracing::error;
 use walkdir::WalkDir;
 
-use crate::tokenizer::{build_doc_text, build_trigrams};
-
-use crate::utils::get_category_from_extension;
-
 use crate::chunker::{ChunkerConfig, ChunkerOrchestrator};
-
 use crate::embedder::Embedder;
+use crate::file_watcher::FileWatcher;
+use crate::tokenizer::{build_doc_text, build_trigrams};
+use crate::utils::get_category_from_extension;
 use crate::vectordb_manager::VectorDbManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,6 +166,10 @@ impl FileProcessor {
 
             task_handles.push(task_handle);
         }
+
+        // start watching the files for changes
+        let mut fw = FileWatcher::new(app_handle.clone());
+        fw.start_watching(files, app_handle.clone()).await;
 
         // Wait for all tasks and process results
         drop(err_tx);
