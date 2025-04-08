@@ -37,10 +37,7 @@ impl FileWatcher {
         }
     }
 
-    pub fn start_or_add_paths(
-        &mut self,
-        paths_to_watch: &[String], // Takes Vec<String> now
-    ) -> AppResult<()> {
+    pub fn start_or_add_paths(&mut self, paths_to_watch: Vec<&String>) -> AppResult<()> {
         let mut new_paths_added = Vec::new();
 
         // Ensure watcher and processing task are started only once
@@ -50,7 +47,7 @@ impl FileWatcher {
             self.event_tx = Some(tx.clone());
 
             let watcher_tx = tx.clone();
-            let mut watcher = RecommendedWatcher::new(
+            let watcher = RecommendedWatcher::new(
                 move |res: Result<Event, NotifyError>| {
                     // Forward result (including errors) to the channel
                     if let Err(e) = watcher_tx.try_send(res) {
@@ -64,10 +61,9 @@ impl FileWatcher {
 
             // Start the event processor task
             let app_handle_clone = self.app_handle.clone();
-            let watched_paths_clone = self.watched_paths.clone();
             tokio::spawn(async move {
                 info!("File event processing task started.");
-                FileWatcher::process_events(rx, app_handle_clone, watched_paths_clone).await;
+                FileWatcher::process_events(rx, app_handle_clone).await;
                 info!("File event processing task finished.");
             });
             self.is_processing_active = true;
@@ -92,8 +88,6 @@ impl FileWatcher {
                         watched_paths_guard.remove(&path);
                     }
                 }
-            } else {
-                info!("Path already being watched: {:?}", path);
             }
         }
 
@@ -118,10 +112,7 @@ impl FileWatcher {
         if watched_paths_guard.remove(&path) {
             if let Some(watcher) = self.watcher.as_mut() {
                 match watcher.unwatch(&path) {
-                    Ok(_) => {
-                        info!("Stopped watching path: {:?}", path);
-                        Ok(())
-                    }
+                    Ok(_) => Ok(()),
                     Err(e) => {
                         error!("Failed to unwatch path {:?}: {}", path, e);
                         // Add it back to the set? Or just log?
@@ -133,7 +124,6 @@ impl FileWatcher {
                 Ok(()) // Not an error if watcher isn't running
             }
         } else {
-            info!("Path was not actively being watched: {:?}", path);
             Ok(()) // Not an error if path wasn't in the set
         }
     }
@@ -154,8 +144,6 @@ impl FileWatcher {
     async fn process_events(
         mut rx: Receiver<notify::Result<Event>>, // Receives Results now
         app_handle: AppHandle,
-        watched_paths: Arc<Mutex<HashSet<PathBuf>>>, // This is only needed if we need to double-check scope, notify should handle it.
-                                                     // Let's remove it unless needed later.
     ) {
         let mut pending_create_modify: HashSet<PathBuf> = HashSet::new();
         let mut debounce_timer = Option::<tokio::time::Sleep>::None; // Use tokio's sleep timer
@@ -166,47 +154,52 @@ impl FileWatcher {
                biased;
 
                // Option 1: Timer fires and we have pending paths
-               _ = async { debounce_timer.as_mut().unwrap().await }, if debounce_timer.is_some() && !pending_create_modify.is_empty() => {
+               _ = async { debounce_timer.as_mut().unwrap() }, if debounce_timer.is_some() && !pending_create_modify.is_empty() => {
                    let paths_to_process: Vec<PathBuf> = pending_create_modify.drain().collect();
                    debounce_timer = None; // Reset timer
 
                    info!("Debounce finished. Processing changes for: {:?}", paths_to_process);
 
                    // --- Get necessary info from FileProcessorState (read-only access) ---
+                   let processor_state_handle = app_handle.state::<FileProcessorState>(); // Get handle outside the block
                    let maybe_processor_info = { // Scope the lock guard
-                       let processor_state = app_handle.state::<FileProcessorState>();
-                       match processor_state.0.lock() {
+                       match processor_state_handle.0.lock() { // Use the handle here
                            Ok(guard) => {
+                               // guard implicitly borrows processor_state_handle
                                guard.as_ref().map(|p| (p.db_path.clone(), p.concurrency_limit))
-                           }
+                           } // guard is dropped here, borrow ends
                            Err(e) => {
                                error!("Mutex poisoned accessing FileProcessorState: {}", e);
                                None
                            }
                        }
-                   };
+                   }; // temporary Result from match is dropped, maybe_processor_info holds the Option
                     // --- Spawn processing task ---
                    if let Some((db_path, concurrency_limit)) = maybe_processor_info {
                         let app_handle_clone = app_handle.clone(); // Clone for the task
 
                         tokio::spawn(async move {
-                            // Re-create or get a FileProcessor instance if needed, or pass data directly
-                            // Assuming process_paths can be called statically or on a temp instance
-                             let processor = FileProcessor { db_path, concurrency_limit }; // Temporary instance or use static method
+                            let processor = FileProcessor { db_path, concurrency_limit };
+
+                            // Clone the handle *before* the move closure definition
+                            let handle_for_progress = app_handle_clone.clone();
+                            // app_handle_clone (the original passed into spawn) is still available to be passed below
 
                             let progress_handler = move |status: ProcessingStatus| {
-                                let _ = app_handle_clone.emit("file-indexing-progress", &status);
+                                // Closure captures and owns handle_for_progress
+                                let _ = handle_for_progress.emit("file-indexing-progress", &status);
                             };
+
 
                             let paths_str: Vec<String> = paths_to_process
                                 .iter()
                                 .map(|p| p.to_string_lossy().to_string())
                                 .collect();
 
-                            match processor.process_paths( // Assuming process_paths exists and takes these args
+                            match processor.process_paths(
                                 paths_str,
-                                progress_handler,
-                                app_handle_clone.clone(), // Clone app handle again if needed by process_paths
+                                progress_handler, // Moves the closure (and handle_for_progress)
+                                app_handle_clone, // Pass the original handle (now owned by the task)
                             ).await {
                                 Ok(_) => info!("Successfully processed file changes."),
                                 Err(e) => error!("Error processing file changes: {:?}", e),
@@ -219,28 +212,32 @@ impl FileWatcher {
 
                 // Option 2: Receive next event from notify watcher
                 maybe_event_res = rx.recv() => {
-                   match maybe_event_res {
-                       Some(Ok(event)) => { // Handle Ok(Event)
+                    match maybe_event_res {
+                        Some(Ok(event)) => { // Handle Ok(Event)
                             debug!("Received file event: {:?}", event);
                             let mut needs_debounce_reset = false;
 
                             match event.kind {
                                 EventKind::Create(_) | EventKind::Modify(_) => {
-                                    for path in event.paths {
-                                        if is_relevant_file_event(&event, &path) {
-                                            if pending_create_modify.insert(path) {
-                                                 needs_debounce_reset = true; // Only reset if a new relevant path added
+                                    // Iterate by reference
+                                    for path in &event.paths {
+                                        // Pass &PathBuf to is_relevant_file_event
+                                        if is_relevant_file_event(&event, path) {
+                                            // .insert() needs an owned PathBuf, so clone path
+                                            if pending_create_modify.insert(path.clone()) {
+                                                 needs_debounce_reset = true;
                                             }
                                         }
                                     }
                                 }
                                 EventKind::Remove(_) => {
-                                     for path in event.paths {
-                                         if is_relevant_file_event(&event, &path) {
-                                             // Handle Remove immediately (no debounce)
+                                     // Iterate by reference
+                                     for path in &event.paths {
+                                         // Pass &PathBuf to is_relevant_file_event
+                                         if is_relevant_file_event(&event, path) {
                                              info!("Processing remove event for: {:?}", path);
                                              let processor_state = app_handle.state::<FileProcessorState>();
-                                             let maybe_db_path = { // Scope the lock guard
+                                             let maybe_db_path = { // Scope lock
                                                  match processor_state.0.lock() {
                                                       Ok(guard) => guard.as_ref().map(|p| p.db_path.clone()),
                                                       Err(e) => {
@@ -252,14 +249,16 @@ impl FileWatcher {
 
                                              if let Some(db_path) = maybe_db_path {
                                                   let app_handle_clone = app_handle.clone();
+                                                  // Convert &PathBuf to owned String for the task
                                                   let path_string = path.to_string_lossy().to_string();
                                                   tokio::spawn(async move {
                                                       if let Err(e) = remove_file_from_index(
                                                           app_handle_clone,
-                                                          path_string,
+                                                          path_string, // Pass owned String
                                                           db_path,
                                                       ).await {
-                                                          error!("Failed to remove file {:?} from index: {:?}", path, e);
+                                                          // Use {:?} for PathBuf if needed, but path_string is now String
+                                                          error!("Failed to remove file from index: {:?}", e);
                                                       }
                                                   });
                                              } else {
@@ -368,7 +367,8 @@ async fn remove_file_from_index(
 }
 
 // Add this to your main.rs to initialize the file watcher state
-pub fn init_file_watcher(app: &mut tauri::App) -> AppResult<()> {
-    app.manage(Arc::new(Mutex::new(Option::<FileWatcher>::None)));
-    Ok(())
+pub fn init_file_watcher_state(
+    app_builder: tauri::Builder<tauri::Wry>,
+) -> tauri::Builder<tauri::Wry> {
+    app_builder.manage(Arc::new(Mutex::new(Option::<FileWatcher>::None)))
 }
