@@ -3,6 +3,7 @@ mod chunker;
 mod database_handler;
 mod embedder;
 mod file_processor;
+mod file_watcher;
 mod model_registry;
 mod resource_monitor;
 mod server;
@@ -29,6 +30,7 @@ pub fn run() {
 
             settings::init_settings(&db_path_str, app.app_handle().clone())?;
             file_processor::init_file_processor(&db_path_str, 4, app.app_handle().clone())?;
+            file_watcher::init_file_watcher(app)?;
             resource_monitor::init_resource_monitor(app)?;
             vectordb_manager::init_vector_db(app)?;
             server::init_server(app)?;
