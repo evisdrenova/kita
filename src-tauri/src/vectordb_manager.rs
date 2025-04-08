@@ -128,6 +128,31 @@ impl VectorDbManager {
         Ok(())
     }
 
+    pub async fn delete_embedding(app_handle: &AppHandle, file_id: &str) -> VectorDbResult<()> {
+        let state = app_handle.state::<Arc<Mutex<VectorDbManager>>>();
+        let manager = state.lock().await;
+        // open table
+        let table = match manager.client.open_table(TABLE_NAME).execute().await {
+            Ok(table) => table,
+            Err(e) => {
+                return Err(VectorDbError::LanceError(format!(
+                    "Failed to open table: {}",
+                    e
+                )));
+            }
+        };
+
+        // insert into table
+        if let Err(e) = table.delete(&format!("file_id = '{}'", file_id)).await {
+            return Err(VectorDbError::LanceError(format!(
+                "Failed to delete embedding: {}",
+                e
+            )));
+        }
+
+        Ok(())
+    }
+
     /// given a query, this function performs similarity search and returns the chunks that matched
     pub async fn search_similar(
         app_handle: &AppHandle,

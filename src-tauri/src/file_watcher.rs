@@ -7,12 +7,14 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, State};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time::sleep;
+use rusqlite::Connection;
 use tracing::{debug, error, info};
+use tokio::task;
 
 use crate::file_processor::{is_valid_file_extension, FileMetadata, FileProcessorError,
     FileProcessorState, ProcessingStatus,
 };
-
+use crate::vectordb_manager::VectorDbManager;
 const DEBOUNCE_TIMEOUT_MS: u64 = 1000;
 
 pub struct FileWatcher {
@@ -114,32 +116,30 @@ impl FileWatcher {
             match event.kind {
                 EventKind::Create(_) | EventKind::Modify(_) => {
                     for path in event.paths {
-                        // Only process files, not directories
-                        if path.is_file() && is_valid_file_extension(&path) {
+                        if path.is_file() {
                             pending_paths.insert(path);
                         }
                     }
                 }
+
                 EventKind::Remove(_) => {
-                    // For file deletions, we need to get the DB path to remove from index
-                    if let Ok(guard) = processor_state.inner().lock() {
+                    if let Ok(guard) = processor_state.0.lock() { // Correct access for std::sync::Mutex
+                        // Dereference the MutexGuard to get Option<FileProcessor>
                         if let Some(processor) = &*guard {
-                            for path in event.paths {
-                                // Handle file deletions by removing from index
-                                if is_valid_file_extension(&path) {
-                                    let db_path = processor.db_path.clone();
-                                    tokio::spawn(async move {
-                                        if let Err(e) = remove_file_from_index(
-                                            path.to_string_lossy().to_string(),
-                                            db_path,
-                                        ).await {
-                                            error!("Failed to remove file from index: {:?}", e);
-                                        }
-                                    });
-                                }
-                            }
+                        for path in event.paths {
+                            // Handle file deletions by removing from index
+                                let db_path = processor.db_path.clone();
+                                tokio::spawn(async move {
+                                    if let Err(e) = remove_file_from_index(app_handle.clone(),
+                                        path.to_string_lossy().to_string(),
+                                        db_path,
+                                    ).await {
+                                        error!("Failed to remove file from index: {:?}", e);
+                                    }
+                                });
                         }
                     }
+                }
                 }
                 _ => {} // Ignore other event types
             }
@@ -232,46 +232,54 @@ fn is_relevant_file_event(event: &Event, path: &Path) -> bool {
 }
 
 async fn remove_file_from_index(
-    file_path: String,
+    app_handle: AppHandle,
+    file_path: String,     
     db_path: PathBuf,
 ) -> Result<(), FileProcessorError> {
-    use rusqlite::Connection;
-    use tokio::task;
+    let file_path_for_vector_db = file_path.clone();
+    let app_handle_ref = app_handle.clone();
 
-    task::spawn_blocking(move || -> Result<(), FileProcessorError> {
-        let conn = Connection::open(db_path)?;
-
-        // Begin transaction for atomicity
+    let db_result = task::spawn_blocking(move || -> Result<bool, FileProcessorError> {
+        let mut conn = Connection::open(db_path)?;
         let tx = conn.transaction()?;
 
-        // Get file ID
         let file_id: Option<i64> = tx
-            .query_row(
-                "SELECT id FROM files WHERE path = ?1",
-                [&file_path],
-                |row| row.get(0),
-            )
-            .ok();
+                    .query_row(
+                        "SELECT id FROM files WHERE path = ?1",
+                        [&file_path],
+                        |row| row.get(0),
+                    )
+                    .ok();
 
+        let mut deleted_from_sqlite = false;
         if let Some(id) = file_id {
-            // Remove from FTS index
             tx.execute("DELETE FROM files_fts WHERE rowid = ?1", [id])?;
-
-            // Remove from files table
-            tx.execute("DELETE FROM files WHERE id = ?1", [id])?;
-
-            // In your actual implementation, you would also need to:
-            // 1. Remove from vector database (using VectorDbManager)
-            // 2. Remove any chunks associated with this file
-
-            info!("Removed deleted file from index: {}", file_path);
-        }
+            let files_deleted_count = tx.execute("DELETE FROM files WHERE id = ?1", [id])?;
+            if files_deleted_count > 0 {
+                 deleted_from_sqlite = true;
+            } 
+        } 
 
         tx.commit()?;
-        Ok(())
+        Ok(deleted_from_sqlite) // Return true if deleted from SQLite, false otherwise
     })
     .await
-    .map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?
+    .map_err(|e| FileProcessorError::Other(format!("spawn_blocking JoinError: {e}")))?;
+
+    let was_deleted_from_sqlite = db_result?;
+    if was_deleted_from_sqlite {
+        if let Err(e) =
+            VectorDbManager::delete_embedding(&app_handle_ref, &file_path_for_vector_db).await
+        {
+            return Err(FileProcessorError::Other(format!(
+                "Vector DB deletion failed: {}",
+                e
+            )));
+        } 
+    } 
+
+
+    Ok(())
 }
 
 // Add these Tauri commands to interact with the watcher

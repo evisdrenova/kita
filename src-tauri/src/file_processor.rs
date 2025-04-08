@@ -435,7 +435,7 @@ pub fn get_file_metadata(
 }
 
 #[derive(Default)]
-pub struct FileProcessorState(Mutex<Option<FileProcessor>>);
+pub struct FileProcessorState(pub Mutex<Option<FileProcessor>>);
 
 #[tauri::command]
 pub async fn process_paths_command(
