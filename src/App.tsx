@@ -664,15 +664,6 @@ export default function App() {
 
   console.log("the query", searchQuery);
 
-  // TODO: the front end should just know what files to return when depending on what the user is trying to search for, instead of trying to return all of them
-
-  // maybe that means combined the semantic data with the files data in the useEffect when the query changes and then returning the union of them and handling duplicates. It need to just like work...
-
-  // so when the query changes, we should start the LIKE searching
-  // we shoudl do the full text search
-  // we shodl do the similaity search
-  // then de-dupe on the front end and show the relevant results to the user
-
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-border h-screen ">
       <Header
@@ -681,7 +672,7 @@ export default function App() {
         settings={settings ?? {}}
         setIsSettingsOpen={setIsSettingsOpen}
       />
-      <main className="flex-1 overflow-auto scrollbar">
+      <main className="flex-1 overflow-auto scrollbar z-20">
         <SectionNav
           sections={sections}
           activeSection={activeSection}

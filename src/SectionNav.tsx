@@ -54,7 +54,7 @@ const SectionNav = (props: SectionNavProps) => {
       : null;
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col z-20">
       <nav className="flex flex-row gap-2 border-b border-b-border sticky top-0 dark:bg-zinc-800">
         <div className="px-3 py-2 flex gap-2 overflow-auto scrollbar-none">
           {/* All button*/}

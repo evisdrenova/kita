@@ -75,15 +75,10 @@ export interface SearchResult {
 export type SearchCategory = (typeof searchCategories)[number];
 
 export const searchCategories = [
-  "Applications",
   "Documents",
-  "Folders",
-  "Images",
   "Mail",
   "Messages",
-  "Other",
   "PDF Documents",
-  "Spreadsheets",
 ] as const;
 
 export interface EmbeddingSearchResults {

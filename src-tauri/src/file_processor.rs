@@ -764,7 +764,7 @@ pub fn init_file_processor(
 }
 
 fn is_valid_file_extension(path: &Path) -> bool {
-    let valid_extensions: HashSet<&str> = ["txt", "pdf", "docx", "md", "json", "yaml", "yml"]
+    let valid_extensions: HashSet<&str> = ["txt", "pdf", "docx", "md", "yaml", "yml"]
         .iter()
         .cloned()
         .collect();

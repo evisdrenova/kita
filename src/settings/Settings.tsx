@@ -233,9 +233,9 @@ function IndexingSettings(props: IndexSettingsProps) {
         </div>
       )}
 
-      <Separator className="my-4" />
-      <h4 className="text-sm font-medium mb-3">File Types</h4>
-      <div className="space-y-3">
+      {/* <Separator className="my-4" />
+      <h4 className="text-sm font-medium mb-3">File Types</h4> */}
+      {/* <div className="space-y-3">
         {searchCategories.map((category) => (
           <div key={category} className="flex items-center space-x-2">
             <Checkbox
@@ -251,7 +251,7 @@ function IndexingSettings(props: IndexSettingsProps) {
             </label>
           </div>
         ))}
-      </div>
+      </div> */}
     </div>
   );
 }
