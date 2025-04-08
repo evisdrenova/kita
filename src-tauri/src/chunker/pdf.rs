@@ -32,7 +32,6 @@ impl Chunker for PdfChunker {
         config: &ChunkerConfig,
         embedder: Arc<Embedder>,
     ) -> ChunkerResult<Vec<(Chunk, Vec<f32>)>> {
-        println!("creating chunk for file {:?}", file.base.path);
         let path = Path::new(&file.base.path);
 
         // Extract text from PDF

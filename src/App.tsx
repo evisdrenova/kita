@@ -53,7 +53,7 @@ export default function App() {
   const [currentItemIndex, setCurrentItemIndex] = useState<number>(-1);
   const [activeSection, setActiveSection] = useState<number | null>(null);
   const [settings, setSettings] = useState<AppSettings>();
-  const [loadingSettings, setLoadingSettings] = useState<boolean>(false);
+  const [_, setLoadingSettings] = useState<boolean>(false);
 
   // used to load the app once it's ready so it doesn't flash a white screen
   useEffect(() => {

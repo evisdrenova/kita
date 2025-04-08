@@ -175,7 +175,6 @@ impl ChunkerOrchestrator {
         if let Some(ext) = path.extension() {
             let ext_str = ext.to_string_lossy().to_lowercase();
             if let Some(&chunker_idx) = self.extension_map.get(&ext_str) {
-                println!("Found chunker by extension mapping for file {:?}", path);
                 return Some(self.chunkers[chunker_idx].as_ref());
             }
         }

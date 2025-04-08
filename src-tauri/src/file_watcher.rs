@@ -16,277 +16,358 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::select;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::task;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
+
 const DEBOUNCE_TIMEOUT_MS: u64 = 1000;
 
 pub struct FileWatcher {
-    watched_paths: Arc<Mutex<HashSet<PathBuf>>>,
+    watched_roots: Arc<Mutex<HashSet<PathBuf>>>, // keeps track of the parent directories of the files that we've indexed which is where we listen for files being added/deleted from those parent directories
+    // Keep track of the *specific file paths* known to be indexed
+    indexed_files: Arc<Mutex<HashSet<PathBuf>>>,
     app_handle: AppHandle,
-    watcher: Option<RecommendedWatcher>, // Watcher instance kept alive here
-    event_tx: Option<Sender<notify::Result<Event>>>, // Sender for internal channel
-    is_processing_active: bool,          // Flag to prevent multiple process_events tasks
+    watcher: Option<RecommendedWatcher>,
+    event_tx: Option<Sender<notify::Result<Event>>>,
 }
 impl FileWatcher {
     pub fn new(app_handle: AppHandle) -> Self {
         FileWatcher {
-            watched_paths: Arc::new(Mutex::new(HashSet::new())),
+            watched_roots: Arc::new(Mutex::new(HashSet::new())),
+            indexed_files: Arc::new(Mutex::new(HashSet::new())),
             app_handle,
             watcher: None,
             event_tx: None,
-            is_processing_active: false,
         }
     }
 
-    pub fn start_or_add_paths(&mut self, paths_to_watch: Vec<&String>) -> AppResult<()> {
-        let mut new_paths_added = Vec::new();
+    /// handles adding watchers for the root files and the parent dirctories
+    pub fn add_files_and_watch_parents(&mut self, newly_indexed_files: &[String]) -> AppResult<()> {
+        if newly_indexed_files.is_empty() {
+            info!("No new files provided to add/watch.");
+            return Ok(());
+        }
 
-        // Ensure watcher and processing task are started only once
+        println!(
+            "Adding {} newly indexed files and ensuring parents are watched...",
+            newly_indexed_files.len()
+        );
+
+        // 1. Add newly indexed files to the tracking set (NO CLEARING)
+        {
+            let mut indexed_files_guard = self.indexed_files.lock().unwrap();
+            for path_str in newly_indexed_files {
+                indexed_files_guard.insert(PathBuf::from(path_str));
+            }
+        }
+
+        // 2. Determine unique parent directories from THIS NEW BATCH
+        let mut new_root_dirs_to_check = HashSet::new();
+        for path_str in newly_indexed_files {
+            if let Some(parent) = Path::new(path_str).parent() {
+                if parent.is_dir() {
+                    // Check if it's actually a directory
+                    new_root_dirs_to_check.insert(parent.to_path_buf());
+                } else {
+                    warn!("Parent of {} is not a directory, cannot watch.", path_str);
+                }
+            } else {
+                // Handle files in root? e.g., C:\file.txt - parent is C:\
+                // This case might need specific handling depending on OS and requirements.
+                warn!("Could not get parent directory for new file: {}", path_str);
+            }
+        }
+        debug!(
+            "Parent directories derived from new batch: {:?}",
+            new_root_dirs_to_check
+        );
+
+        // 3. Ensure watcher and processing task are started (only if first time)
         if self.watcher.is_none() {
-            info!("Initializing file watcher and event processor...");
-            let (tx, rx) = channel(100); // Channel for notify events
+            info!("Initializing file watcher and event processor (first run)...");
+            let (tx, rx) = channel(100);
             self.event_tx = Some(tx.clone());
 
             let watcher_tx = tx.clone();
             let watcher = RecommendedWatcher::new(
                 move |res: Result<Event, NotifyError>| {
-                    // Forward result (including errors) to the channel
-                    if let Err(e) = watcher_tx.try_send(res) {
-                        // This might happen if the channel is full or closed
-                        error!("Failed to send file event to processing channel: {}", e);
+                    if watcher_tx.try_send(res).is_err() {
+                        error!(
+                            "Event processing channel error (full or closed). Watcher might stop."
+                        );
                     }
                 },
                 Config::default(),
             )?;
             self.watcher = Some(watcher);
 
-            // Start the event processor task
             let app_handle_clone = self.app_handle.clone();
+            let indexed_files_clone = self.indexed_files.clone();
             tokio::spawn(async move {
                 info!("File event processing task started.");
-                FileWatcher::process_events(rx, app_handle_clone).await;
+                FileWatcher::process_events(rx, app_handle_clone, indexed_files_clone).await;
                 info!("File event processing task finished.");
             });
-            self.is_processing_active = true;
         }
 
-        // Add new paths to watch
-        let watcher = self.watcher.as_mut().unwrap(); // Safe now because we ensure it's Some
-        let mut watched_paths_guard = self.watched_paths.lock().unwrap();
+        // 4. Watch any NEW parent directories found in this batch if not already covered
+        let watcher = self.watcher.as_mut().unwrap();
+        let mut watched_roots_guard = self.watched_roots.lock().unwrap();
+        let mut actually_watched_new_roots = Vec::new();
 
-        for path_str in paths_to_watch {
-            let path = PathBuf::from(path_str);
-            // Only add if not already watched and watch succeeds
-            if watched_paths_guard.insert(path.clone()) {
-                match watcher.watch(&path, RecursiveMode::Recursive) {
-                    Ok(_) => {
-                        info!("Started watching path: {:?}", path);
-                        new_paths_added.push(path);
-                    }
-                    Err(e) => {
-                        error!("Failed to watch path {:?}: {}", path, e);
-                        // Remove from hashset if watch failed
-                        watched_paths_guard.remove(&path);
+        for root_dir in new_root_dirs_to_check {
+            // Iterate only parents derived from the NEW batch
+            if !root_dir.exists() {
+                warn!(
+                    "Parent directory {:?} does not exist, cannot watch.",
+                    root_dir
+                );
+                continue;
+            }
+
+            // Check if this root_dir or any of its ancestors are already being watched.
+            let already_covered = watched_roots_guard.iter().any(|existing_root| {
+                root_dir.starts_with(existing_root) // Is it inside or equal to an already watched root?
+            });
+
+            if !already_covered {
+                // Optional: Check if this new root_dir is an ANCESTOR of any currently watched roots.
+                // If so, we could potentially remove the more specific watches and just watch the ancestor.
+                // Example: Watching /A/B, now add /A. Best to unwatch /A/B and just watch /A.
+                // This adds complexity, skipping for now.
+
+                // Add to our tracked set *before* attempting watch
+                // Use insert check to avoid duplicate logging/watching attempts within this loop
+                if watched_roots_guard.insert(root_dir.clone()) {
+                    match watcher.watch(&root_dir, RecursiveMode::Recursive) {
+                        Ok(_) => {
+                            info!("Started watching new directory root: {:?}", root_dir);
+                            actually_watched_new_roots.push(root_dir);
+                        }
+                        Err(e) => {
+                            error!("Failed to watch new directory {:?}: {}", root_dir, e);
+                            watched_roots_guard.remove(&root_dir); // Remove if watch failed
+                        }
                     }
                 }
+            } else {
+                debug!(
+                    "Parent directory {:?} is already covered by existing recursive watches.",
+                    root_dir
+                );
             }
-        }
+        } // End loop through new potential roots
 
-        // Potentially trigger an initial scan for newly added paths
-        if !new_paths_added.is_empty() {
+        if !actually_watched_new_roots.is_empty() {
             info!(
-                "Consider triggering an initial scan for newly added paths: {:?}",
-                new_paths_added
+                "Watching newly added root directories: {:?}",
+                actually_watched_new_roots
             );
-            // You might want to emit an event or call a function here
-            // to process the contents of these newly added directories.
-            // E.g., self.trigger_scan(new_paths_added);
         }
+        info!(
+            "Currently watching root directories: {:?}",
+            watched_roots_guard.iter().collect::<Vec<_>>()
+        );
 
         Ok(())
     }
 
-    pub fn stop_watching(&mut self, path_str: &str) -> AppResult<()> {
+    pub fn stop_watching_root(&mut self, path_str: &str) -> AppResult<()> {
         let path = PathBuf::from(path_str);
-        let mut watched_paths_guard = self.watched_paths.lock().unwrap();
+        let mut watched_roots_guard = self.watched_roots.lock().unwrap();
 
-        if watched_paths_guard.remove(&path) {
+        if watched_roots_guard.remove(&path) {
             if let Some(watcher) = self.watcher.as_mut() {
                 match watcher.unwatch(&path) {
-                    Ok(_) => Ok(()),
+                    Ok(_) => {
+                        info!("Stopped watching root directory: {:?}", path);
+                        Ok(())
+                    }
                     Err(e) => {
-                        error!("Failed to unwatch path {:?}: {}", path, e);
-                        // Add it back to the set? Or just log?
-                        watched_paths_guard.insert(path); // Add back since unwatch failed
-                        Err(e.into()) // Convert notify::Error to AppResult or your error type
+                        error!("Failed to unwatch root directory {:?}: {}", path, e);
+                        watched_roots_guard.insert(path); // Add back since unwatch failed
+                        Err(e.into())
                     }
                 }
             } else {
-                Ok(()) // Not an error if watcher isn't running
+                warn!("Attempted to stop watching root, but watcher was not initialized.");
+                Ok(())
             }
         } else {
-            Ok(()) // Not an error if path wasn't in the set
+            info!("Root directory was not actively being watched: {:?}", path);
+            Ok(())
         }
     }
 
-    fn create_watcher(&self, tx: Sender<Event>) -> AppResult<RecommendedWatcher> {
-        let watcher = RecommendedWatcher::new(
-            move |res: Result<Event, notify::Error>| {
-                if let Ok(event) = res {
-                    let _ = tx.try_send(event);
-                }
-            },
-            Config::default(),
-        )?;
-
-        Ok(watcher)
-    }
-
     async fn process_events(
-        mut rx: Receiver<notify::Result<Event>>, // Receives Results now
+        mut rx: Receiver<notify::Result<Event>>,
         app_handle: AppHandle,
+        indexed_files: Arc<Mutex<HashSet<PathBuf>>>, // Shared set of known indexed files
     ) {
-        let mut pending_create_modify: HashSet<PathBuf> = HashSet::new();
-        let mut debounce_timer = Option::<tokio::time::Sleep>::None; // Use tokio's sleep timer
+        // Separate sets for debouncing different actions
+        let mut pending_reindex: HashSet<PathBuf> = HashSet::new(); // Files needing re-indexing (Modify)
+        let mut pending_new: HashSet<PathBuf> = HashSet::new(); // New files needing indexing (Create)
+        let mut debounce_timer = Option::<tokio::time::Sleep>::None;
 
         loop {
             select! {
-               // Biased select prefers receiving events over timer firing
                biased;
 
-               // Option 1: Timer fires and we have pending paths
-               _ = async { debounce_timer.as_mut().unwrap() }, if debounce_timer.is_some() && !pending_create_modify.is_empty() => {
-                   let paths_to_process: Vec<PathBuf> = pending_create_modify.drain().collect();
+               // Timer fires: Process BOTH pending sets
+               _ = async { debounce_timer.as_mut().unwrap() }, if debounce_timer.is_some() && (!pending_reindex.is_empty() || !pending_new.is_empty()) => {
+                   let paths_to_reindex: Vec<PathBuf> = pending_reindex.drain().collect();
+                   let paths_to_index_new: Vec<PathBuf> = pending_new.drain().collect();
                    debounce_timer = None; // Reset timer
 
-                   info!("Debounce finished. Processing changes for: {:?}", paths_to_process);
+                   // Combine lists for processing, maybe tag them later if process_paths differs
+                   let mut all_paths_to_process = paths_to_reindex.clone(); // Clone if needed elsewhere
+                   all_paths_to_process.extend(paths_to_index_new.clone()); // Clone if needed elsewhere
 
-                   // --- Get necessary info from FileProcessorState (read-only access) ---
-                   let processor_state_handle = app_handle.state::<FileProcessorState>(); // Get handle outside the block
-                   let maybe_processor_info = { // Scope the lock guard
-                       match processor_state_handle.0.lock() { // Use the handle here
-                           Ok(guard) => {
-                               // guard implicitly borrows processor_state_handle
-                               guard.as_ref().map(|p| (p.db_path.clone(), p.concurrency_limit))
-                           } // guard is dropped here, borrow ends
-                           Err(e) => {
-                               error!("Mutex poisoned accessing FileProcessorState: {}", e);
-                               None
+                   if !all_paths_to_process.is_empty() {
+                       info!("Debounce finished. Processing changes/additions for: {:?}", all_paths_to_process);
+
+                       let processor_state_handle = app_handle.state::<FileProcessorState>();
+                       let maybe_processor_info = {
+                           match processor_state_handle.0.lock() {
+                               Ok(guard) => guard.as_ref().map(|p| (p.db_path.clone(), p.concurrency_limit)),
+                               Err(e) => { error!("Mutex poisoned (debounce processing): {}", e); None }
+                           }
+                       };
+
+                       if let Some((db_path, concurrency_limit)) = maybe_processor_info {
+                           let app_handle_clone = app_handle.clone();
+                           let indexed_files_clone = indexed_files.clone(); // Clone Arc for task
+
+                           tokio::spawn(async move {
+                               let processor = FileProcessor { db_path, concurrency_limit };
+                               let handle_for_progress = app_handle_clone.clone();
+                               let progress_handler = move |status: ProcessingStatus| {
+                                   let _ = handle_for_progress.emit("file-indexing-progress", &status);
+                               };
+
+                               // Process all paths together
+                               let paths_str: Vec<String> = all_paths_to_process.iter().map(|p| p.to_string_lossy().to_string()).collect();
+
+                               let processing_result = processor.process_paths(
+                                   paths_str.clone(), // Pass owned strings
+                                   progress_handler,
+                                   app_handle_clone,
+                               ).await;
+
+                               match processing_result {
+                                   Ok(_) => {
+                                       info!("Successfully processed batch: {:?}", all_paths_to_process);
+                                       // Update the central indexed_files list
+                                       let mut indexed_files_guard = indexed_files_clone.lock().unwrap();
+                                       for path in all_paths_to_process { // Add all successfully processed paths
+                                           indexed_files_guard.insert(path);
+                                       }
+                                       info!("Updated indexed files set. Count: {}", indexed_files_guard.len());
+                                   }
+                                   Err(e) => {
+                                       error!("Error processing batch {:?}: {:?}", all_paths_to_process, e);
+                                       // Potentially try to revert adding to indexed_files if needed, complex.
+                                   }
+                               }
+                           });
+                       } else {
+                           error!("FileProcessor not available (debounce processing).");
+                       }
+                   }
+                } // End timer arm
+
+                // Receive next event from notify watcher
+                maybe_event_res = rx.recv() => {
+                   match maybe_event_res {
+                       Some(Ok(event)) => {
+                           debug!("Received notify event: {:?}", event);
+                           let mut needs_debounce_reset = false;
+
+                           for path in &event.paths { // Iterate by reference
+                               if !is_relevant_file_event(&event, path) {
+                                   continue;
+                               }
+
+                               let path_clone = path.clone(); // Clone for use in multiple branches
+                               let is_indexed = { // Scope the lock
+                                   let guard = indexed_files.lock().unwrap();
+                                   guard.contains(&path_clone)
+                               };
+
+                               match event.kind {
+                                   EventKind::Create(_) => {
+                                       if !is_indexed {
+                                           info!("Detected new relevant file: {:?}", path_clone);
+                                           if pending_new.insert(path_clone) { // Add to NEW set
+                                               needs_debounce_reset = true;
+                                           }
+                                       } else {
+                                           debug!("Create event for already indexed file (Treating as Modify): {:?}", path_clone);
+                                            if pending_reindex.insert(path_clone) { // Add to REINDEX set
+                                               needs_debounce_reset = true;
+                                           }
+                                       }
+                                   }
+                                   EventKind::Modify(_) => {
+                                       if is_indexed {
+                                           info!("Detected modification to indexed file: {:?}", path_clone);
+                                           if pending_reindex.insert(path_clone) { // Add to REINDEX set
+                                               needs_debounce_reset = true;
+                                           }
+                                       } else {
+                                           debug!("Modify event for non-indexed file (Treating as Create): {:?}", path_clone);
+                                            // Treat modify on non-indexed as a Create event
+                                            if pending_new.insert(path_clone) { // Add to NEW set
+                                                needs_debounce_reset = true;
+                                            }
+                                       }
+                                   }
+                                   EventKind::Remove(_) => {
+                                       if is_indexed {
+                                           info!("Detected removal of indexed file: {:?}", path_clone);
+                                           // Remove from pending lists if present
+                                           pending_reindex.remove(&path_clone);
+                                           pending_new.remove(&path_clone);
+
+                                           // --- Trigger Immediate Removal ---
+                                           let processor_state_handle = app_handle.state::<FileProcessorState>();
+                                           let maybe_db_path = {
+                                               match processor_state_handle.0.lock() {
+                                                   Ok(guard) => guard.as_ref().map(|p| p.db_path.clone()),
+                                                   Err(e) => { error!("Mutex poisoned (remove event): {}", e); None }
+                                               }
+                                           };
+                                           if let Some(db_path) = maybe_db_path {
+                                               let handle_clone = app_handle.clone();
+                                               let path_string = path_clone.to_string_lossy().to_string();
+                                               let indexed_files_clone = indexed_files.clone();
+                                               tokio::spawn(async move {
+                                                   if let Err(e) = remove_file_from_index(
+                                                       handle_clone,
+                                                       path_string.clone(),
+                                                       db_path,
+                                                       indexed_files_clone, // Pass Arc to update set
+                                                   ).await {
+                                                       error!("Failed removal process for {}: {:?}", path_string, e);
+                                                   }
+                                               });
+                                           } else {
+                                                error!("FileProcessor not available (remove event) for {:?}", path_clone);
+                                           }
+                                           // --- End Immediate Removal ---
+                                       } else {
+                                           debug!("Ignoring Remove event for non-indexed file: {:?}", path_clone);
+                                       }
+                                   }
+                                   _ => {} // Ignore other kinds
+                               } // end match event.kind
+                           } // end for path
+
+                           if needs_debounce_reset {
+                               debounce_timer = Some(tokio::time::sleep(Duration::from_millis(DEBOUNCE_TIMEOUT_MS)));
+                               debug!("Debounce timer reset/started.");
                            }
                        }
-                   }; // temporary Result from match is dropped, maybe_processor_info holds the Option
-                    // --- Spawn processing task ---
-                   if let Some((db_path, concurrency_limit)) = maybe_processor_info {
-                        let app_handle_clone = app_handle.clone(); // Clone for the task
-
-                        tokio::spawn(async move {
-                            let processor = FileProcessor { db_path, concurrency_limit };
-
-                            // Clone the handle *before* the move closure definition
-                            let handle_for_progress = app_handle_clone.clone();
-                            // app_handle_clone (the original passed into spawn) is still available to be passed below
-
-                            let progress_handler = move |status: ProcessingStatus| {
-                                // Closure captures and owns handle_for_progress
-                                let _ = handle_for_progress.emit("file-indexing-progress", &status);
-                            };
-
-
-                            let paths_str: Vec<String> = paths_to_process
-                                .iter()
-                                .map(|p| p.to_string_lossy().to_string())
-                                .collect();
-
-                            match processor.process_paths(
-                                paths_str,
-                                progress_handler, // Moves the closure (and handle_for_progress)
-                                app_handle_clone, // Pass the original handle (now owned by the task)
-                            ).await {
-                                Ok(_) => info!("Successfully processed file changes."),
-                                Err(e) => error!("Error processing file changes: {:?}", e),
-                            }
-                        });
-                    } else {
-                         error!("FileProcessor not available for processing debounced events.");
-                    }
-                }
-
-                // Option 2: Receive next event from notify watcher
-                maybe_event_res = rx.recv() => {
-                    match maybe_event_res {
-                        Some(Ok(event)) => { // Handle Ok(Event)
-                            debug!("Received file event: {:?}", event);
-                            let mut needs_debounce_reset = false;
-
-                            match event.kind {
-                                EventKind::Create(_) | EventKind::Modify(_) => {
-                                    // Iterate by reference
-                                    for path in &event.paths {
-                                        // Pass &PathBuf to is_relevant_file_event
-                                        if is_relevant_file_event(&event, path) {
-                                            // .insert() needs an owned PathBuf, so clone path
-                                            if pending_create_modify.insert(path.clone()) {
-                                                 needs_debounce_reset = true;
-                                            }
-                                        }
-                                    }
-                                }
-                                EventKind::Remove(_) => {
-                                     // Iterate by reference
-                                     for path in &event.paths {
-                                         // Pass &PathBuf to is_relevant_file_event
-                                         if is_relevant_file_event(&event, path) {
-                                             info!("Processing remove event for: {:?}", path);
-                                             let processor_state = app_handle.state::<FileProcessorState>();
-                                             let maybe_db_path = { // Scope lock
-                                                 match processor_state.0.lock() {
-                                                      Ok(guard) => guard.as_ref().map(|p| p.db_path.clone()),
-                                                      Err(e) => {
-                                                           error!("Mutex poisoned accessing FileProcessorState for remove: {}", e);
-                                                           None
-                                                      }
-                                                 }
-                                             };
-
-                                             if let Some(db_path) = maybe_db_path {
-                                                  let app_handle_clone = app_handle.clone();
-                                                  // Convert &PathBuf to owned String for the task
-                                                  let path_string = path.to_string_lossy().to_string();
-                                                  tokio::spawn(async move {
-                                                      if let Err(e) = remove_file_from_index(
-                                                          app_handle_clone,
-                                                          path_string, // Pass owned String
-                                                          db_path,
-                                                      ).await {
-                                                          // Use {:?} for PathBuf if needed, but path_string is now String
-                                                          error!("Failed to remove file from index: {:?}", e);
-                                                      }
-                                                  });
-                                             } else {
-                                                  error!("FileProcessor not available for processing remove event for {:?}", path);
-                                             }
-                                         }
-                                     }
-                                }
-                                _ => {} // Ignore other kinds like Access, Other, Any
-                            }
-
-                            // If relevant create/modify events occurred, reset the timer
-                            if needs_debounce_reset {
-                                debounce_timer = Some(tokio::time::sleep(Duration::from_millis(DEBOUNCE_TIMEOUT_MS)));
-                                debug!("Debounce timer reset.");
-                            }
-                       }
-                       Some(Err(e)) => { // Handle notify::Error
-                            error!("Error receiving file event: {:?}", e);
-                            // Decide if error is fatal (e.g., watcher stopped)
-                            // Maybe break the loop or log and continue
-                            if matches!(e.kind, notify::ErrorKind::PathNotFound | notify::ErrorKind::WatchNotFound) {
-                            }
-                       }
-                       None => {
-                            info!("Event channel closed. Exiting event processing task.");
-                            break; // Channel closed, exit loop
-                       }
+                       Some(Err(e)) => { /* ... handle notify::Error ... */ error!("Error receiving file event: {:?}", e); }
+                       None => { /* ... handle channel closed ... */ info!("Event channel closed. Exiting event processing task."); break; }
                    } // end match maybe_event_res
                 } // end recv arm
             } // end select!
@@ -320,14 +401,16 @@ async fn remove_file_from_index(
     app_handle: AppHandle,
     file_path: String,
     db_path: PathBuf,
+    indexed_files: Arc<Mutex<HashSet<PathBuf>>>, // Accept the shared set
 ) -> Result<(), FileProcessorError> {
-    let file_path_for_vector_db = file_path.clone();
+    let file_path_buf = PathBuf::from(&file_path); // Keep PathBuf for set operations
+    let file_path_clone_log = file_path.clone(); // Clone for logging messages
     let app_handle_ref = app_handle.clone();
 
+    // --- Start SQLite Deletion (Blocking Task) ---
     let db_result = task::spawn_blocking(move || -> Result<bool, FileProcessorError> {
         let mut conn = Connection::open(db_path)?;
         let tx = conn.transaction()?;
-
         let file_id: Option<i64> = tx
             .query_row(
                 "SELECT id FROM files WHERE path = ?1",
@@ -340,35 +423,81 @@ async fn remove_file_from_index(
         if let Some(id) = file_id {
             tx.execute("DELETE FROM files_fts WHERE rowid = ?1", [id])?;
             let files_deleted_count = tx.execute("DELETE FROM files WHERE id = ?1", [id])?;
-            if files_deleted_count > 0 {
-                deleted_from_sqlite = true;
-            }
+            deleted_from_sqlite = files_deleted_count > 0;
         }
-
         tx.commit()?;
-        Ok(deleted_from_sqlite) // Return true if deleted from SQLite, false otherwise
+        Ok(deleted_from_sqlite)
     })
     .await
     .map_err(|e| FileProcessorError::Other(format!("spawn_blocking JoinError: {e}")))?;
 
     let was_deleted_from_sqlite = db_result?;
+    // --- End SQLite Deletion ---
+
+    // --- Start Vector DB Deletion (Async) ---
+    let mut vector_db_deleted = false;
     if was_deleted_from_sqlite {
-        if let Err(e) =
-            VectorDbManager::delete_embedding(&app_handle_ref, &file_path_for_vector_db).await
-        {
-            return Err(FileProcessorError::Other(format!(
-                "Vector DB deletion failed: {}",
-                e
-            )));
+        info!(
+            "SQLite removal successful for: {}. Attempting vector DB removal...",
+            file_path_clone_log
+        );
+        match VectorDbManager::delete_embedding(&app_handle_ref, &file_path_clone_log).await {
+            Ok(_) => {
+                info!("Vector DB removal successful for: {}", file_path_clone_log);
+                vector_db_deleted = true;
+            }
+            Err(e) => {
+                error!(
+                    "Failed vector DB removal for {}: {:?}",
+                    file_path_clone_log, e
+                );
+                // Don't update indexed_files set if vector delete fails? Or log and proceed?
+                // Let's proceed to update the set but log the error prominently.
+                return Err(FileProcessorError::Other(format!(
+                    "Vector DB deletion failed: {}",
+                    e
+                ))); // Optionally return error
+            }
+        }
+    } else {
+        info!(
+            "Skipping vector DB removal, file not deleted from SQLite: {}",
+            file_path_clone_log
+        );
+        // If not in SQLite, it shouldn't be in VectorDB either (ideally).
+        // We should still remove it from the indexed_files set as it's gone.
+        vector_db_deleted = true; // Treat as "successfully removed" from vector perspective if not in SQLite
+    }
+    // --- End Vector DB Deletion ---
+
+    // --- Update Indexed Files Set ---
+    if vector_db_deleted {
+        // Only update set if vector deletion succeeded (or wasn't needed)
+        let mut guard = indexed_files.lock().unwrap();
+        if guard.remove(&file_path_buf) {
+            info!(
+                "Removed {} from tracked indexed files. Count: {}",
+                file_path_clone_log,
+                guard.len()
+            );
+        } else {
+            // This might happen if a remove event fires twice quickly
+            warn!(
+                "Tried to remove {} from indexed files set, but it wasn't present.",
+                file_path_clone_log
+            );
         }
     }
+    // --- End Update Set ---
 
     Ok(())
 }
 
-// Add this to your main.rs to initialize the file watcher state
-pub fn init_file_watcher_state(
-    app_builder: tauri::Builder<tauri::Wry>,
-) -> tauri::Builder<tauri::Wry> {
-    app_builder.manage(Arc::new(Mutex::new(Option::<FileWatcher>::None)))
+pub fn init_file_watcher(app: &tauri::App) -> AppResult<()> {
+    // Create the initial state value
+    let initial_state = Arc::new(Mutex::new(Option::<FileWatcher>::None));
+    // Manage the state
+    app.manage(initial_state);
+    // Explicitly return Ok
+    Ok(())
 }
