@@ -17,7 +17,6 @@ use walkdir::WalkDir;
 
 use crate::chunker::{ChunkerConfig, ChunkerOrchestrator};
 use crate::embedder::Embedder;
-use crate::file_watcher::FileWatcher;
 use crate::tokenizer::{build_doc_text, build_trigrams};
 use crate::utils::get_category_from_extension;
 use crate::vectordb_manager::VectorDbManager;
