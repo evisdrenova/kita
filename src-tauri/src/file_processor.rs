@@ -167,20 +167,6 @@ impl FileProcessor {
             task_handles.push(task_handle);
         }
 
-        // start watching the files for changes
-        let mut fw = FileWatcher::new(app_handle.clone());
-        let path_strings: Vec<String> = files
-            .iter()
-            .map(|file_metadata| file_metadata.base.path.clone())
-            .collect();
-
-        match fw.add_files_and_watch_parents(&path_strings) {
-            Ok(_) => {}
-            Err(e) => {
-                error!("Failed to add files/watch parents: {}", e);
-            }
-        }
-
         // Wait for all tasks and process results
         drop(err_tx);
         futures::future::join_all(task_handles).await;

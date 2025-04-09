@@ -68,3 +68,6 @@ xls -> read row by row or cell ranges
 //https://github.com/pepperoni21/ollama-rs?tab=readme-ov-file#installation
 
 // update the watcher to also track individual files as well in addition to the parents of the files so that we can re-index changes to files
+
+// can't click and open sources
+    

@@ -445,7 +445,7 @@ function ChatInterface(props: ChatInterfaceProps) {
                     </div>
                     <div className="flex flex-col flex-wrap gap-2">
                       {message.sources.map((source, idx) => (
-                        <div className="flex flex-row items-center gap-2">
+                        <div className="flex flex-row items-center gap-2 cursor-pointer">
                           <SourceBadge key={idx} source={source} idx={idx} />
                         </div>
                       ))}
