@@ -367,10 +367,3 @@ pub async fn get_contacts(app_handle: AppHandle) -> Result<Vec<Contact>, String>
         .await
         .map_err(|e| e.to_string())
 }
-
-#[tauri::command]
-pub async fn fetch_contact_image(contact_id: String) -> Result<Vec<u8>, String> {
-    Contact::get_contact_image(&contact_id)
-        .await
-        .map_err(|e| e.to_string())
-}
