@@ -362,7 +362,7 @@ impl Contact {
 }
 
 #[tauri::command]
-pub async fn fetch_contacts(app_handle: AppHandle) -> Result<Vec<Contact>, String> {
+pub async fn get_contacts(app_handle: AppHandle) -> Result<Vec<Contact>, String> {
     Contact::get_contacts(app_handle)
         .await
         .map_err(|e| e.to_string())

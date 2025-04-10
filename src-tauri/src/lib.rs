@@ -59,7 +59,8 @@ pub fn run() {
             server::ask_llm,
             settings::get_settings,
             settings::update_settings,
-            window::show_main_window
+            window::show_main_window,
+            contacts::get_contacts,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
