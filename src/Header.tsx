@@ -19,6 +19,12 @@ interface Props {
   setIsSettingsOpen: (val: boolean) => void;
 }
 
+// Define tools for autocomplete
+const TOOLS = ["@signal", "@iMessage", "@email"];
+
+// Define people names for autocomplete
+const PEOPLE = ["john", "bill", "james"];
+
 export default function Header(props: Props) {
   const { searchQuery, setSearchQuery, settings, setIsSettingsOpen } = props;
   const inputRef = useRef<HTMLInputElement>(null);
@@ -33,6 +39,16 @@ export default function Header(props: Props) {
   >("none");
   const [availableModels, setAvailableModels] = useState<Model[]>([]);
   const [isCheckingModel, setIsCheckingModel] = useState(false);
+
+  // Autocomplete related states
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [autocompleteItems, setAutocompleteItems] = useState<string[]>([]);
+  const [autocompleteType, setAutocompleteType] = useState<
+    "tools" | "people" | null
+  >(null);
+  const [selectedAutocompleteIndex, setSelectedAutocompleteIndex] = useState(0);
+  const [cursorPosition, setCursorPosition] = useState(0);
+  const [currentWord, setCurrentWord] = useState("");
 
   // Track the previous selected model ID to detect changes
   const previousModelIdRef = useRef<string | null>(null);
@@ -68,6 +84,98 @@ export default function Header(props: Props) {
       checkModelStatus();
     }
   }, [settings, isRagMode]);
+
+  // Monitor input for autocomplete triggers
+  useEffect(() => {
+    if (!searchQuery) {
+      setShowAutocomplete(false);
+      return;
+    }
+
+    const cursorPos = inputRef.current?.selectionStart || searchQuery.length;
+    setCursorPosition(cursorPos);
+
+    // Get the current word being typed
+    const textBeforeCursor = searchQuery.slice(0, cursorPos);
+    const wordsBeforeCursor = textBeforeCursor.split(/\s+/);
+    const currentWordBeingTyped =
+      wordsBeforeCursor[wordsBeforeCursor.length - 1];
+    setCurrentWord(currentWordBeingTyped);
+
+    // Check for @ autocomplete
+    if (
+      currentWordBeingTyped.startsWith("@") &&
+      currentWordBeingTyped.length >= 1
+    ) {
+      const query = currentWordBeingTyped.slice(1).toLowerCase();
+      const filteredTools = TOOLS.filter((tool) =>
+        tool.toLowerCase().includes(query)
+      );
+
+      if (filteredTools.length > 0) {
+        setAutocompleteItems(filteredTools);
+        setAutocompleteType("tools");
+        setShowAutocomplete(true);
+        setSelectedAutocompleteIndex(0);
+        return;
+      }
+    }
+
+    // Check for people name autocomplete - if the word doesn't start with @ and has at least 2 chars
+    if (
+      !currentWordBeingTyped.startsWith("@") &&
+      currentWordBeingTyped.length >= 2
+    ) {
+      const query = currentWordBeingTyped.toLowerCase();
+      const filteredPeople = PEOPLE.filter((person) =>
+        person.toLowerCase().includes(query)
+      );
+
+      if (filteredPeople.length > 0) {
+        setAutocompleteItems(filteredPeople);
+        setAutocompleteType("people");
+        setShowAutocomplete(true);
+        setSelectedAutocompleteIndex(0);
+        return;
+      }
+    }
+
+    // If no matches or not triggering condition
+    setShowAutocomplete(false);
+  }, [searchQuery]);
+
+  // Function to apply the selected autocomplete item
+  const applyAutocomplete = (item: string) => {
+    if (!inputRef.current) return;
+
+    const beforeCursor = searchQuery.slice(0, cursorPosition);
+    const afterCursor = searchQuery.slice(cursorPosition);
+
+    // Find the start position of the current word
+    const wordStartPos = beforeCursor.lastIndexOf(" ") + 1;
+
+    // Replace the current word with the selected item
+    const newQuery =
+      beforeCursor.slice(0, wordStartPos) +
+      item +
+      (autocompleteType === "people" ? " " : "") + // Add space after people names
+      afterCursor;
+
+    setSearchQuery(newQuery);
+    setShowAutocomplete(false);
+
+    // Set cursor position after the inserted word (and space for people)
+    const newCursorPos =
+      wordStartPos + item.length + (autocompleteType === "people" ? 1 : 0);
+
+    // Need to wait for the input to update before setting the cursor position
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        inputRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 0);
+  };
 
   // Function to check model status - pulled out to reuse
   const checkModelStatus = async () => {
@@ -162,6 +270,38 @@ export default function Header(props: Props) {
     };
   }, [isRagMode]);
 
+  // Update dropdown position when input changes
+  useEffect(() => {
+    if (showAutocomplete && inputRef.current) {
+      // Force a re-render to update the dropdown position
+      setShowAutocomplete(false);
+      setTimeout(() => {
+        setShowAutocomplete(true);
+      }, 0);
+    }
+  }, [
+    inputRef.current?.getBoundingClientRect().width,
+    inputRef.current?.getBoundingClientRect().height,
+  ]);
+
+  // Close autocomplete when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        inputRef.current &&
+        !inputRef.current.contains(event.target as Node) &&
+        showAutocomplete
+      ) {
+        setShowAutocomplete(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showAutocomplete]);
+
   // This useEffect monitors searchQuery changes to detect when ">" is deleted
   useEffect(() => {
     // Only turn off RAG mode if it's empty and we're not in the process of submitting
@@ -217,7 +357,61 @@ export default function Header(props: Props) {
     };
   }, [isRagMode, setIsSettingsOpen]);
 
+  const submitMessage = async () => {
+    try {
+      // Make a backend call to submit the message
+      await invoke("submit_message", {
+        message: searchQuery,
+      });
+
+      // Add message to chat history
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "user", content: searchQuery },
+      ]);
+
+      // Clear input after successful submission
+      setSearchQuery("");
+      console.log("Message submitted successfully:", searchQuery);
+    } catch (error) {
+      console.error("Error submitting message:", error);
+    }
+  };
+
   const handleKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
+    // Handle autocomplete navigation
+    if (showAutocomplete) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedAutocompleteIndex(
+          (prevIndex) => (prevIndex + 1) % autocompleteItems.length
+        );
+        return;
+      }
+
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedAutocompleteIndex(
+          (prevIndex) =>
+            (prevIndex - 1 + autocompleteItems.length) %
+            autocompleteItems.length
+        );
+        return;
+      }
+
+      if (e.key === "Tab" || e.key === "Enter") {
+        e.preventDefault();
+        applyAutocomplete(autocompleteItems[selectedAutocompleteIndex]);
+        return;
+      }
+
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowAutocomplete(false);
+        return;
+      }
+    }
+
     // If ">" is pressed as the first character to activate RAG mode
     if (e.key === ">" && searchQuery === "" && !isRagMode) {
       e.preventDefault();
@@ -236,57 +430,63 @@ export default function Header(props: Props) {
       setShowModelMissingPrompt(false);
     }
 
-    // Handle submitting a RAG query with Enter - only allow if model exists and is downloaded
-    if (e.key === "Enter" && isRagMode && searchQuery.length > 1) {
+    // Handle Enter to submit
+    if (e.key === "Enter" && searchQuery.trim() !== "" && !showAutocomplete) {
       e.preventDefault();
 
-      // First check model status to be sure it's up to date
-      await checkModelStatus();
+      // For RAG mode
+      if (isRagMode && searchQuery.length > 1) {
+        // First check model status to be sure it's up to date
+        await checkModelStatus();
 
-      // Don't process if model status isn't ready
-      if (modelStatus !== "ready") {
-        setShowModelMissingPrompt(true);
-        return;
-      }
+        // Don't process if model status isn't ready
+        if (modelStatus !== "ready") {
+          setShowModelMissingPrompt(true);
+          return;
+        }
 
-      const userQuery = searchQuery.startsWith(">")
-        ? searchQuery.substring(1)
-        : searchQuery;
-      setChatMessages((prev) => [
-        ...prev,
-        { role: "user", content: userQuery },
-      ]);
-
-      // Set the submitting flag before clearing search query
-      isSubmitting.current = true;
-      setSearchQuery(">"); // Keep the ">" to maintain RAG mode
-      setIsProcessing(true);
-
-      try {
-        const response = await invoke<CompletionResponse>("ask_llm", {
-          prompt: userQuery,
-        });
-
+        const userQuery = searchQuery.startsWith(">")
+          ? searchQuery.substring(1)
+          : searchQuery;
         setChatMessages((prev) => [
           ...prev,
-          {
-            role: "assistant",
-            content: response.content,
-            sources: response.sources,
-          },
+          { role: "user", content: userQuery },
         ]);
-      } catch (error) {
-        console.error("Error processing RAG query:", error);
-        setChatMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: "Sorry, I encountered an error processing your request.",
-          },
-        ]);
-      } finally {
-        setIsProcessing(false);
-        inputRef.current?.focus();
+
+        // Set the submitting flag before clearing search query
+        isSubmitting.current = true;
+        setSearchQuery(">"); // Keep the ">" to maintain RAG mode
+        setIsProcessing(true);
+
+        try {
+          const response = await invoke<CompletionResponse>("ask_llm", {
+            prompt: userQuery,
+          });
+
+          setChatMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: response.content,
+              sources: response.sources,
+            },
+          ]);
+        } catch (error) {
+          console.error("Error processing RAG query:", error);
+          setChatMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: "Sorry, I encountered an error processing your request.",
+            },
+          ]);
+        } finally {
+          setIsProcessing(false);
+          inputRef.current?.focus();
+        }
+      } else {
+        // For normal mode - submit message to backend
+        await submitMessage();
       }
     }
 
@@ -334,31 +534,54 @@ export default function Header(props: Props) {
       ref={wrapperRef}
       data-tauri-drag-region=""
     >
-      <div
-        className="flex flex-row items-center justify-between"
-        data-tauri-drag-region=""
-      >
-        <Input
-          placeholder={
-            isRagMode
-              ? modelStatus === "ready"
-                ? "Ask a question about your documents..."
-                : "Please select or download a model first"
-              : "Type a command or search..."
-          }
-          value={searchQuery}
-          autoCorrect="off"
-          spellCheck="false"
-          ref={inputRef}
-          autoFocus
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          className={cn(
-            `text-xs placeholder:pl-2 border-0 focus-visible:outline-hidden focus-visible:ring-0 shadow-none dark:text-white text-gray-900`,
-            modelStatus !== "ready" && isRagMode ? "text-gray-400" : ""
-          )}
-        />
+      <div className="flex flex-col">
+        <div
+          className="flex flex-row items-center justify-between relative"
+          data-tauri-drag-region=""
+        >
+          <Input
+            placeholder={
+              isRagMode
+                ? modelStatus === "ready"
+                  ? "Ask a question about your documents..."
+                  : "Please select or download a model first"
+                : "Type @ for tools or start typing a name..."
+            }
+            value={searchQuery}
+            autoCorrect="off"
+            spellCheck="false"
+            ref={inputRef}
+            autoFocus
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            className={cn(
+              `text-xs placeholder:pl-2 border-0 focus-visible:outline-hidden focus-visible:ring-0 shadow-none dark:text-white text-gray-900`,
+              modelStatus !== "ready" && isRagMode ? "text-gray-400" : ""
+            )}
+          />
+        </div>
+
+        {/* Autocomplete dropdown */}
+        {showAutocomplete && autocompleteItems.length > 0 && (
+          <div className="fixed mt-8 z-[100] text-gray-800 dark:text-gray-100 bg-background border border-border rounded-md shadow-lg max-h-60 overflow-y-auto">
+            <ul className="py-1 z-50">
+              {autocompleteItems.map((item, index) => (
+                <li
+                  key={item}
+                  className={cn(
+                    "px-4 py-2 text-sm cursor-pointer hover:bg-accent",
+                    index === selectedAutocompleteIndex ? "bg-accent" : ""
+                  )}
+                  onClick={() => applyAutocomplete(item)}
+                >
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
+
       {isRagMode && showModelMissingPrompt && modelStatus !== "ready" && (
         <MissingModel
           handleSelectModel={handleSelectModel}

@@ -672,14 +672,16 @@ export default function App() {
         settings={settings ?? {}}
         setIsSettingsOpen={setIsSettingsOpen}
       />
-      <main className="flex-1 overflow-auto scrollbar z-20">
-        <SectionNav
-          sections={sections}
-          activeSection={activeSection}
-          setActiveSection={setActiveSection}
-          totalCount={totalCount}
-        />
-      </main>
+      {!searchQuery.includes("@") && (
+        <div className="flex-1 overflow-auto scrollbar">
+          <SectionNav
+            sections={sections}
+            activeSection={activeSection}
+            setActiveSection={setActiveSection}
+            totalCount={totalCount}
+          />
+        </div>
+      )}
       <div className="sticky bottom-0">
         <Footer
           setIsSettingsOpen={setIsSettingsOpen}

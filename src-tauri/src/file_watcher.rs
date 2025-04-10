@@ -4,7 +4,6 @@ use crate::file_processor::{
 };
 use crate::vectordb_manager::VectorDbManager;
 use crate::AppResult;
-use downcast_rs::Downcast;
 use notify::{
     Config, Error as NotifyError, Event as NotifyEvent, EventKind, RecommendedWatcher,
     RecursiveMode, Watcher,
@@ -16,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Listener, Manager, State};
 use tokio::select;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::Receiver;
 use tokio::task;
 use tracing::error;
 
