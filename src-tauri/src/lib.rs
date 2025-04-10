@@ -1,5 +1,6 @@
 mod app_handler;
 mod chunker;
+mod contacts;
 mod database_handler;
 mod embedder;
 mod file_processor;
