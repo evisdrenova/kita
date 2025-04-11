@@ -19,36 +19,37 @@ interface Props {
   setIsSettingsOpen: (val: boolean) => void;
 }
 
-// Define tools for autocomplete
 const TOOLS = ["@signal", "@iMessage", "@email"];
 
-// Define people names for autocomplete
 const PEOPLE = ["john", "bill", "james"];
+
+type modelStatus = "none" | "not-downloaded" | "ready";
+
+type autocompleteType = "tools" | "people" | null;
 
 export default function Header(props: Props) {
   const { searchQuery, setSearchQuery, settings, setIsSettingsOpen } = props;
   const inputRef = useRef<HTMLInputElement>(null);
-  const [isRagMode, setIsRagMode] = useState(false);
+  const [isRagMode, setIsRagMode] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [showModelMissingPrompt, setShowModelMissingPrompt] =
     useState<boolean>(false);
-  const [modelStatus, setModelStatus] = useState<
-    "none" | "not-downloaded" | "ready"
-  >("none");
+  const [modelStatus, setModelStatus] = useState<modelStatus>("none");
   const [availableModels, setAvailableModels] = useState<Model[]>([]);
-  const [isCheckingModel, setIsCheckingModel] = useState(false);
+  const [isCheckingModel, setIsCheckingModel] = useState<boolean>(false);
 
   // Autocomplete related states
-  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [showAutocomplete, setShowAutocomplete] = useState<boolean>(false);
   const [autocompleteItems, setAutocompleteItems] = useState<string[]>([]);
-  const [autocompleteType, setAutocompleteType] = useState<
-    "tools" | "people" | null
-  >(null);
-  const [selectedAutocompleteIndex, setSelectedAutocompleteIndex] = useState(0);
-  const [cursorPosition, setCursorPosition] = useState(0);
-  const [currentWord, setCurrentWord] = useState("");
+  const [autocompleteType, setAutocompleteType] =
+    useState<autocompleteType>(null);
+  const [selectedAutocompleteIndex, setSelectedAutocompleteIndex] =
+    useState<number>(0);
+  const [cursorPosition, setCursorPosition] = useState<number>(0);
+  const [currentWord, setCurrentWord] = useState<string>("");
+  const [blockMode, setIsBlockMode] = useState<boolean>(false);
 
   // Track the previous selected model ID to detect changes
   const previousModelIdRef = useRef<string | null>(null);
@@ -686,7 +687,6 @@ function ChatInterface(props: ChatInterfaceProps) {
   );
 }
 
-// Add a new SourceBadge component
 interface SourceBadgeProps {
   source: string;
   idx: number;
