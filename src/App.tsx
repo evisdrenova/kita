@@ -6,6 +6,7 @@ import Footer from "./Footer";
 import {
   AppMetadata,
   AppSettings,
+  Contact,
   FileMetadata,
   IndexingProgress,
   searchCategories,
@@ -24,6 +25,8 @@ import SectionNav from "./SectionNav";
 import { Command, File } from "lucide-react";
 import { register } from "@tauri-apps/plugin-global-shortcut";
 import { handleShortcut } from "./globalShortcut";
+import { useGetContacts } from "./lib/hooks/useGetContacts";
+import { Button } from "./components/ui/button";
 
 await register("CommandOrControl+Shift+C", handleShortcut).then(() =>
   console.log("shortcut successfully registered")
@@ -54,6 +57,11 @@ export default function App() {
   const [activeSection, setActiveSection] = useState<number | null>(null);
   const [settings, setSettings] = useState<AppSettings>();
   const [_, setLoadingSettings] = useState<boolean>(false);
+
+  //------Hooks -----///
+  const { contacts } = useGetContacts();
+
+  console.log("contacts", contacts);
 
   // used to load the app once it's ready so it doesn't flash a white screen
   useEffect(() => {
@@ -664,6 +672,11 @@ export default function App() {
 
   console.log("the query", searchQuery);
 
+  async function callContact() {
+    const c = await invoke<Contact[]>("get_contacts");
+    console.log("con", c);
+  }
+
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-border h-screen ">
       <Header
@@ -672,6 +685,7 @@ export default function App() {
         settings={settings ?? {}}
         setIsSettingsOpen={setIsSettingsOpen}
       />
+      <Button onClick={callContact}>call</Button>
 
       <div className="flex-1 overflow-auto scrollbar">
         {!searchQuery.includes("@") && (

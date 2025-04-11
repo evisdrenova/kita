@@ -1,14 +1,9 @@
-use dirs;
-use regex::Regex;
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::string::ParseError;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
 use thiserror::Error;
-use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::time::timeout;
 
@@ -73,7 +68,7 @@ pub enum ContactError {
 
 impl Contact {
     /// Get all contacts from macOS Contacts app
-    pub async fn get_contacts(app_handle: AppHandle) -> Result<Vec<Contact>, ContactError> {
+    pub async fn get_contacts() -> Result<Vec<Contact>, ContactError> {
         // Create a temporary AppleScript file to access contacts
         let script_path = Self::create_contacts_script()?;
 
@@ -81,8 +76,14 @@ impl Contact {
         let output = Self::run_applescript(&script_path).await?;
 
         // Parse the JSON output to contacts
-        let contacts: Vec<Contact> = serde_json::from_str(&output)?;
+        let contacts: Vec<Contact> = match serde_json::from_str(&output) {
+            Ok(contacts) => contacts,
+            Err(err) => {
+                return Err(ContactError::ParseError(err.to_string()));
+            }
+        };
 
+        println!("the contacts in the backend: {:?}", contacts);
         // Clean up the temporary script file
         let _ = fs::remove_file(script_path);
 
@@ -362,8 +363,6 @@ impl Contact {
 }
 
 #[tauri::command]
-pub async fn get_contacts(app_handle: AppHandle) -> Result<Vec<Contact>, String> {
-    Contact::get_contacts(app_handle)
-        .await
-        .map_err(|e| e.to_string())
+pub async fn get_contacts() -> Result<Vec<Contact>, String> {
+    Contact::get_contacts().await.map_err(|e| e.to_string())
 }

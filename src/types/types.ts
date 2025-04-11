@@ -148,3 +148,37 @@ export interface CompletionResponse {
   content: string;
   sources?: string[];
 }
+
+export interface Contact {
+  id: String;
+  name?: String;
+  given_name?: String;
+  family_name?: String;
+  emails: ContactEmail;
+  phone_numbers: ContactPhone[];
+  addresses: ContactAddress[];
+  organization?: String;
+  job_title?: String;
+  birthday?: String;
+  notes?: String;
+  image_available: boolean;
+}
+
+interface ContactEmail {
+  label: string;
+  value: string;
+}
+
+interface ContactPhone {
+  label: string;
+  value: string;
+}
+
+interface ContactAddress {
+  label: string;
+  street?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  country?: string;
+}

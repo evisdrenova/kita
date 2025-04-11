@@ -33,7 +33,6 @@ export default function Header(props: Props) {
   const [isRagMode, setIsRagMode] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const wrapperRef = useRef<HTMLDivElement>(null);
   const [showModelMissingPrompt, setShowModelMissingPrompt] =
     useState<boolean>(false);
   const [modelStatus, setModelStatus] = useState<modelStatus>("none");
@@ -58,15 +57,9 @@ export default function Header(props: Props) {
   // This helps prevent turning off RAG mode when submitting
   const isSubmitting = useRef(false);
 
+  // sets focus to the input
   useEffect(() => {
     inputRef.current?.focus();
-  }, []);
-
-  // handles making the window draggable by clicking on the area above the input
-  useEffect(() => {
-    if (wrapperRef.current) {
-      wrapperRef.current.setAttribute("data-tauri-drag-region", "");
-    }
   }, []);
 
   // Check model status whenever settings change (especially selected_model_id)
@@ -532,7 +525,6 @@ export default function Header(props: Props) {
   return (
     <div
       className="sticky top-0 flex flex-col gap-2 border-b border-b-border p-2"
-      ref={wrapperRef}
       data-tauri-drag-region=""
     >
       <div className="flex flex-col">

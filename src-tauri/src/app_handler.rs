@@ -83,7 +83,7 @@ pub fn get_installed_apps() -> Result<Vec<AppMetadata>, String> {
                             });
                         }
                     }
-                }
+            }
             }
         }
     }
