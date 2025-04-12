@@ -215,29 +215,6 @@ unsafe fn process_contact(contact: *mut Object) -> Result<Contact, ContactError>
         (None, None) => None,
     };
     
-    // Extract organization and job title
-    let org_obj: *mut Object = msg_send![contact, organizationName];
-    let job_obj: *mut Object = msg_send![contact, jobTitle];
-    
-    let organization = if !org_obj.is_null() {
-        Some(nsstring_to_string(org_obj))
-    } else {
-        None
-    };
-    
-    let job_title = if !job_obj.is_null() {
-        Some(nsstring_to_string(job_obj))
-    } else {
-        None
-    };
-    
-    // Extract notes
-    let notes_obj: *mut Object = msg_send![contact, note];
-    let notes = if !notes_obj.is_null() {
-        Some(nsstring_to_string(notes_obj))
-    } else {
-        None
-    };
     
     // Image availability
     let image_available: BOOL = msg_send![contact, imageDataAvailable];

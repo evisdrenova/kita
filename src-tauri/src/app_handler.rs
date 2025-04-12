@@ -1,7 +1,3 @@
-// the objc crate has some cgs errors that it throws
-// these shouldn't impact functionality so silencing for now until they fix them in a new version or something
-#![allow(unexpected_cfgs)]
-
 use base64::prelude::*;
 use cocoa::base::{id, nil};
 use cocoa::foundation::{NSAutoreleasePool, NSSize, NSUInteger};
@@ -83,7 +79,7 @@ pub fn get_installed_apps() -> Result<Vec<AppMetadata>, String> {
                             });
                         }
                     }
-            }
+                }
             }
         }
     }
