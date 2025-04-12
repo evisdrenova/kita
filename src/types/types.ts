@@ -157,7 +157,6 @@ export interface Contact {
   emails: ContactEmail;
   phone_numbers: ContactPhone[];
   addresses: ContactAddress[];
-  organization?: String;
   job_title?: String;
   birthday?: String;
   notes?: String;
