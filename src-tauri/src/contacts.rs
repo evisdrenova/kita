@@ -7,12 +7,14 @@ use core_foundation::{
 };
 use objc::{
     class, msg_send,
-    runtime::{Object, BOOL, NO, YES},
+    runtime::{Class, Object, BOOL, NO, YES},
     sel, sel_impl,
 };
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+use objc2_contacts::{CNAuthorizationStatus, CNContact, CNContactStore, CNEntityType};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Contact {
@@ -58,25 +60,21 @@ pub enum ContactError {
     NullValue,
 }
 
-#[repr(i32)]
-pub enum CNAuthorizationStatus {
-    NotDetermined = 0,
-    Restricted = 1,
-    Denied = 2,
-    Authorized = 3,
-}
-
 pub fn check_contacts_permission() -> Result<bool, ContactError> {
+    // NotDetermined = 0,
+    // Restricted = 1,
+    // Denied = 2,
+    // Authorized = 3,
+    // Limited = 4
+
     unsafe {
-        let contacts_class = class!(CNContactStore);
-        let contact_store: *mut Object = msg_send![contacts_class, alloc];
-        let contact_store: *mut Object = msg_send![contact_store, init];
+        let contacts_class: &Class = class!(CNContactStore);
 
         // Get current authorization status
         let entity_type = 0; // CNEntityTypeContacts = 0
         let auth_status: i32 =
-            msg_send![contact_store, authorizationStatusForEntityType: entity_type];
-
+            msg_send![contacts_class, authorizationStatusForEntityType:entity_type];
+        println!("checking auth: {}", auth_status);
         match auth_status {
             3 => Ok(true), // CNAuthorizationStatusAuthorized
             _ => Ok(false),
@@ -84,35 +82,83 @@ pub fn check_contacts_permission() -> Result<bool, ContactError> {
     }
 }
 
-pub fn request_contacts_permission() -> Result<bool, ContactError> {
+fn fetch_contacts() -> Result<Vec<Contact>, Box<dyn std::error::Error>> {
     unsafe {
-        let contacts_class = class!(CNContactStore);
-        let contact_store: *mut Object = msg_send![contacts_class, alloc];
-        let contact_store: *mut Object = msg_send![contact_store, init];
-        
-        // Get current authorization status
-        let entity_type = 0; // CNEntityTypeContacts = 0
-        let auth_status: i32 = msg_send![contact_store, authorizationStatusForEntityType: entity_type];
-        
+        let store = CNContactStore::new();
+
+        let entity_type = CNEntityType::Contacts;
+        // Check authorization status (important!)
+        let auth_status = CNContactStore::authorizationStatusForEntityType(entity_type);
+        println!("Contacts Auth Status: {:?}", auth_status);
+        // Handle cases where access is denied or restricted
+
+        let completion_handler = Box::new(|granted: BOOL, error: *mut Object| {
+            // This callback would be handled by Objective-C runtime
+        });
+
         match auth_status {
-            0 => { // CNAuthorizationStatusNotDetermined
-                // Request access
-                let completion_handler = Box::new(|granted: BOOL, error: *mut Object| {
-                    // This callback would be handled by Objective-C runtime
-                });
-                let _: () = msg_send![contact_store, requestAccessForEntityType:entity_type 
-                                      completionHandler:completion_handler];
-                
-                // After request, check status again
-                let new_status: i32 = msg_send![contact_store, authorizationStatusForEntityType: entity_type];
-                Ok(new_status == 3) // CNAuthorizationStatusAuthorized
-            },
-            3 => Ok(true), // CNAuthorizationStatusAuthorized
-            _ => Ok(false), // Denied or Restricted
+            CNAuthorizationStatus::NotDetermined => {
+                store.requestAccessForEntityType_completionHandler(entity_type, completion_handler)
+            }
         }
+
+        let contacts: Vec<Contact> = Vec::new();
+        // let all_containers = store.all_containers()?; // Or default container
+        // let predicate = objc2_contacts::CNCont contact::predicate::Contact::all(); // Fetch all
+        // let keys_to_fetch = vec![
+        //     objc2_contacts::contact::keys::GivenName,
+        //     objc2_contacts::contact::keys::FamilyName,
+        //     objc2_contacts::contact::keys::EmailAddresses,
+        //     // Add other keys you need
+        // ];
+
+        // let contacts = store.unifiedContactsMatchingPredicate_keysToFetch_error(predicate, keys_to_fetch)?;
+
+        // // Process the Vec<Contact>
+        // for contact in &contacts {
+        //     // Use methods provided by the crate's Contact type
+        //     // e.g., contact.given_name(), contact.email_addresses()
+        //     println!(
+        //         "Found: {:?} {:?}",
+        //         contact.given_name(),
+        //         contact.family_name()
+        //     );
+        // }
+        // Ok(contacts)
+
+        Ok(contacts)
     }
 }
 
+// pub fn request_contacts_permission() -> Result<bool, ContactError> {
+//     unsafe {
+//         let contacts_class = class!(CNContactStore);
+
+//         // Get current authorization status
+//         let entity_type = 0; // CNEntityTypeContacts = 0
+//         let auth_status: i32 =
+//             msg_send![contact_store, authorizationStatusForEntityType: entity_type];
+
+//         match auth_status {
+//             0 => {
+//                 // CNAuthorizationStatusNotDetermined
+//                 // Request access
+//                 let completion_handler = Box::new(|granted: BOOL, error: *mut Object| {
+//                     // This callback would be handled by Objective-C runtime
+//                 });
+//                 let _: () = msg_send![contact_store, requestAccessForEntityType:entity_type
+//                                       completionHandler:completion_handler];
+
+//                 // After request, check status again
+//                 let new_status: i32 =
+//                     msg_send![contact_store, authorizationStatusForEntityType: entity_type];
+//                 Ok(new_status == 3) // CNAuthorizationStatusAuthorized
+//             }
+//             3 => Ok(true),  // CNAuthorizationStatusAuthorized
+//             _ => Ok(false), // Denied or Restricted
+//         }
+//     }
+// }
 
 pub fn get_contacts() -> Result<Vec<Contact>, ContactError> {
     unsafe {
@@ -120,21 +166,22 @@ pub fn get_contacts() -> Result<Vec<Contact>, ContactError> {
         if !check_contacts_permission()? {
             return Err(ContactError::PermissionDenied);
         }
-        
+
         let contacts_class = class!(CNContactStore);
         let contact_store: *mut Object = msg_send![contacts_class, alloc];
         let contact_store: *mut Object = msg_send![contact_store, init];
-        
+
         // Create the key descriptors for the properties we want
         let key_class = class!(CNContactFetchRequest);
         let keys_to_fetch = create_contact_keys();
-        
+
         let fetch_request: *mut Object = msg_send![key_class, alloc];
-        let fetch_request: *mut Object = msg_send![fetch_request, initWithKeysToFetch:keys_to_fetch];
-        
+        let fetch_request: *mut Object =
+            msg_send![fetch_request, initWithKeysToFetch:keys_to_fetch];
+
         let mut contacts = Vec::new();
         let mut fetch_error: *mut Object = std::ptr::null_mut();
-        
+
         // Enumerate contacts
         let success: BOOL = msg_send![
             contact_store,
@@ -147,17 +194,19 @@ pub fn get_contacts() -> Result<Vec<Contact>, ContactError> {
                 }
             }
         ];
-        
+
         if success == NO {
             if fetch_error.is_null() {
-                return Err(ContactError::AccessError("Unknown error fetching contacts".into()));
+                return Err(ContactError::AccessError(
+                    "Unknown error fetching contacts".into(),
+                ));
             } else {
                 let description: *mut Object = msg_send![fetch_error, localizedDescription];
                 let error_str = nsstring_to_string(description);
                 return Err(ContactError::AccessError(error_str));
             }
         }
-        
+
         Ok(contacts)
     }
 }
@@ -167,17 +216,16 @@ unsafe fn create_contact_keys() -> *mut Object {
     let array_class = class!(NSMutableArray);
     let keys_array: *mut Object = msg_send![array_class, alloc];
     let keys_array: *mut Object = msg_send![keys_array, init];
-    
+
     // Add the keys we want
     add_key_to_array(keys_array, "CNContactIdentifierKey");
     add_key_to_array(keys_array, "CNContactGivenNameKey");
     add_key_to_array(keys_array, "CNContactFamilyNameKey");
     add_key_to_array(keys_array, "CNContactPhoneNumbersKey");
     add_key_to_array(keys_array, "CNContactImageDataAvailableKey");
-    
+
     keys_array
 }
-
 
 unsafe fn add_key_to_array(array: *mut Object, key: &str) {
     let contact_class = class!(CNContact);
@@ -190,23 +238,23 @@ unsafe fn process_contact(contact: *mut Object) -> Result<Contact, ContactError>
     // Extract identifier
     let identifier: *mut Object = msg_send![contact, identifier];
     let id = nsstring_to_string(identifier);
-    
+
     // Extract names
     let given_name_obj: *mut Object = msg_send![contact, givenName];
     let family_name_obj: *mut Object = msg_send![contact, familyName];
-    
+
     let given_name = if !given_name_obj.is_null() {
         Some(nsstring_to_string(given_name_obj))
     } else {
         None
     };
-    
+
     let family_name = if !family_name_obj.is_null() {
         Some(nsstring_to_string(family_name_obj))
     } else {
         None
     };
-    
+
     // Full name
     let name = match (&given_name, &family_name) {
         (Some(g), Some(f)) => Some(format!("{} {}", g, f)),
@@ -214,13 +262,12 @@ unsafe fn process_contact(contact: *mut Object) -> Result<Contact, ContactError>
         (None, Some(f)) => Some(f.clone()),
         (None, None) => None,
     };
-    
-    
+
     // Image availability
     let image_available: BOOL = msg_send![contact, imageDataAvailable];
-    
+
     let phone_numbers = extract_phones(contact)?;
-    
+
     Ok(Contact {
         id,
         name,
@@ -243,15 +290,15 @@ unsafe fn nsstring_to_string(nsstring: *mut Object) -> String {
     if nsstring.is_null() {
         return String::new();
     }
-    
+
     let utf8_encoding = 4_u64; // NSUTF8StringEncoding
     let nsstring: *mut Object = msg_send![nsstring, retain];
     let cstr: *const i8 = msg_send![nsstring, UTF8String];
     let len: usize = msg_send![nsstring, lengthOfBytesUsingEncoding:utf8_encoding];
-    
+
     let bytes = std::slice::from_raw_parts(cstr as *const u8, len);
     let string = String::from_utf8_lossy(bytes).into_owned();
-    
+
     let _: () = msg_send![nsstring, release];
     string
 }
@@ -259,33 +306,34 @@ unsafe fn nsstring_to_string(nsstring: *mut Object) -> String {
 unsafe fn extract_phones(contact: *mut Object) -> Result<Vec<ContactPhone>, ContactError> {
     // Implementation for extracting phone numbers
     let mut result = Vec::new();
-    
+
     // Get the phone numbers array
     let phones: *mut Object = msg_send![contact, phoneNumbers];
     let count: usize = msg_send![phones, count];
-    
+
     for i in 0..count {
         let labeled_value: *mut Object = msg_send![phones, objectAtIndex:i];
         let label: *mut Object = msg_send![labeled_value, label];
         let value: *mut Object = msg_send![labeled_value, value];
-        
+
         let label_str = if !label.is_null() {
-            let localized: *mut Object = msg_send![class!(CNLabeledValue), localizedStringForLabel:label];
+            let localized: *mut Object =
+                msg_send![class!(CNLabeledValue), localizedStringForLabel:label];
             nsstring_to_string(localized)
         } else {
             "Phone".to_string()
         };
-        
+
         // Get string value from phone number
         let string_value: *mut Object = msg_send![value, stringValue];
         let value_str = nsstring_to_string(string_value);
-        
+
         result.push(ContactPhone {
             label: label_str,
             value: value_str,
         });
     }
-    
+
     Ok(result)
 }
 
@@ -294,14 +342,14 @@ pub async fn check_contacts_permission_command() -> Result<bool, String> {
     check_contacts_permission().map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub async fn request_contacts_permission_command() -> Result<bool, String> {
-    request_contacts_permission().map_err(|e| e.to_string())
-}
+// #[tauri::command]
+// pub async fn request_contacts_permission_command() -> Result<bool, String> {
+//     request_contacts_permission().map_err(|e| e.to_string())
+// }
 
 #[tauri::command]
 pub async fn get_contacts_command() -> Result<Vec<Contact>, String> {
-    get_contacts().map_err(|e| e.to_string())
+    fetch_contacts().map_err(|e| e.to_string())
 }
 // impl Contact {
 //     /// Get all contacts from macOS Contacts app

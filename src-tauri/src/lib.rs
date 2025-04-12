@@ -61,7 +61,7 @@ pub fn run() {
             settings::update_settings,
             window::show_main_window,
             contacts::get_contacts_command,
-            contacts::request_contacts_permission_command,
+            // contacts::request_contacts_permission_command,
             contacts::check_contacts_permission_command
         ])
         .run(tauri::generate_context!())
