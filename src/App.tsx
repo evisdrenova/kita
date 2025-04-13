@@ -57,7 +57,7 @@ export default function App() {
   const [activeSection, setActiveSection] = useState<number | null>(null);
   const [settings, setSettings] = useState<AppSettings>();
   const [_, setLoadingSettings] = useState<boolean>(false);
-
+  const [contactData, setContactData] = useState<Contact[]>();
   //------Hooks -----///
   const { contacts } = useGetContacts();
 
@@ -672,14 +672,24 @@ export default function App() {
 
   console.log("the query", searchQuery);
 
-  async function check_contacts_permission() {
-    const c = await invoke<Contact[]>("check_contacts_permission_command");
-    console.log("con", c);
-  }
-
   async function getContacts() {
-    const c = await invoke<Contact[]>("get_contacts_command");
-    console.log("con", c);
+    try {
+      const res = await invoke<Contact[]>("get_contacts_command");
+      console.log("contacts", res);
+      setContactData(res);
+    } catch (e) {
+      console.error("Contact error:", e);
+
+      // Check for specific error types
+      if (e instanceof Error && e.message.includes("Permission denied")) {
+        errorToast(
+          "Permission denied to access contacts. Please go to System -> Privacy & Security -> Contacts and grant Kita permission."
+        );
+      } else {
+        // Generic error handling
+        errorToast("Failed to retrieve contacts.");
+      }
+    }
   }
 
   return (
@@ -689,6 +699,7 @@ export default function App() {
         searchQuery={searchQuery}
         settings={settings ?? {}}
         setIsSettingsOpen={setIsSettingsOpen}
+        contactData={contactData ?? []}
       />
       <Button onClick={getContacts}>call</Button>
 

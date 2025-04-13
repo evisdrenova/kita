@@ -151,33 +151,12 @@ export interface CompletionResponse {
 
 export interface Contact {
   id: String;
-  name?: String;
   given_name?: String;
   family_name?: String;
-  emails: ContactEmail;
-  phone_numbers: ContactPhone[];
-  addresses: ContactAddress[];
-  job_title?: String;
-  birthday?: String;
-  notes?: String;
+  phone_numbers?: ContactPhone[];
   image_available: boolean;
 }
-
-interface ContactEmail {
-  label: string;
-  value: string;
-}
-
 interface ContactPhone {
   label: string;
   value: string;
-}
-
-interface ContactAddress {
-  label: string;
-  street?: string;
-  city?: string;
-  state?: string;
-  postal_code?: string;
-  country?: string;
 }

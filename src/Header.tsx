@@ -7,6 +7,7 @@ import {
   AppSettings,
   ChatMessage,
   CompletionResponse,
+  Contact,
   Model,
 } from "./types/types";
 import { Button } from "./components/ui/button";
@@ -17,18 +18,23 @@ interface Props {
   setSearchQuery: (val: string) => void;
   settings: AppSettings | null;
   setIsSettingsOpen: (val: boolean) => void;
+  contactData: Contact[];
 }
 
 const TOOLS = ["@signal", "@iMessage", "@email"];
-
-const PEOPLE = ["john", "bill", "james"];
 
 type modelStatus = "none" | "not-downloaded" | "ready";
 
 type autocompleteType = "tools" | "people" | null;
 
 export default function Header(props: Props) {
-  const { searchQuery, setSearchQuery, settings, setIsSettingsOpen } = props;
+  const {
+    searchQuery,
+    setSearchQuery,
+    settings,
+    setIsSettingsOpen,
+    contactData,
+  } = props;
   const inputRef = useRef<HTMLInputElement>(null);
   const [isRagMode, setIsRagMode] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -42,6 +48,7 @@ export default function Header(props: Props) {
   // Autocomplete related states
   const [showAutocomplete, setShowAutocomplete] = useState<boolean>(false);
   const [autocompleteItems, setAutocompleteItems] = useState<string[]>([]);
+  const [autocompleteContacts, setAutocompleteContacts] = useState<Contact[]>();
   const [autocompleteType, setAutocompleteType] =
     useState<autocompleteType>(null);
   const [selectedAutocompleteIndex, setSelectedAutocompleteIndex] =
@@ -121,13 +128,13 @@ export default function Header(props: Props) {
       currentWordBeingTyped.length >= 2
     ) {
       const query = currentWordBeingTyped.toLowerCase();
-      const filteredPeople = PEOPLE.filter((person) =>
-        person.toLowerCase().includes(query)
-      );
+      const filteredPeople = contactData.filter((person) => {
+        let name = person.given_name + " " + person.family_name;
+        name.toLowerCase().includes(query);
+      });
 
       if (filteredPeople.length > 0) {
-        setAutocompleteItems(filteredPeople);
-        setAutocompleteType("people");
+        setAutocompleteContacts(filteredPeople);
         setShowAutocomplete(true);
         setSelectedAutocompleteIndex(0);
         return;

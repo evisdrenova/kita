@@ -70,4 +70,7 @@ xls -> read row by row or cell ranges
 // update the watcher to also track individual files as well in addition to the parents of the files so that we can re-index changes to files
 
 // can't click and open sources
-    
+
+// update the app handler to just use native swift code and remove the objc crate
+
+// find a way to prompt native mac permission window for contacts since it's not prompting but that's probably because we denied permission and when we do that it doesn't show it again
