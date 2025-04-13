@@ -100,7 +100,7 @@ class AppHandler {
     
     // Get combined apps (running and installed)
     static func getCombinedApps() -> [AppMetadata] {
-        var runningApps = getRunningApps()
+        let runningApps = getRunningApps()
         var installedApps = getInstalledApps()
         
         // Remove installed apps that are already running
@@ -163,7 +163,7 @@ class AppHandler {
             return false
         }
         
-        return app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        return app.activate(options: [.activateAllWindows])
     }
     
     // Force quit an application
@@ -176,17 +176,28 @@ class AppHandler {
     }
     
     // Restart an application
-    static func restartApplication(path: String) -> Bool {
-        let url = URL(fileURLWithPath: path)
-        
-        do {
-            try NSWorkspace.shared.launchApplication(at: url, configuration: [:])
-            return true
-        } catch {
+   static func restartApplication(path: String, completion: @escaping (Bool, Error?) -> Void) {
+    let url = URL(fileURLWithPath: path)
+    
+    let configuration = NSWorkspace.OpenConfiguration()
+    
+    NSWorkspace.shared.openApplication(at: url, configuration: configuration) { app, error in
+        if let error = error {
             print("Failed to restart application: \(error)")
-            return false
+            completion(false, error)
+            return
         }
+        
+        guard let _ = app else {
+            let genericError = NSError(domain: "AppHandler", code: -2, userInfo: [NSLocalizedDescriptionKey: "Application failed to launch"])
+            completion(false, genericError)
+            return
+        }
+        
+        completion(true, nil)
     }
+}
+
 }
 
 // C-compatible function to get installed apps as JSON
@@ -262,9 +273,22 @@ public func restartAppSwift(path: UnsafePointer<CChar>?) -> Bool {
         return false
     }
     
-    return AppHandler.restartApplication(path: pathString)
+    var result = false
+    let semaphore = DispatchSemaphore(value: 0)
+    
+    AppHandler.restartApplication(path: pathString) { success, error in
+        result = success
+        if let error = error {
+            print("Restart error: \(error)")
+        }
+        semaphore.signal()
+    }
+    
+    // Wait for 10 seconds maximum
+    _ = semaphore.wait(timeout: .now() + 10)
+    
+    return result
 }
-
 // Memory management function for C interop
 @_cdecl("free_string_swift")
 public func freeStringSwift(pointer: UnsafeMutablePointer<CChar>?) {
