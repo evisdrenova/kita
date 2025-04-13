@@ -32,6 +32,9 @@
     "active": true,
     "targets": "all",
     "icon": ["icons/kita_icon_margin.icns", "icons/kita_margin.png"],
-    "resources": ["resources/*"]
+    "resources": ["resources/*"],
+    "macOS": {
+      "entitlements": "entitlements.plist"
+    }
   }
 }

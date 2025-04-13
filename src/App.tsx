@@ -672,8 +672,13 @@ export default function App() {
 
   console.log("the query", searchQuery);
 
-  async function callContact() {
-    const c = await invoke<Contact[]>("get_contacts");
+  async function check_contacts_permission() {
+    const c = await invoke<Contact[]>("check_contacts_permission_command");
+    console.log("con", c);
+  }
+
+  async function getContacts() {
+    const c = await invoke<Contact[]>("get_contacts_command");
     console.log("con", c);
   }
 
@@ -685,7 +690,7 @@ export default function App() {
         settings={settings ?? {}}
         setIsSettingsOpen={setIsSettingsOpen}
       />
-      <Button onClick={callContact}>call</Button>
+      <Button onClick={getContacts}>call</Button>
 
       <div className="flex-1 overflow-auto scrollbar">
         {!searchQuery.includes("@") && (
