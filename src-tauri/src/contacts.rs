@@ -7,10 +7,10 @@ use thiserror::Error;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Contact {
     pub id: String,
-    pub image_available: bool,
-    pub family_name: Option<String>,
     pub given_name: Option<String>,
+    pub family_name: Option<String>,
     pub phone_numbers: Option<Vec<ContactPhone>>,
+    pub image_available: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
