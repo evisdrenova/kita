@@ -139,6 +139,10 @@ pub fn get_contacts() -> Result<Vec<Contact>, ContactError> {
 pub async fn get_contacts_command() -> Result<Vec<Contact>, String> {
     match get_contacts() {
         Ok(contacts) => Ok(contacts),
+        Err(ContactError::PermissionDenied) => {
+            Err("Permission denied to access contacts".to_string())
+        }
+        Err(ContactError::AccessError(msg)) => Err(format!("Access error: {}", msg)),
         Err(err) => Err(err.to_string()),
     }
 }

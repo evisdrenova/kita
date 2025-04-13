@@ -13,6 +13,7 @@ public func requestContactsPermission() -> Int32 {
     var result: Int32 = 0
     
     let store = CNContactStore()
+    
     store.requestAccess(for: .contacts) { (granted, error) in
         if granted {
             result = 3 // Authorized
@@ -20,7 +21,7 @@ public func requestContactsPermission() -> Int32 {
         semaphore.signal()
     }
     
-    // Wait with a timeout
+    // Wait 30 sec
     _ = semaphore.wait(timeout: .now() + 30)
     return result
 }
