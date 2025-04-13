@@ -1,43 +1,22 @@
-use core_foundation::{
-    base::TCFType,
-    string::{CFString, CFStringRef},
-};
 use serde::{Deserialize, Serialize};
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{c_char, CStr};
 use std::os::raw::c_int;
-use std::{process::Command, str};
+use std::str;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Contact {
     pub id: String,
-    pub name: Option<String>,
-    pub given_name: Option<String>,
-    pub family_name: Option<String>,
-    pub phone_numbers: Vec<ContactPhone>,
     pub image_available: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ContactEmail {
-    pub label: String,
-    pub value: String,
+    pub family_name: Option<String>,
+    pub given_name: Option<String>,
+    pub phone_numbers: Option<Vec<ContactPhone>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContactPhone {
     pub label: String,
     pub value: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ContactAddress {
-    pub label: String,
-    pub street: Option<String>,
-    pub city: Option<String>,
-    pub state: Option<String>,
-    pub postal_code: Option<String>,
-    pub country: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -64,11 +43,7 @@ extern "C" {
 
 pub fn check_contacts_permission() -> Result<bool, ContactError> {
     // CNAuthorizationStatus: NotDetermined = 0, Restricted = 1, Denied = 2, Authorized = 3
-    println!("checking permissions...");
-
     let status = unsafe { check_contacts_permission_swift() };
-
-    println!("permissions: {:?}", status);
     match status {
         3 => Ok(true),  // Authorized
         _ => Ok(false), // Not authorized
@@ -92,8 +67,6 @@ pub fn get_contacts() -> Result<Vec<Contact>, ContactError> {
     }
 
     let contacts_json_ptr = unsafe { fetch_contacts_swift() };
-
-    println!("contacts:{:?}", &contacts_json_ptr);
 
     // Check if pointer is null
     if contacts_json_ptr.is_null() {
@@ -128,7 +101,6 @@ pub fn get_contacts() -> Result<Vec<Contact>, ContactError> {
         return Err(ContactError::AccessError(error_msg));
     }
 
-    // Parse JSON
     let contacts: Vec<Contact> = serde_json::from_str(&contacts_json)
         .map_err(|e| ContactError::JsonError(format!("Failed to parse contacts JSON: {}", e)))?;
 
