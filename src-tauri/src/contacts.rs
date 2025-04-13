@@ -2,11 +2,6 @@ use core_foundation::{
     base::TCFType,
     string::{CFString, CFStringRef},
 };
-use objc::{
-    class, msg_send,
-    runtime::{Class, Object, BOOL, NO, YES},
-    sel, sel_impl,
-};
 use serde::{Deserialize, Serialize};
 use std::ffi::{c_char, CStr, CString};
 use std::os::raw::c_int;
@@ -67,9 +62,6 @@ extern "C" {
     fn free_string_swift(pointer: *mut c_char);
 }
 
-//TODO remove the permissions and check the flow
-
-// Check if app has permission to access contacts
 pub fn check_contacts_permission() -> Result<bool, ContactError> {
     // CNAuthorizationStatus: NotDetermined = 0, Restricted = 1, Denied = 2, Authorized = 3
     println!("checking permissions...");
@@ -83,7 +75,6 @@ pub fn check_contacts_permission() -> Result<bool, ContactError> {
     }
 }
 
-// Request permission to access contacts
 pub fn request_contacts_permission() -> Result<bool, ContactError> {
     let status = unsafe { request_contacts_permission_swift() };
     match status {
@@ -92,18 +83,14 @@ pub fn request_contacts_permission() -> Result<bool, ContactError> {
     }
 }
 
-// Fetch contacts using the Swift bridge
 pub fn get_contacts() -> Result<Vec<Contact>, ContactError> {
     println!("getting contacts...");
-    // First check permission
     if !check_contacts_permission()? {
-        // Try to request permission
         if !request_contacts_permission()? {
             return Err(ContactError::PermissionDenied);
         }
     }
 
-    // Call Swift function to fetch contacts
     let contacts_json_ptr = unsafe { fetch_contacts_swift() };
 
     println!("contacts:{:?}", &contacts_json_ptr);
@@ -118,7 +105,7 @@ pub fn get_contacts() -> Result<Vec<Contact>, ContactError> {
         let c_str = CStr::from_ptr(contacts_json_ptr);
         let result = c_str
             .to_str()
-            .map_err(|e| ContactError::AccessError(format!("Invalid UTF-8: {}", e)))?
+            .map_err(|e| ContactError::JsonError(format!("Invalid UTF-8: {}", e)))?
             .to_owned();
 
         // Free the C string
@@ -148,7 +135,6 @@ pub fn get_contacts() -> Result<Vec<Contact>, ContactError> {
     Ok(contacts)
 }
 
-// Tauri command
 #[tauri::command]
 pub async fn get_contacts_command() -> Result<Vec<Contact>, String> {
     match get_contacts() {

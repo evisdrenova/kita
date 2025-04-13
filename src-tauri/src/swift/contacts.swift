@@ -30,7 +30,7 @@ struct ContactPhone: Codable {
     var value: String
 }
 
-struct BasicContact: Codable {
+struct Contact: Codable {
     var id: String
     var given_name: String?
     var family_name: String?
@@ -56,7 +56,7 @@ public func fetchContacts() -> UnsafeMutablePointer<CChar>? {
         CNContactImageDataAvailableKey as CNKeyDescriptor
     ]
     
-    var contacts: [BasicContact] = []
+    var contacts: [Contact] = []
     
     do {
         let request = CNContactFetchRequest(keysToFetch: keysToFetch)
@@ -68,7 +68,7 @@ public func fetchContacts() -> UnsafeMutablePointer<CChar>? {
                 )
             }
             
-            let basicContact = BasicContact(
+            let contact: Contact = Contact(
                 id: contact.identifier,
                 given_name: contact.givenName.isEmpty ? nil : contact.givenName,
                 family_name: contact.familyName.isEmpty ? nil : contact.familyName,
@@ -76,7 +76,7 @@ public func fetchContacts() -> UnsafeMutablePointer<CChar>? {
                 image_available: contact.imageDataAvailable
             )
             
-            contacts.append(basicContact)
+            contacts.append(contact)
         }
         
         let encoder = JSONEncoder()
