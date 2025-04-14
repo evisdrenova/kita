@@ -13,103 +13,85 @@ struct AppMetadata: Codable, Hashable {
 
 class AppHandler {
   static func getInstalledApps() -> [AppMetadata] {
-        let applicationDirectories = [
-            "/Applications",
-            "/System/Applications",
-            "/System/Library/CoreServices",
-            "/Library/Applications",
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications").path
-        ]
+    let applicationDirectories = [
+        "/Applications",
+        "/System/Applications",
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications").path
+    ]
+    
+    for directory in applicationDirectories {
         
-        var installedApps: [AppMetadata] = []
+        // Verify directory exists and is accessible
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: directory, isDirectory: &isDirectory)
+
+        guard exists && isDirectory.boolValue else {
+            print("  Skipping invalid directory")
+            continue
+        }
+    }
+    
+    var installedApps: [AppMetadata] = []
+    
+    for directory in applicationDirectories {
         
-        for directory in applicationDirectories {
-            guard let enumerator = FileManager.default.enumerator(
-                at: URL(fileURLWithPath: directory),
-                includingPropertiesForKeys: [.isDirectoryKey, .nameKey],
-                options: [.skipsHiddenFiles]
-            ) else {
+        guard let enumerator = FileManager.default.enumerator(
+            at: URL(fileURLWithPath: directory),
+            includingPropertiesForKeys: [.isDirectoryKey, .nameKey, .isHiddenKey],
+            options: [.skipsPackageDescendants]
+        ) else {
+            print("Failed to create enumerator for directory: \(directory)")
+            continue
+        }
+        
+        while let fileURL = enumerator.nextObject() as? URL {
+            
+            guard let isDirectory = try? fileURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory,
+                  isDirectory == true,
+                  fileURL.pathExtension == "app" else {
                 continue
             }
             
-            while let fileURL = enumerator.nextObject() as? URL {
-                guard let isDirectory = try? fileURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory,
-                      isDirectory == true,
-                      fileURL.pathExtension == "app" else {
-                    continue
-                }
-                
-                let appName = fileURL.deletingPathExtension().lastPathComponent
-                
-                // Skip helper apps and system apps
-                guard !appName.contains("Helper"),
-                      !appName.contains("Agent"),
-                      !appName.hasSuffix("Assistant"),
-                      !appName.hasPrefix("com."),
-                      !appName.hasPrefix("plugin_"),
-                      !appName.hasPrefix(".") else {
-                    continue
-                }
-                
-                let app = AppMetadata(
-                    name: appName,
-                    path: fileURL.path,
-                    pid: nil,
-                    icon: nil
-                )
-                
-                installedApps.append(app)
-            }
+            let appName = fileURL.deletingPathExtension().lastPathComponent
+            
+            let app = AppMetadata(
+                name: appName,
+                path: fileURL.path,
+                pid: nil,
+                icon: nil
+            )
+            
+            installedApps.append(app)
         }
         
-        // Remove duplicates and sort
-        return Array(Set(installedApps)).sorted { $0.name < $1.name }
-    }
-
-       
-    // Get running applications
-    static func getRunningApps() -> [AppMetadata] {
-        let runningApps = NSWorkspace.shared.runningApplications
-        
-        return runningApps
-            .compactMap { app -> AppMetadata? in
-                guard let bundlePath = app.bundleURL?.path,
-                      let appName = app.localizedName else {
-                    return nil
-                }
-                
-                // Skip helper apps and system apps
-                guard !appName.contains("Helper"),
-                      !appName.contains("Agent"),
-                      !appName.hasSuffix("Assistant"),
-                      !appName.hasPrefix("com."),
-                      !appName.hasPrefix("plugin_"),
-                      !appName.hasPrefix(".") else {
-                    return nil
-                }
-                
-                return AppMetadata(
-                    name: appName,
-                    path: bundlePath,
-                    pid: app.processIdentifier,
-                    icon: nil
-                )
-            }
-            .sorted { $0.name < $1.name }
     }
     
-    // Get combined apps (running and installed)
-    static func getCombinedApps() -> [AppMetadata] {
-        let runningApps = getRunningApps()
-        var installedApps = getInstalledApps()
-        
-        // Remove installed apps that are already running
-        installedApps.removeAll { installedApp in
-            runningApps.contains { $0.name == installedApp.name }
+    // Remove duplicates and sort
+    let uniqueApps = Array(Set(installedApps)).sorted { $0.name < $1.name }
+    
+    return uniqueApps
+}
+
+    // Get running applications
+static func getRunningApps() -> [AppMetadata] {
+    let runningApps = NSWorkspace.shared.runningApplications
+    
+    return runningApps
+        .compactMap { app -> AppMetadata? in
+            guard let bundlePath = app.bundleURL?.path,
+                  let appName = app.localizedName else {
+                return nil
+            }
+            
+            return AppMetadata(
+                name: appName,
+                path: bundlePath,
+                pid: app.processIdentifier,
+                icon: nil
+            )
         }
-        
-        return runningApps + installedApps
-    }
+        .sorted { $0.name < $1.name }
+}
     
     // Get app icon
     static func getAppIcon(path: String) -> String? {
@@ -289,8 +271,40 @@ public func restartAppSwift(path: UnsafePointer<CChar>?) -> Bool {
     
     return result
 }
-// Memory management function for C interop
-@_cdecl("free_string_swift")
-public func freeStringSwift(pointer: UnsafeMutablePointer<CChar>?) {
-    pointer?.deallocate()
+
+func shouldFilterApp(name: String, path: String) -> Bool {
+    let excludePatterns = [
+        // Extremely specific exclusions
+        ".framework",
+        "Contents/Frameworks/",
+        "Contents/XPCServices/",
+        "Contents/PlugIns/",
+        "Helper",
+        "Agent",
+        "Crash Reporter",
+        "Updater",
+    ]
+    
+    func shouldExclude(_ str: String) -> Bool {
+        let matchedPatterns = excludePatterns.filter { pattern in
+            str.contains(pattern)
+        }
+        
+        if !matchedPatterns.isEmpty {
+            print("Excluding \(str) due to patterns: \(matchedPatterns)")
+            return true
+        }
+        
+        return false
+    }
+    
+    // Be very explicit about logging
+    print("Checking app: \(name)")
+    print("Full path: \(path)")
+    
+    let isExcluded = shouldExclude(name) || shouldExclude(path)
+    
+    print("Is excluded: \(isExcluded)")
+    
+    return isExcluded
 }

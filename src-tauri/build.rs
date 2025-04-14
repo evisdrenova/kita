@@ -8,12 +8,14 @@ fn main() {
     // Only compile on macOS
     #[cfg(target_os = "macos")]
     {
-        // Path to Swift file - update to match your structure
-        let swift_file = "./src/swift/contacts.swift";
+        // Paths to Swift files
+        let swift_files = vec!["./src/swift/contacts.swift", "./src/swift/apps.swift"];
 
-        // Check if Swift file exists
-        if !Path::new(swift_file).exists() {
-            panic!("Swift file not found: {}", swift_file);
+        // Check if Swift files exist
+        for swift_file in &swift_files {
+            if !Path::new(swift_file).exists() {
+                panic!("Swift file not found: {}", swift_file);
+            }
         }
 
         // Compile Swift to dynamic library
@@ -22,11 +24,17 @@ fn main() {
                 "-emit-library",
                 "-o",
                 &format!("{}/libcontactsbridge.dylib", out_dir),
-                swift_file,
+            ])
+            .args(&swift_files)
+            .args([
                 "-framework",
                 "Contacts",
                 "-framework",
                 "Foundation",
+                "-framework",
+                "AppKit",
+                "-framework",
+                "CoreGraphics",
             ])
             .status()
             .expect("Failed to compile Swift code");
@@ -39,8 +47,10 @@ fn main() {
         println!("cargo:rustc-link-search=native={}", out_dir);
         println!("cargo:rustc-link-lib=dylib=contactsbridge");
 
-        // Tell cargo to invalidate the built crate whenever the Swift file changes
-        println!("cargo:rerun-if-changed={}", swift_file);
+        // Tell cargo to invalidate the built crate whenever the Swift files change
+        for swift_file in &swift_files {
+            println!("cargo:rerun-if-changed={}", swift_file);
+        }
     }
     tauri_build::build()
 }

@@ -1,4 +1,5 @@
 mod app_handler;
+mod app_handler2;
 mod chunker;
 mod contacts;
 mod database_handler;
@@ -34,18 +35,18 @@ pub fn run() {
             file_watcher::init_file_watcher(app)?;
             resource_monitor::init_resource_monitor(app)?;
             vectordb_manager::init_vector_db(app)?;
-            server::init_server(app)?;
-            server::register_llm_commands(app)?;
+            // server::init_server(app)?;
+            // server::register_llm_commands(app)?;
 
             Ok(())
         })
         .manage(FileProcessorState::default())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            app_handler::get_apps_data,
-            app_handler::force_quit_application,
-            app_handler::restart_application,
-            app_handler::launch_or_switch_to_app,
+            app_handler2::get_apps_data,
+            // app_handler::force_quit_application,
+            // app_handler::restart_application,
+            // app_handler::launch_or_switch_to_app,
             resource_monitor::start_resource_monitoring,
             resource_monitor::stop_resource_monitoring,
             file_processor::process_paths_command,
