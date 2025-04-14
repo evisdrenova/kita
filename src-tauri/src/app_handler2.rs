@@ -6,7 +6,7 @@ use crate::app_handler::AppMetadata;
 extern "C" {
     fn get_installed_apps_swift() -> *mut c_char;
     fn get_running_apps_swift() -> *mut c_char;
-    // fn get_app_icon_swift(path: *const c_char) -> *mut c_char;
+    fn get_app_icon_swift(path: *const c_char) -> *mut c_char;
     // fn switch_to_app_swift(pid: i32) -> bool;
     // fn force_quit_app_swift(pid: i32) -> bool;
     // fn restart_app_swift(path: *const c_char) -> bool;
@@ -64,28 +64,28 @@ pub fn get_running_apps() -> Result<Vec<AppMetadata>, String> {
     Ok(filter_apps(all_running_apps))
 }
 
-// pub fn get_app_icon(app_path: &str) -> Result<Option<String>, String> {
-//     let path_cstring =
-//         CString::new(app_path).map_err(|_| "Failed to create C string".to_string())?;
+pub fn get_app_icon(app_path: &str) -> Result<Option<String>, String> {
+    let path_cstring =
+        CString::new(app_path).map_err(|_| "Failed to create C string".to_string())?;
 
-//     let icon_ptr = unsafe { get_app_icon_swift(path_cstring.as_ptr()) };
+    let icon_ptr = unsafe { get_app_icon_swift(path_cstring.as_ptr()) };
 
-//     if icon_ptr.is_null() {
-//         return Ok(None);
-//     }
+    if icon_ptr.is_null() {
+        return Ok(None);
+    }
 
-//     let icon = unsafe {
-//         let c_str = CStr::from_ptr(icon_ptr);
-//         let result = c_str
-//             .to_str()
-//             .map_err(|_| "Invalid UTF-8".to_string())?
-//             .to_owned();
-//         free_string_swift(icon_ptr);
-//         result
-//     };
+    let icon = unsafe {
+        let c_str = CStr::from_ptr(icon_ptr);
+        let result = c_str
+            .to_str()
+            .map_err(|_| "Invalid UTF-8".to_string())?
+            .to_owned();
+        free_string_swift(icon_ptr);
+        result
+    };
 
-//     Ok(Some(icon))
-// }
+    Ok(Some(icon))
+}
 
 // #[tauri::command]
 // pub async fn launch_or_switch_to_app(
@@ -155,9 +155,6 @@ pub fn get_combined_apps() -> Result<Vec<AppMetadata>, String> {
     let mut running_apps = get_running_apps()?;
     let mut installed_apps = get_installed_apps()?;
 
-    println!("running: {:?}", running_apps);
-    println!("installed, {:?}", installed_apps);
-
     // Remove installed apps that are already running
     installed_apps.retain(|installed| {
         !running_apps
@@ -172,15 +169,13 @@ pub fn get_combined_apps() -> Result<Vec<AppMetadata>, String> {
 
 #[tauri::command]
 pub fn get_apps_data() -> Result<Vec<AppMetadata>, String> {
-    let combined_apps = get_combined_apps()?;
-    // Process icons
-    // for app in &mut combined_apps {
-    //     if let Ok(icon) = get_app_icon(&app.path) {
-    //         app.icon = icon;
-    //     }
-    // }
+    let mut combined_apps = get_combined_apps()?;
 
-    println!("the combined apps: {:?}", combined_apps);
+    for app in &mut combined_apps {
+        if let Ok(icon) = get_app_icon(&app.path) {
+            app.icon = icon;
+        }
+    }
 
     Ok(combined_apps)
 }
@@ -204,6 +199,7 @@ fn filter_apps(app: Vec<AppMetadata>) -> Vec<AppMetadata> {
                 || path.contains("Contents/PlugIns/")
                 || path.contains("Contents/Helpers/")
                 || path.contains("/usr/libexec")
+                || path.contains("System/Library/CoreServices/")
                 || name.contains("Crash Reporter")
                 || name.contains("Updater")
                 || name.contains("Diagnostics"))
