@@ -313,3 +313,33 @@ func getIcon(file path: String) -> NSImage? {
     guard FileManager.default.fileExists(atPath: path) else { return nil }
     return NSWorkspace.shared.icon(forFile: path)
 }
+
+struct AppsResponse: Codable {
+    let running_apps: [AppMetadata]
+    let installed_apps: [AppMetadata]
+}
+
+@_cdecl("get_combined_apps_swift")
+public func getCombinedAppsSwift() -> UnsafeMutablePointer<CChar>? {
+    let encoder = JSONEncoder()
+
+    do {
+        let running_apps = AppHandler.getRunningApps()
+        let installed_apps = AppHandler.getInstalledApps()
+
+        let response = AppsResponse(
+            running_apps: running_apps,
+            installed_apps: installed_apps
+        )
+
+        let jsonData = try encoder.encode(response)
+
+        if let jsonString = String(data: jsonData, encoding: .utf8) {
+            return strdup(jsonString)
+        }
+    } catch {
+        print("Error encoding apps: \(error)")
+    }
+
+    return nil
+}
