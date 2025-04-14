@@ -14,6 +14,8 @@ pub struct AppMetadata {
     pub resource_usage: Option<AppResourceUsage>,
 }
 
+// TODO: finish up the restart and switch functions including the resource usage
+
 extern "C" {
     fn get_combined_apps_swift() -> *mut c_char;
     fn get_app_icon_swift(path: *const c_char) -> *mut c_char;

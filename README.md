@@ -49,10 +49,6 @@ xls -> read row by row or cell ranges
 
 ## Roadmap / Issues
 
-// i might be able to use the sysinfo crate to replace all of the libproc functions - investigate further
-
-// optimize the app list rendering it's a little slow - coudl use virtualization for the table or somethign else
-
 // ability to create hot keys and startup flows that llow you to start up multiple apps at once or do other workflows
 
 // results in vectordb are returned twice, maybe duplices?
@@ -70,8 +66,6 @@ xls -> read row by row or cell ranges
 // update the watcher to also track individual files as well in addition to the parents of the files so that we can re-index changes to files
 
 // can't click and open sources
-
-// update the app handler to just use native swift code and remove the objc crate
 
 // find a way to prompt native mac permission window for contacts since it's not prompting but that's probably because we denied permission and when we do that it doesn't show it again
 

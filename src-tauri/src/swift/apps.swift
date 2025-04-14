@@ -7,6 +7,7 @@ struct AppMetadata: Codable, Hashable {
     var path: String
     var pid: Int32?
     var icon: String?
+    var resource_usage: Float64?
 }
 
 class AppHandler {
@@ -60,7 +61,8 @@ class AppHandler {
                     name: appName,
                     path: fileURL.path,
                     pid: nil,
-                    icon: nil
+                    icon: nil,
+                    resource_usage: nil
                 )
 
                 installedApps.append(app)
@@ -90,38 +92,12 @@ class AppHandler {
                     name: appName,
                     path: bundlePath,
                     pid: app.processIdentifier,
-                    icon: nil
+                    icon: nil,
+                    resource_usage: nil
                 )
             }
             .sorted { $0.name < $1.name }
     }
-
-    // Get app icon
-    // static func getAppIcon(path: String) -> String? {
-    //     let image = NSWorkspace.shared.icon(forFile: path)
-
-    //     // Resize image
-    //     let resizedImage = NSImage(size: NSSize(width: 32, height: 32))
-    //     resizedImage.lockFocus()
-    //     image.draw(
-    //         in: NSRect(x: 0, y: 0, width: 32, height: 32),
-    //         from: NSRect(x: 0, y: 0, width: image.size.width, height: image.size.height),
-    //         operation: .sourceOver,
-    //         fraction: 1.0)
-    //     resizedImage.unlockFocus()
-
-    //     // Convert to PNG
-    //     guard let tiffRepresentation = resizedImage.tiffRepresentation,
-    //         let bitmapImage = NSBitmapImageRep(data: tiffRepresentation),
-    //         let pngData = bitmapImage.representation(using: .png, properties: [:])
-    //     else {
-    //         return generateFallbackIcon(path: path)
-    //     }
-
-    //     // Base64 encode
-    //     let base64String = pngData.base64EncodedString()
-    //     return "data:image/png;base64,\(base64String)"
-    // }
 
     static func getAppIcon(path: String) -> String? {
         guard let image = getIcon(file: path) else {
