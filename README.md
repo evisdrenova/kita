@@ -60,9 +60,6 @@ xls -> read row by row or cell ranges
 // support '@' action like email, message, etc.
 // creates a new interface for you to do that
 
-// if i want the LLM to be easy to use i can just use ollama and point it a local server
-//https://github.com/pepperoni21/ollama-rs?tab=readme-ov-file#installation
-
 // update the watcher to also track individual files as well in addition to the parents of the files so that we can re-index changes to files
 
 // can't click and open sources
