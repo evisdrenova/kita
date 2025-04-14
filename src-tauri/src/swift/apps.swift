@@ -21,12 +21,10 @@ class AppHandler {
     
     for directory in applicationDirectories {
         
-        // Verify directory exists and is accessible
         var isDirectory: ObjCBool = false
         let exists = FileManager.default.fileExists(atPath: directory, isDirectory: &isDirectory)
 
         guard exists && isDirectory.boolValue else {
-            print("  Skipping invalid directory")
             continue
         }
     }
@@ -40,7 +38,6 @@ class AppHandler {
             includingPropertiesForKeys: [.isDirectoryKey, .nameKey, .isHiddenKey],
             options: [.skipsPackageDescendants]
         ) else {
-            print("Failed to create enumerator for directory: \(directory)")
             continue
         }
         
@@ -65,8 +62,7 @@ class AppHandler {
         }
         
     }
-    
-    // Remove duplicates and sort
+
     let uniqueApps = Array(Set(installedApps)).sorted { $0.name < $1.name }
     
     return uniqueApps
@@ -270,41 +266,4 @@ public func restartAppSwift(path: UnsafePointer<CChar>?) -> Bool {
     _ = semaphore.wait(timeout: .now() + 10)
     
     return result
-}
-
-func shouldFilterApp(name: String, path: String) -> Bool {
-    let excludePatterns = [
-        // Extremely specific exclusions
-        ".framework",
-        "Contents/Frameworks/",
-        "Contents/XPCServices/",
-        "Contents/PlugIns/",
-        "Helper",
-        "Agent",
-        "Crash Reporter",
-        "Updater",
-    ]
-    
-    func shouldExclude(_ str: String) -> Bool {
-        let matchedPatterns = excludePatterns.filter { pattern in
-            str.contains(pattern)
-        }
-        
-        if !matchedPatterns.isEmpty {
-            print("Excluding \(str) due to patterns: \(matchedPatterns)")
-            return true
-        }
-        
-        return false
-    }
-    
-    // Be very explicit about logging
-    print("Checking app: \(name)")
-    print("Full path: \(path)")
-    
-    let isExcluded = shouldExclude(name) || shouldExclude(path)
-    
-    print("Is excluded: \(isExcluded)")
-    
-    return isExcluded
 }

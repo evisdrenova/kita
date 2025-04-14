@@ -34,30 +34,9 @@ pub fn get_installed_apps() -> Result<Vec<AppMetadata>, String> {
     let all_installed_apps: Vec<AppMetadata> =
         serde_json::from_str(&apps_json).map_err(|e| e.to_string())?;
 
-    let filtered_apps: Vec<AppMetadata> = all_installed_apps
-        .into_iter()
-        .filter(|app| {
-            let name = &app.name;
-            let path = &app.path;
+    println!("instaleld apps: {:?}", all_installed_apps);
 
-            // Comprehensive filtering
-            !(name.contains("Helper")
-                || name.contains("Agent")
-                || name.ends_with("Assistant")
-                || name.starts_with("com.")
-                || name.starts_with("plugin_")
-                || name.starts_with(".")
-                || path.contains(".framework")
-                || path.contains("Contents/Frameworks/")
-                || path.contains("Contents/XPCServices/")
-                || path.contains("Contents/PlugIns/")
-                || name.contains("Crash Reporter")
-                || name.contains("Updater")
-                || name.contains("Diagnostics"))
-        })
-        .collect();
-
-    Ok(filtered_apps)
+    Ok(filter_apps(all_installed_apps))
 }
 
 pub fn get_running_apps() -> Result<Vec<AppMetadata>, String> {
@@ -80,30 +59,9 @@ pub fn get_running_apps() -> Result<Vec<AppMetadata>, String> {
     let all_running_apps: Vec<AppMetadata> =
         serde_json::from_str(&apps_json).map_err(|e| e.to_string())?;
 
-    let filtered_apps: Vec<AppMetadata> = all_running_apps
-        .into_iter()
-        .filter(|app| {
-            let name = &app.name;
-            let path = &app.path;
+    println!("running apps: {:?}", all_running_apps);
 
-            // Comprehensive filtering
-            !(name.contains("Helper")
-                || name.contains("Agent")
-                || name.ends_with("Assistant")
-                || name.starts_with("com.")
-                || name.starts_with("plugin_")
-                || name.starts_with(".")
-                || path.contains(".framework")
-                || path.contains("Contents/Frameworks/")
-                || path.contains("Contents/XPCServices/")
-                || path.contains("Contents/PlugIns/")
-                || name.contains("Crash Reporter")
-                || name.contains("Updater")
-                || name.contains("Diagnostics"))
-        })
-        .collect();
-
-    Ok(filtered_apps)
+    Ok(filter_apps(all_running_apps))
 }
 
 // pub fn get_app_icon(app_path: &str) -> Result<Option<String>, String> {
@@ -225,4 +183,32 @@ pub fn get_apps_data() -> Result<Vec<AppMetadata>, String> {
     println!("the combined apps: {:?}", combined_apps);
 
     Ok(combined_apps)
+}
+
+fn filter_apps(app: Vec<AppMetadata>) -> Vec<AppMetadata> {
+    let filtered_apps: Vec<AppMetadata> = app
+        .into_iter()
+        .filter(|app| {
+            let name = &app.name;
+            let path = &app.path;
+
+            !(name.contains("Helper")
+                || name.contains("Agent")
+                || name.ends_with("Assistant")
+                || name.starts_with("com.")
+                || name.starts_with("plugin_")
+                || name.starts_with(".")
+                || path.contains(".framework")
+                || path.contains("Contents/Frameworks/")
+                || path.contains("Contents/XPCServices/")
+                || path.contains("Contents/PlugIns/")
+                || path.contains("Contents/Helpers/")
+                || path.contains("/usr/libexec")
+                || name.contains("Crash Reporter")
+                || name.contains("Updater")
+                || name.contains("Diagnostics"))
+        })
+        .collect();
+
+    filtered_apps
 }
