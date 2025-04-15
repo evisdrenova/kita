@@ -118,7 +118,6 @@ export default function App() {
 
   // handles opening an app when the user selects it
   const handleAppSelect = useCallback(async (app: AppMetadata) => {
-    console.log("int he handle app select", app);
     await invoke<AppMetadata[]>("launch_or_switch_to_app", { app });
   }, []);
 

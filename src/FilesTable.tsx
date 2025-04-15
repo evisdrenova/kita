@@ -235,22 +235,18 @@ const TableRow = memo(
     };
 
     return (
-      <tr
-        onClick={handleClick}
-        className={cn(
-          isSelected ? "bg-muted" : "hover:bg-zinc-200 dark:hover:bg-zinc-800",
-          "transition-colors cursor-pointer rounded"
-        )}
-      >
-        {columns.map((column) => (
-          <td
-            key={column.key}
-            className="p-2"
-            style={{ width: `${column.width}%` }}
-          >
-            {renderCells(column)}
-          </td>
-        ))}
+      <tr onClick={handleClick}>
+        <div className="hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors cursor-pointer rounded">
+          {columns.map((column) => (
+            <td
+              key={column.key}
+              className="p-2"
+              style={{ width: `${column.width}%` }}
+            >
+              {renderCells(column)}
+            </td>
+          ))}
+        </div>
       </tr>
     );
   }

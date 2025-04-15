@@ -30,12 +30,8 @@ const columns: Column<AppMetadata>[] = [
           <Package className="h-4 w-4 mr-2" />
         )}
         <span className="text-sm truncate text-white">{app?.name}</span>
-
         {app?.pid && (
-          <div
-            className="relative flex items-center justify-center ml-2"
-            style={{ zIndex: -1 }}
-          >
+          <div className="relative flex items-center justify-center ml-2">
             <div className="absolute w-2 h-2 bg-green-500/30 rounded-full animate-ping" />
             <div className="relative w-[6px] h-[6px] bg-green-500 rounded-full shadow-lg shadow-green-500/50" />
           </div>
@@ -385,22 +381,18 @@ const TableRow = memo(
     };
 
     return (
-      <tr
-        onClick={handleClick}
-        className={cn(
-          isSelected ? "bg-muted" : "hover:bg-zinc-200 dark:hover:bg-zinc-800",
-          "transition-colors cursor-pointer rounded"
-        )}
-      >
-        {columns.map((column) => (
-          <td
-            key={column.key}
-            className="p-2"
-            style={{ width: `${column.width}%` }}
-          >
-            {renderCells(column)}
-          </td>
-        ))}
+      <tr onClick={handleClick}>
+        <div className="hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors cursor-pointer rounded">
+          {columns.map((column) => (
+            <td
+              key={column.key}
+              className="p-2"
+              style={{ width: `${column.width}%` }}
+            >
+              {renderCells(column)}
+            </td>
+          ))}
+        </div>
       </tr>
     );
   }

@@ -67,25 +67,6 @@
 //     Ok(())
 // }
 
-// // gets the app using the pid using objc bridging in rusts FFI (foreign function interface)
-// unsafe fn try_switch_to_pid(pid: u32) -> Result<(), String> {
-//     let cls: &objc::runtime::Class = objc::runtime::Class::get("NSRunningApplication")
-//         .ok_or("Failed to get NSRunningApplication class")?;
-
-//     let app_instance: *mut Object = msg_send![cls,
-//         runningApplicationWithProcessIdentifier: pid as i32];
-
-//     if app_instance.is_null() {
-//         return Err(format!("No application found with PID {}", pid));
-//     }
-
-//     // NSApplicationActivateAllWindows | NSApplicationActivateIgnoringOtherApps = 3
-//     let _: () = msg_send![app_instance, activateWithOptions: 3];
-
-//     Ok(())
-// }
-
-
 // #[tauri::command]
 // pub async fn restart_application(
 //     app: AppMetadata,

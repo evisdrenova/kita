@@ -1,6 +1,6 @@
 import React, { memo, useState } from "react";
 import { Section } from "./types/types";
-import { Layers2, ChevronDown } from "lucide-react";
+import { Layers2, ChevronDown, ChevronUp } from "lucide-react";
 import { Separator } from "./components/ui/separator";
 
 interface SectionNavProps {
@@ -30,13 +30,17 @@ const PaginatedSection = ({
   return (
     <div className="flex flex-col gap-1">
       {limitedComponent}
-      {shouldPaginate && !showMore && (section.counts || 0) > 5 && (
+      {shouldPaginate && (section.counts || 0) > 5 && (
         <button
-          onClick={() => setShowMore(true)}
-          className="text-xs  text-gray-400 hover:text-gray-200 flex items-center gap-1 py-1 self-start cursor-pointer"
+          onClick={() => setShowMore((prev) => !prev)}
+          className="text-xs  text-gray-400 hover:text-gray-200 flex items-center gap-1 py-1 self-start cursor-pointer pl-2"
         >
-          <ChevronDown className="w-3 h-3" />
-          Show {(section.counts || 0) - 5} more
+          {!showMore ? (
+            <ChevronDown className="w-3 h-3" />
+          ) : (
+            <ChevronUp className="w-3 h-3" />
+          )}
+          {!showMore ? `Show ${(section.counts || 0) - 5} more` : `Show less`}
         </button>
       )}
     </div>
