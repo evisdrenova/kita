@@ -59,9 +59,8 @@ const SectionNav = (props: SectionNavProps) => {
 
   return (
     <div className="flex flex-col">
-      <nav className="flex flex-row gap-2 border-b border-b-border sticky top-0 dark:bg-zinc-800">
+      <nav className="flex flex-row gap-2 border-b border-b-border sticky top-0 dark:bg-zinc-800 z-20">
         <div className="px-3 py-2 flex gap-2 overflow-auto scrollbar-none">
-          {/* All button*/}
           <NavButton
             key="all"
             section={{
@@ -73,6 +72,7 @@ const SectionNav = (props: SectionNavProps) => {
             isActive={activeSection === null}
             onClick={() => setActiveSection(null)}
           />
+          <div></div>
           {sections.map((section) => (
             <NavButton
               key={section.id}

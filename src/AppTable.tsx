@@ -380,19 +380,29 @@ const TableRow = memo(
       }
     };
 
+    // Create a styling approach that works with table structure
     return (
-      <tr onClick={handleClick}>
-        <div className="hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors cursor-pointer rounded">
-          {columns.map((column) => (
-            <td
-              key={column.key}
-              className="p-2"
-              style={{ width: `${column.width}%` }}
-            >
-              {renderCells(column)}
-            </td>
-          ))}
-        </div>
+      <tr
+        onClick={handleClick}
+        className={cn(
+          "hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors cursor-pointer mb-2",
+          isSelected ? "bg-muted" : ""
+        )}
+        style={{ borderRadius: "8px", overflow: "hidden" }}
+      >
+        {columns.map((column, index) => (
+          <td
+            key={column.key}
+            className={cn(
+              "p-2",
+              index === 0 ? "rounded-l" : "",
+              index === columns.length - 1 ? "rounded-r" : ""
+            )}
+            style={{ width: `${column.width}%` }}
+          >
+            {renderCells(column)}
+          </td>
+        ))}
       </tr>
     );
   }
