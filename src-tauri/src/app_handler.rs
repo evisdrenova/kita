@@ -123,7 +123,6 @@ pub async fn launch_or_switch_to_app(
     app: AppMetadata,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    // Try to switch if we have a PID
     if let Some(pid) = app.pid {
         let int3pid = pid as i32;
         let switched = unsafe { switch_to_app_swift(int3pid) };
@@ -195,6 +194,9 @@ pub async fn restart_application(
     // First, attempt to force quit if we have a PID
     if let Some(pid) = app.pid {
         let _ = force_quit_application(pid).await;
+
+        // Wait a moment for the app to fully quit
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
     }
 
     // Prepare path as C string
@@ -208,9 +210,31 @@ pub async fn restart_application(
         return Err(format!("Failed to restart application: {}", app.path));
     }
 
+    // Update the frontend with resource usage information after restart
+    let app_path = app.path.clone();
+    tokio::spawn(async move {
+        // Wait a bit for the app to start
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+        // Try to find the newly launched app
+        if let Ok(apps) = crate::app_handler::get_running_apps() {
+            if let Some(new_app) = apps.iter().find(|a| a.path == app_path) {
+                if let Some(new_pid) = new_app.pid {
+                    if let Ok(usage) = crate::resource_monitor::get_process_resource_usage(new_pid)
+                    {
+                        // Create updated app with resource data
+                        let mut updated_app = new_app.clone();
+                        updated_app.resource_usage = Some(usage);
+
+                        let _ = app_handle.emit("app-restarted", updated_app);
+                    }
+                }
+            }
+        }
+    });
+
     Ok(())
 }
-
 fn filter_apps(app: Vec<AppMetadata>) -> Vec<AppMetadata> {
     let filtered_apps: Vec<AppMetadata> = app
         .into_iter()

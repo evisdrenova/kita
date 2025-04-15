@@ -85,26 +85,6 @@
 //     Ok(())
 // }
 
-// #[tauri::command]
-// pub async fn force_quit_application(pid: u32) -> Result<(), String> {
-//     // On macOS, we can use the "kill" command to force quit apps
-//     match std::process::Command::new("kill")
-//         .args(["-9", &pid.to_string()])
-//         .status()
-//     {
-//         Ok(status) => {
-//             if status.success() {
-//                 Ok(())
-//             } else {
-//                 Err(format!(
-//                     "Failed to force quit application. Exit code: {:?}",
-//                     status.code()
-//                 ))
-//             }
-//         }
-//         Err(e) => Err(format!("Failed to execute kill command: {}", e)),
-//     }
-// }
 
 // #[tauri::command]
 // pub async fn restart_application(
