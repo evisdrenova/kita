@@ -17,7 +17,7 @@ export function useGetContacts() {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await invoke<Contact[]>("get_contacts");
+      const data = await invoke<Contact[]>("get_contacts_command");
       setContacts(data);
     } catch (err) {
       if (err instanceof Error) {

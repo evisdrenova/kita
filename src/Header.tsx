@@ -21,7 +21,7 @@ interface Props {
   contactData: Contact[];
 }
 
-const TOOLS = ["@signal", "@iMessage", "@email"];
+const COMMANDS = ["/text", "/email", "/call", "/search", "/find"];
 
 type modelStatus = "none" | "not-downloaded" | "ready";
 
@@ -48,14 +48,12 @@ export default function Header(props: Props) {
   // Autocomplete related states
   const [showAutocomplete, setShowAutocomplete] = useState<boolean>(false);
   const [autocompleteItems, setAutocompleteItems] = useState<string[]>([]);
-  const [autocompleteContacts, setAutocompleteContacts] = useState<Contact[]>();
   const [autocompleteType, setAutocompleteType] =
     useState<autocompleteType>(null);
   const [selectedAutocompleteIndex, setSelectedAutocompleteIndex] =
     useState<number>(0);
   const [cursorPosition, setCursorPosition] = useState<number>(0);
-  const [currentWord, setCurrentWord] = useState<string>("");
-  const [blockMode, setIsBlockMode] = useState<boolean>(false);
+  const [_, setCurrentWord] = useState<string>("");
 
   // Track the previous selected model ID to detect changes
   const previousModelIdRef = useRef<string | null>(null);
@@ -103,18 +101,18 @@ export default function Header(props: Props) {
       wordsBeforeCursor[wordsBeforeCursor.length - 1];
     setCurrentWord(currentWordBeingTyped);
 
-    // Check for @ autocomplete
+    // Check for slash command autocomplete at the beginning of input
     if (
-      currentWordBeingTyped.startsWith("@") &&
-      currentWordBeingTyped.length >= 1
+      currentWordBeingTyped.startsWith("/") &&
+      wordsBeforeCursor.length === 1
     ) {
       const query = currentWordBeingTyped.slice(1).toLowerCase();
-      const filteredTools = TOOLS.filter((tool) =>
-        tool.toLowerCase().includes(query)
+      const filteredCommands = COMMANDS.filter((command) =>
+        command.toLowerCase().includes(query)
       );
 
-      if (filteredTools.length > 0) {
-        setAutocompleteItems(filteredTools);
+      if (filteredCommands.length > 0) {
+        setAutocompleteItems(filteredCommands);
         setAutocompleteType("tools");
         setShowAutocomplete(true);
         setSelectedAutocompleteIndex(0);
@@ -122,19 +120,26 @@ export default function Header(props: Props) {
       }
     }
 
-    // Check for people name autocomplete - if the word doesn't start with @ and has at least 2 chars
+    // Check for contact autocomplete with @ symbol
     if (
-      !currentWordBeingTyped.startsWith("@") &&
+      currentWordBeingTyped.startsWith("@") &&
       currentWordBeingTyped.length >= 2
     ) {
-      const query = currentWordBeingTyped.toLowerCase();
-      const filteredPeople = contactData.filter((person) => {
-        let name = person.given_name + " " + person.family_name;
-        name.toLowerCase().includes(query);
+      const query = currentWordBeingTyped.slice(1).toLowerCase();
+      const filteredContacts = contactData.filter((contact) => {
+        const name =
+          `${contact.given_name} ${contact.family_name}`.toLowerCase();
+        return name.includes(query);
       });
 
-      if (filteredPeople.length > 0) {
-        setAutocompleteContacts(filteredPeople);
+      if (filteredContacts.length > 0) {
+        // Create display strings for contacts
+        const contactItems = filteredContacts.map(
+          (contact) => `@${contact.given_name} ${contact.family_name}`
+        );
+
+        setAutocompleteItems(contactItems);
+        setAutocompleteType("people");
         setShowAutocomplete(true);
         setSelectedAutocompleteIndex(0);
         return;
@@ -143,7 +148,7 @@ export default function Header(props: Props) {
 
     // If no matches or not triggering condition
     setShowAutocomplete(false);
-  }, [searchQuery]);
+  }, [searchQuery, contactData]);
 
   // Function to apply the selected autocomplete item
   const applyAutocomplete = (item: string) => {
@@ -400,10 +405,34 @@ export default function Header(props: Props) {
         return;
       }
 
-      if (e.key === "Tab" || e.key === "Enter") {
+      if (e.key === "Tab") {
         e.preventDefault();
         applyAutocomplete(autocompleteItems[selectedAutocompleteIndex]);
         return;
+      }
+
+      if (e.key === "Enter") {
+        e.preventDefault();
+
+        // If we have exactly one filtered item, apply it and continue with submission if it's a contact
+        if (autocompleteItems.length === 1) {
+          applyAutocomplete(autocompleteItems[0]);
+
+          // If this was a contact being selected, move to the next part
+          if (autocompleteType === "people") {
+            // Set a small timeout to allow the input to update before potentially submitting
+            setTimeout(() => {
+              if (inputRef.current) {
+                inputRef.current.focus();
+              }
+            }, 10);
+          }
+          return;
+        } else {
+          // If we have multiple items, just apply the selected one
+          applyAutocomplete(autocompleteItems[selectedAutocompleteIndex]);
+          return;
+        }
       }
 
       if (e.key === "Escape") {
@@ -437,10 +466,9 @@ export default function Header(props: Props) {
 
       // For RAG mode
       if (isRagMode && searchQuery.length > 1) {
-        // First check model status to be sure it's up to date
+        // RAG mode handling (unchanged)
         await checkModelStatus();
 
-        // Don't process if model status isn't ready
         if (modelStatus !== "ready") {
           setShowModelMissingPrompt(true);
           return;
@@ -454,9 +482,8 @@ export default function Header(props: Props) {
           { role: "user", content: userQuery },
         ]);
 
-        // Set the submitting flag before clearing search query
         isSubmitting.current = true;
-        setSearchQuery(">"); // Keep the ">" to maintain RAG mode
+        setSearchQuery(">");
         setIsProcessing(true);
 
         try {
@@ -486,8 +513,63 @@ export default function Header(props: Props) {
           inputRef.current?.focus();
         }
       } else {
-        // For normal mode - submit message to backend
-        await submitMessage();
+        // Process slash commands
+        if (searchQuery.startsWith("/")) {
+          const parts = searchQuery.split(" ");
+          const command = parts[0].toLowerCase();
+
+          // Extract command details for backend
+          let commandType = "";
+          let recipient = "";
+          let message = "";
+
+          if (
+            command === "/text" ||
+            command === "/email" ||
+            command === "/call"
+          ) {
+            commandType = command.substring(1); // Remove the slash
+
+            // Find recipient (marked with @)
+            const recipientIndex = parts.findIndex((part) =>
+              part.startsWith("@")
+            );
+
+            if (recipientIndex > 0) {
+              recipient = parts[recipientIndex].substring(1); // Remove the @
+
+              // Everything after the recipient is the message
+              message = parts.slice(recipientIndex + 1).join(" ");
+            } else {
+              // No recipient specified, use rest as message
+              message = parts.slice(1).join(" ");
+            }
+          } else if (command === "/search" || command === "/find") {
+            commandType = "search";
+            message = parts.slice(1).join(" ");
+          }
+
+          // Send the command to backend
+          try {
+            await invoke("handle_command", {
+              commandType,
+              recipient,
+              message,
+            });
+
+            setChatMessages((prev) => [
+              ...prev,
+              { role: "user", content: searchQuery },
+            ]);
+
+            setSearchQuery("");
+          } catch (error) {
+            console.error("Error processing command:", error);
+          }
+        } else {
+          // Normal message submission
+          await submitMessage();
+        }
       }
     }
 
@@ -545,7 +627,7 @@ export default function Header(props: Props) {
                 ? modelStatus === "ready"
                   ? "Ask a question about your documents..."
                   : "Please select or download a model first"
-                : "Type @ for tools or start typing a name..."
+                : "Type / for commands (e.g. /text @contact message)"
             }
             value={searchQuery}
             autoCorrect="off"
