@@ -51,6 +51,58 @@ pub fn get_running_apps() -> Result<Vec<AppMetadata>, String> {
     Ok(apps_response)
 }
 
+pub fn get_app_icon(app_path: &str) -> Result<Option<String>, String> {
+    let path_cstring =
+        CString::new(app_path).map_err(|_| "Failed to create C string".to_string())?;
+
+    let icon_ptr = unsafe { get_app_icon_swift(path_cstring.as_ptr()) };
+
+    if icon_ptr.is_null() {
+        return Ok(None);
+    }
+
+    let icon = unsafe {
+        let c_str = CStr::from_ptr(icon_ptr);
+        let result = c_str
+            .to_str()
+            .map_err(|_| "Invalid UTF-8".to_string())?
+            .to_owned();
+        free_string_swift(icon_ptr);
+        result
+    };
+
+    Ok(Some(icon))
+}
+
+fn filter_apps(app: Vec<AppMetadata>) -> Vec<AppMetadata> {
+    let filtered_apps: Vec<AppMetadata> = app
+        .into_iter()
+        .filter(|app| {
+            let name = &app.name;
+            let path = &app.path;
+
+            !(name.contains("Helper")
+                || name.contains("Agent")
+                || name.ends_with("Assistant")
+                || name.starts_with("com.")
+                || name.starts_with("plugin_")
+                || name.starts_with(".")
+                || path.contains(".framework")
+                || path.contains("Contents/Frameworks/")
+                || path.contains("Contents/XPCServices/")
+                || path.contains("Contents/PlugIns/")
+                || path.contains("Contents/Helpers/")
+                || path.contains("/usr/libexec")
+                || path.contains("System/Library/CoreServices/")
+                || name.contains("Crash Reporter")
+                || name.contains("Updater")
+                || name.contains("Diagnostics"))
+        })
+        .collect();
+
+    filtered_apps
+}
+
 #[tauri::command]
 pub fn get_apps_data() -> Result<Vec<AppMetadata>, String> {
     let apps_json_ptr = unsafe { get_combined_apps_swift() };
@@ -93,29 +145,6 @@ pub fn get_apps_data() -> Result<Vec<AppMetadata>, String> {
     });
 
     Ok(filter_apps(combined_apps))
-}
-
-pub fn get_app_icon(app_path: &str) -> Result<Option<String>, String> {
-    let path_cstring =
-        CString::new(app_path).map_err(|_| "Failed to create C string".to_string())?;
-
-    let icon_ptr = unsafe { get_app_icon_swift(path_cstring.as_ptr()) };
-
-    if icon_ptr.is_null() {
-        return Ok(None);
-    }
-
-    let icon = unsafe {
-        let c_str = CStr::from_ptr(icon_ptr);
-        let result = c_str
-            .to_str()
-            .map_err(|_| "Invalid UTF-8".to_string())?
-            .to_owned();
-        free_string_swift(icon_ptr);
-        result
-    };
-
-    Ok(Some(icon))
 }
 
 #[tauri::command]
@@ -234,32 +263,4 @@ pub async fn restart_application(
     });
 
     Ok(())
-}
-fn filter_apps(app: Vec<AppMetadata>) -> Vec<AppMetadata> {
-    let filtered_apps: Vec<AppMetadata> = app
-        .into_iter()
-        .filter(|app| {
-            let name = &app.name;
-            let path = &app.path;
-
-            !(name.contains("Helper")
-                || name.contains("Agent")
-                || name.ends_with("Assistant")
-                || name.starts_with("com.")
-                || name.starts_with("plugin_")
-                || name.starts_with(".")
-                || path.contains(".framework")
-                || path.contains("Contents/Frameworks/")
-                || path.contains("Contents/XPCServices/")
-                || path.contains("Contents/PlugIns/")
-                || path.contains("Contents/Helpers/")
-                || path.contains("/usr/libexec")
-                || path.contains("System/Library/CoreServices/")
-                || name.contains("Crash Reporter")
-                || name.contains("Updater")
-                || name.contains("Diagnostics"))
-        })
-        .collect();
-
-    filtered_apps
 }

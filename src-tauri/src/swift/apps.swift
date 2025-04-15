@@ -151,10 +151,13 @@ class AppHandler {
     // Switch to an app
     static func switchToApp(pid: Int32) -> Bool {
         guard let app = NSRunningApplication(processIdentifier: pid) else {
+            print("Failed to find NSRunningApplication with pid: \(pid)")
             return false
         }
 
-        return app.activate(options: [.activateAllWindows])
+        let activated = app.activate(options: [.activateAllWindows])
+
+        return activated
     }
 
     // Force quit an application

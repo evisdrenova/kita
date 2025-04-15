@@ -267,7 +267,7 @@ export default function AppTable(props: Props) {
               <tbody>
                 {processedApps.map((app) => (
                   <TableRow
-                    key={app.pid || app.name}
+                    key={app.pid || `${app.path}-${app.name}`}
                     app={app}
                     columns={columns}
                     onRowClick={onRowClick}
