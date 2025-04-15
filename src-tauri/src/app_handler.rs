@@ -2,6 +2,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+use tauri::Emitter;
 
 use crate::resource_monitor::AppResourceUsage;
 
@@ -14,10 +15,9 @@ pub struct AppMetadata {
     pub resource_usage: Option<AppResourceUsage>,
 }
 
-// TODO: finish up the restart and switch functions including the resource usage
-
 extern "C" {
     fn get_combined_apps_swift() -> *mut c_char;
+    fn get_running_apps_swift() -> *mut c_char;
     fn get_app_icon_swift(path: *const c_char) -> *mut c_char;
     fn switch_to_app_swift(pid: i32) -> bool;
     fn force_quit_app_swift(pid: i32) -> bool;
@@ -30,6 +30,27 @@ struct AppsResponse {
     running_apps: Vec<AppMetadata>,
     installed_apps: Vec<AppMetadata>,
 }
+
+pub fn get_running_apps() -> Result<Vec<AppMetadata>, String> {
+    let apps_json_ptr = unsafe { get_running_apps_swift() };
+    if apps_json_ptr.is_null() {
+        return Err("Failed to get apps".to_string());
+    }
+    let apps_json = unsafe {
+        let c_str = CStr::from_ptr(apps_json_ptr);
+        let result = c_str
+            .to_str()
+            .map_err(|_| "Invalid UTF-8".to_string())?
+            .to_owned();
+        free_string_swift(apps_json_ptr);
+        result
+    };
+
+    let apps_response = serde_json::from_str(&apps_json).map_err(|e| e.to_string())?;
+
+    Ok(apps_response)
+}
+
 #[tauri::command]
 pub fn get_apps_data() -> Result<Vec<AppMetadata>, String> {
     let apps_json_ptr = unsafe { get_combined_apps_swift() };
@@ -108,7 +129,17 @@ pub async fn launch_or_switch_to_app(
         let switched = unsafe { switch_to_app_swift(int3pid) };
 
         if switched {
-            // Optionally, you can add resource usage update logic here
+            tokio::spawn(async move {
+                // wait for app to be active
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+                if let Ok(usage) = crate::resource_monitor::get_process_resource_usage(pid) {
+                    let mut updated_app = app.clone();
+                    updated_app.resource_usage = Some(usage);
+                    let _ = app_handle.emit("app-activated", updated_app);
+                }
+            });
+
             return Ok(());
         }
     }
@@ -122,6 +153,25 @@ pub async fn launch_or_switch_to_app(
     if !restarted {
         return Err(format!("Failed to launch application: {}", app.path));
     }
+
+    // For newly launched apps, monitor and update resource usage
+    let app_path = app.path.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+        // Try to find the newly launched app in running apps
+        if let Ok(running_apps) = get_running_apps() {
+            if let Some(running_app) = running_apps.iter().find(|a| a.path == app_path) {
+                if let Some(pid) = running_app.pid {
+                    if let Ok(usage) = crate::resource_monitor::get_process_resource_usage(pid) {
+                        let mut updated_app = running_app.clone();
+                        updated_app.resource_usage = Some(usage);
+                        let _ = app_handle.emit("app-launched", updated_app);
+                    }
+                }
+            }
+        }
+    });
 
     Ok(())
 }
