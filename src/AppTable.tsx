@@ -305,25 +305,24 @@ const TableRow = memo(
       async (e: React.MouseEvent) => {
         e.stopPropagation();
         if (!app.pid) return;
-
+        // we create a loading toast that doesn't go away until we get a success or error message from the backend which then replaces the loading toast
         try {
           setIsKilling(true);
-          // Show a loading toast while terminating
           const loadingToastId = successToast(`Terminating ${app.name}...`, {
-            duration: Infinity, // Don't auto-dismiss
+            duration: Infinity,
             position: "bottom-right",
           });
 
           try {
             await invoke("force_quit_application", { pid: app.pid });
             successToast(`Successfully terminated ${app.name}`, {
-              id: loadingToastId, // Replace the loading toast
+              id: loadingToastId,
               duration: 3000,
             });
             await refreshApps();
           } catch (error) {
             errorToast(`Failed to terminate ${app.name}: ${error}`, {
-              id: loadingToastId, // Replace the loading toast
+              id: loadingToastId,
               duration: 3000,
             });
           }
