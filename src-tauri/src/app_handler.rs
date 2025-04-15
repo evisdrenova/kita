@@ -22,6 +22,7 @@ extern "C" {
     fn switch_to_app_swift(pid: i32) -> bool;
     fn force_quit_app_swift(pid: i32) -> bool;
     fn restart_app_swift(path: *const c_char) -> bool;
+    fn check_process_running_swift(pid: i32) -> bool;
     fn free_string_swift(pointer: *mut c_char);
 }
 
@@ -206,13 +207,45 @@ pub async fn launch_or_switch_to_app(
 
 #[tauri::command]
 pub async fn force_quit_application(pid: u32) -> Result<(), String> {
+    // Initial attempt to force quit
     let result = unsafe { force_quit_app_swift(pid as i32) };
 
-    if result {
-        Ok(())
-    } else {
-        Err(format!("Failed to force quit application with PID {}", pid))
+    if !result {
+        return Err(format!(
+            "Failed to initiate termination for application with PID {}",
+            pid
+        ));
     }
+
+    // Now poll to see if the application has actually terminated
+    // Define a timeout (5 seconds)
+    // the swift .terminate() method sends a kill signal to the app, but the app might be saving data and take time to close, so we poll it to see if the process is still running, since we can't call async functions from rust to swift
+    let timeout = std::time::Duration::from_secs(5);
+    let start_time = std::time::Instant::now();
+
+    // Poll at regular intervals
+    let poll_interval = std::time::Duration::from_millis(200);
+
+    while start_time.elapsed() < timeout {
+        // Check if the process is still running
+        if !is_process_running(pid) {
+            // Process has terminated successfully
+            return Ok(());
+        }
+
+        // Wait before checking again
+        tokio::time::sleep(poll_interval).await;
+    }
+
+    // If we get here, we timed out waiting for the process to terminate
+    Err(format!(
+        "Timed out waiting for application with PID {} to terminate",
+        pid
+    ))
+}
+
+fn is_process_running(pid: u32) -> bool {
+    unsafe { check_process_running_swift(pid as i32) }
 }
 
 #[tauri::command]

@@ -305,12 +305,30 @@ const TableRow = memo(
       async (e: React.MouseEvent) => {
         e.stopPropagation();
         if (!app.pid) return;
+
         try {
           setIsKilling(true);
-          await invoke("force_quit_application", { pid: app.pid });
-          successToast(`Successfully quit: ${app.name}`);
-          await refreshApps();
+          // Show a loading toast while terminating
+          const loadingToastId = successToast(`Terminating ${app.name}...`, {
+            duration: Infinity, // Don't auto-dismiss
+            position: "bottom-right",
+          });
+
+          try {
+            await invoke("force_quit_application", { pid: app.pid });
+            successToast(`Successfully terminated ${app.name}`, {
+              id: loadingToastId, // Replace the loading toast
+              duration: 3000,
+            });
+            await refreshApps();
+          } catch (error) {
+            errorToast(`Failed to terminate ${app.name}: ${error}`, {
+              id: loadingToastId, // Replace the loading toast
+              duration: 3000,
+            });
+          }
         } catch (error) {
+          console.error("Error in force quit process:", error);
           errorToast(`Failed to quit ${app.name}`);
         } finally {
           setIsKilling(false);

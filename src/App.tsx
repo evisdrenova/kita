@@ -467,8 +467,10 @@ export default function App() {
   );
   // refreshes app data
   const refreshApps = useCallback(async () => {
+    console.log("Refreshing apps...");
     try {
       const appData = await invoke<AppMetadata[]>("get_apps_data");
+      console.log("New app data:", appData);
       setAppsData(appData);
     } catch (err) {
       console.error("Failed to refresh apps:", err);

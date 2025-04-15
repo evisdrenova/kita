@@ -196,6 +196,10 @@ class AppHandler {
 
 }
 
+@_cdecl("check_process_running_swift")
+public func checkProcessRunning(pid: Int32) -> Bool {
+    return NSRunningApplication(processIdentifier: pid) != nil
+}
 // C-compatible function to get installed apps as JSON
 @_cdecl("get_installed_apps_swift")
 public func getInstalledAppsSwift() -> UnsafeMutablePointer<CChar>? {
