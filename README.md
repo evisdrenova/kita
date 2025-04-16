@@ -67,3 +67,5 @@ xls -> read row by row or cell ranges
 // find a way to prompt native mac permission window for contacts since it's not prompting but that's probably because we denied permission and when we do that it doesn't show it again
 
 // i think in an initial page, we ask the user what they want to do, liek email people, message peoplem, etc. and then configure from there? or when the user does @imessage for the first time, we can prompt them then
+
+// for the file watcher - consider splitting out the dierctories from the filenames into two tables and index the directories since the watcher only needs the unqiue set of parent directorues

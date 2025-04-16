@@ -20,7 +20,7 @@ interface Props {
   contactData: Contact[];
 }
 
-const COMMANDS = ["/text", "/email", "/call", "/search", "/find"];
+const COMMANDS = ["/text", "/email"];
 
 export type modelStatus = "none" | "not-downloaded" | "ready";
 
@@ -644,7 +644,7 @@ export default function Header(props: Props) {
 
         {/* Autocomplete dropdown */}
         {showAutocomplete && autocompleteItems.length > 0 && (
-          <div className="fixed mt-8 z-[100] text-gray-800 dark:text-gray-100 bg-background border border-border rounded-md shadow-lg max-h-60 overflow-y-auto">
+          <div className="fixed mt-8 z-40 text-gray-800 dark:text-gray-100 bg-background border border-border rounded-md shadow-lg max-h-60 overflow-y-auto">
             <ul className="py-1 z-50">
               {autocompleteItems.map((item, index) => (
                 <li

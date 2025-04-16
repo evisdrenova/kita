@@ -97,7 +97,7 @@ pub enum FileProcessorError {
 
 #[derive(Clone)]
 pub struct FileProcessor {
-    pub db_path: PathBuf, // sqlite db path - TODO: convert to db pool using r2d2_rusqlite
+    pub db_path: PathBuf,
     pub concurrency_limit: usize,
 }
 

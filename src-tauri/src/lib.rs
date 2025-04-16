@@ -27,11 +27,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let db_path = database_handler::init_database(app.app_handle().clone())?;
-            let db_path_str = db_path.to_string_lossy().to_string();
+            let db_path_str = &db_path.to_string_lossy();
 
             settings::init_settings(&db_path_str, app.app_handle().clone())?;
             file_processor::init_file_processor(&db_path_str, 4, app.app_handle().clone())?;
-            file_watcher::init_file_watcher(app)?;
+            file_watcher::init_file_watcher(app, &db_path)?;
             resource_monitor::init_resource_monitor(app)?;
             vectordb_manager::init_vector_db(app)?;
             // server::init_server(app)?;
