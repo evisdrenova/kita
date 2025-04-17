@@ -44,8 +44,6 @@ pub fn init_file_watcher(app: &tauri::App, db_path: &Path) -> AppResult<()> {
     let initial_state = Arc::new(Mutex::new(Option::<WatcherState>::None));
     app.manage(initial_state);
 
-    println!("watched_roots: {:?}", watched_roots);
-
     println!(
         "File watcher initialized with {} watched directories",
         watched_roots.len()
@@ -99,8 +97,8 @@ pub fn start_watcher_service(app_handle: AppHandle) -> AppResult<()> {
     let watcher_mutex = Arc::new(std::sync::Mutex::new(watcher));
     app_handle.manage(watcher_mutex.clone());
 
-    // channel for app events like indexing complete so watcher can work
-    let (app_event_tx, app_event_rx) = tokio::sync::mpsc::channel::<Vec<String>>(5); // Channel for Vec<String> payloads
+    // // channel for app events like indexing complete so watcher can work
+    // let (app_event_tx, app_event_rx) = tokio::sync::mpsc::channel::<Vec<String>>(5); // Channel for Vec<String> payloads
 
     // Set up watches for all directories in the WatcherState
     let watcher_state = app_handle.state::<Arc<Mutex<Option<WatcherState>>>>();
@@ -115,6 +113,7 @@ pub fn start_watcher_service(app_handle: AppHandle) -> AppResult<()> {
         }
     };
 
+    //iterate through the directories and start watching them
     let mut success_count = 0;
     {
         let mut watcher_guard = watcher_mutex.lock().unwrap();
@@ -175,48 +174,6 @@ pub fn start_watcher_service(app_handle: AppHandle) -> AppResult<()> {
 
     println!("File Watcher Service started.");
     Ok(())
-
-    // Listen for Tauri "indexing_complete" events and forward them to app_event_tx form file_processor so that the watcher can start watching on a given root folder
-    // let app_event_tx_clone = app_event_tx.clone();
-    // app_handle.listen("indexing_complete", move |event| {
-    //     println!("Received 'indexing_complete' Tauri event.");
-    //     let paths_str = event.payload();
-    //     match serde_json::from_str::<Vec<String>>(paths_str) {
-    //         Ok(paths) => {
-    //             println!("Forwarding {} indexed paths to watcher task.", paths.len());
-    //             // Use try_send or blocking_send depending on requirements
-    //             if let Err(e) = app_event_tx_clone.try_send(paths) {
-    //                 error!(
-    //                     "Failed to send indexing_complete payload to watcher task: {}",
-    //                     e
-    //                 );
-    //             }
-    //         }
-    //         Err(e) => error!("Failed to parse indexing_complete payload: {}", e),
-    //     }
-    // });
-
-    // Spawn the main event processing loop
-    // let watcher_state_arc = app_handle
-    //     .state::<Arc<Mutex<WatcherState>>>()
-    //     .inner()
-    //     .clone();
-
-    // let app_handle_clone_processor = app_handle.clone();
-    // tokio::spawn(async move {
-    //     println!("Watcher event processing task started.");
-    //     process_combined_events(
-    //         fs_event_rx,
-    //         app_event_rx,
-    //         app_handle_clone_processor,
-    //         watcher_state_arc,
-    //     )
-    //     .await;
-    //     println!("Watcher event processing task finished.");
-    // });
-
-    // println!("File Watcher Service started.");
-    // Ok(())
 }
 
 async fn process_combined_events(

@@ -194,16 +194,22 @@ impl FileProcessor {
     
         // When process is complete, emit an event with the paths to watch
         if success {
+            println!("successfully processed all files during index");
             // Convert the directory paths to strings for the event payload
             let dir_paths: Vec<String> = unique_directories
-                .iter()
-                .map(|path| path.to_string_lossy().to_string())
-                .collect();
-            
-            // Emit the indexing_complete event with directory paths
-            if let Err(e) = app_handle.emit("indexing_complete", serde_json::to_string(&dir_paths).unwrap()) {
-                println!("Warning: Failed to emit indexing_complete event: {}", e);
-            }
+            .iter()
+            .map(|path| path.to_string_lossy().to_string())
+            .collect();
+        
+        // Emit the indexing_complete event with directory paths
+        // Don't serialize the vector again - Tauri will handle that
+        if let Err(e) = app_handle.emit("indexing_complete", &dir_paths) {
+            println!("Warning: Failed to emit indexing_complete event: {}", e);
+        } else {
+            println!("Successfully emitted indexing_complete event with {} paths", dir_paths.len());
+        }
+
+            println!("successfully emitted indexing_complete event");
         }
     
         let result = serde_json::json!({
@@ -886,27 +892,20 @@ async fn save_directories_to_db(
                 "#,
             )?;
 
-            // Start a transaction for faster batch insertion
             let tx = conn.transaction()?;
 
             {
-                // Create a new scope for stmt
-                // Prepare the statement once for reuse
                 let mut stmt = tx.prepare(
                     r#"
                     INSERT OR IGNORE INTO directories (path, created_at, updated_at)
                     VALUES (?1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
                     "#,
                 )?;
-            
-                // Insert each directory
+    
                 for dir_path in dirs {
                     stmt.execute(params![dir_path])?;
                 }
-                // stmt is dropped here at the end of the scope
             }
-            
-            // Now tx can be committed since stmt is no longer borrowing it
             tx.commit()?;
 
             Ok(())
