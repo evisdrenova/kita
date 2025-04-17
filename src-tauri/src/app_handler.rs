@@ -47,7 +47,8 @@ pub fn get_running_apps() -> Result<Vec<AppMetadata>, String> {
         result
     };
 
-    let apps_response = serde_json::from_str(&apps_json).map_err(|e| e.to_string())?;
+    let apps_response: Vec<AppMetadata> =
+        serde_json::from_str(&apps_json).map_err(|e| e.to_string())?;
 
     Ok(apps_response)
 }
@@ -111,6 +112,8 @@ pub fn get_apps_data() -> Result<Vec<AppMetadata>, String> {
     if apps_json_ptr.is_null() {
         return Err("Failed to get apps".to_string());
     }
+
+    println!("apps: {:?}", apps_json_ptr);
 
     let apps_json = unsafe {
         let c_str = CStr::from_ptr(apps_json_ptr);

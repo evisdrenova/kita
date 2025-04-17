@@ -283,14 +283,17 @@ export default function App() {
   useEffect(() => {
     const initialize = async () => {
       try {
-        const appData = await invoke<AppMetadata[]>("get_apps_data");
+        // Run these two queries in parallel
+        const [appData, filesData] = await Promise.all([
+          invoke<AppMetadata[]>("get_apps_data"),
+          invoke<FileMetadata[]>("get_files_data", { query: "" }),
+        ]);
+
         setAppsData(appData);
 
-        const filesData = await invoke<FileMetadata[]>("get_files_data", {
-          query: "",
-        });
+        console.log("got apps data");
         setFilesData(filesData);
-
+        console.log("got files data");
         const pids = appData
           .filter((app) => app.pid != null)
           .map((app) => app.pid);
@@ -570,6 +573,8 @@ export default function App() {
   // memoized full section array
   const sections: Section[] = useMemo(() => {
     const sortedApps = sortAppsByRunningStatusAndName(filteredApps);
+
+    console.log("apps", sortedApps);
 
     return [
       {

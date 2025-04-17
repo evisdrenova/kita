@@ -88,10 +88,12 @@ class AppHandler {
                     return nil
                 }
 
+                // pid can be negative if the app is in an error state or transition state, here we check that
+                let validPid: Int32? = app.processIdentifier > 0 ? app.processIdentifier : nil
                 return AppMetadata(
                     name: appName,
                     path: bundlePath,
-                    pid: app.processIdentifier,
+                    pid: validPid,
                     icon: nil,
                     resource_usage: nil
                 )

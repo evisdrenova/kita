@@ -87,8 +87,6 @@ pub fn get_contacts() -> Result<Vec<Contact>, ContactError> {
         result
     };
 
-    println!("contact json:{:?}", &contacts_json);
-
     // Check if we got an error response
     if contacts_json.starts_with("{\"error\":") {
         let error_msg = contacts_json
