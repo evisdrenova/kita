@@ -115,13 +115,16 @@ impl FileProcessor {
         on_progress: impl Fn(ProcessingStatus) + Send + Sync + Clone + 'static,
         app_handle: AppHandle,
     ) -> Result<serde_json::Value, FileProcessorError> {
-        println!("The paths {:?}", paths);
-
-        // get all file paths that need to be processed
-        let files: Vec<FileMetadata> = self.collect_all_files(&paths).await?;
+        println!("Processing paths: {:?}", paths);
+    
+        // Get all file paths and directories that need to be processed
+        let (files, unique_directories) = self.collect_all_files(&paths).await?;
         let total_files: usize = files.len();
-
-        // early return if no files
+        let total_directories: usize = unique_directories.len();
+    
+        println!("Found {} files and {} unique directories", total_files, total_directories);
+    
+        // Early return if no files
         if total_files == 0 {
             return Ok(serde_json::json!({
                 "success": true,
@@ -129,29 +132,36 @@ impl FileProcessor {
                 "errors": []
             }));
         }
-
-        // create new semaphore to handle concurrency limits
+    
+        // First, save all directories to the database (as a batch for efficiency)
+        if !unique_directories.is_empty() {
+            println!("Saving {} directories to database", unique_directories.len());
+            if let Err(e) = save_directories_to_db(self.db_path.clone(), &unique_directories).await {
+                return Err(FileProcessorError::Other(format!("Failed to save directories: {}", e)));
+            }
+        }
+    
+        // Create new semaphore to handle concurrency limits
         let sem = Arc::new(Semaphore::new(self.concurrency_limit));
-
         let num_processed_files = Arc::new(AtomicUsize::new(0));
-
-        // channel to collect errors
+    
+        // Channel to collect errors
         let (err_tx, mut err_rx) = tokio::sync::mpsc::unbounded_channel();
-
         let mut task_handles = Vec::with_capacity(total_files);
-
+    
+        // Now process files with concurrency
         for file in &files {
-            // semaphore is shared but each task needs its own reference for concurrency limit
+            // Semaphore is shared but each task needs its own reference for concurrency limit
             let permit = sem.clone();
-            // each task needs a reference to the current process files so it can update it
+            // Each task needs a reference to the current process files so it can update it
             let pc = num_processed_files.clone();
-            // task needs its own channel sender for errors
+            // Task needs its own channel sender for errors
             let err_sender: UnboundedSender<(String, String)> = err_tx.clone();
-            // each task needs a reference to the processor object to call process function
+            // Each task needs a reference to the processor object to call process function
             let this = self.clone();
-            // each task needs its own reference to the progress function to update it
+            // Each task needs its own reference to the progress function to update it
             let progress_fn = on_progress.clone();
-
+    
             let task_handle: task::JoinHandle<()> = create_path_embedding(
                 this.db_path,
                 file,
@@ -162,14 +172,14 @@ impl FileProcessor {
                 progress_fn,
                 app_handle.clone(),
             );
-
+    
             task_handles.push(task_handle);
         }
-
+    
         // Wait for all tasks and process results
         drop(err_tx);
         futures::future::join_all(task_handles).await;
-
+    
         // Collect errors with file paths
         let mut detailed_errors = Vec::new();
         while let Ok((file_path, error_msg)) = err_rx.try_recv() {
@@ -178,32 +188,53 @@ impl FileProcessor {
                 "error": error_msg
             }));
         }
-
+    
         let success = detailed_errors.is_empty();
         let processed_count = num_processed_files.load(Ordering::SeqCst);
-
+    
+        // When process is complete, emit an event with the paths to watch
+        if success {
+            // Convert the directory paths to strings for the event payload
+            let dir_paths: Vec<String> = unique_directories
+                .iter()
+                .map(|path| path.to_string_lossy().to_string())
+                .collect();
+            
+            // Emit the indexing_complete event with directory paths
+            if let Err(e) = app_handle.emit("indexing_complete", serde_json::to_string(&dir_paths).unwrap()) {
+                println!("Warning: Failed to emit indexing_complete event: {}", e);
+            }
+        }
+    
         let result = serde_json::json!({
             "success": success,
             "totalFiles": total_files,
             "processedFiles": processed_count,
+            "totalDirectories": total_directories,
             "errors": detailed_errors
         });
-
+    
         Ok(result)
     }
 
     /// Given a vector of paths, this walks the tree and collects all children paths
+    /// Given a vector of paths, this walks the tree and collects all children paths and their parent directories
     async fn collect_all_files(
         &self,
         paths: &[String],
-    ) -> Result<Vec<FileMetadata>, FileProcessorError> {
+    ) -> Result<(Vec<FileMetadata>, HashSet<PathBuf>), FileProcessorError> {
         let path_vec: Vec<String> = paths.to_vec();
 
         task::spawn_blocking(move || {
             let mut all_files: Vec<FileMetadata> = Vec::new();
+            let mut unique_directories: HashSet<PathBuf> = HashSet::new();
+
             for path_str in path_vec {
                 let path: &Path = Path::new(&path_str);
                 if path.is_dir() {
+                    // Add the root directory itself
+                    unique_directories.insert(PathBuf::from(path));
+
                     for entry in WalkDir::new(path) {
                         let entry: walkdir::DirEntry = match entry {
                             Ok(e) => e,
@@ -223,8 +254,16 @@ impl FileProcessor {
                         if entry.file_type().is_file() {
                             // Check if the file has a valid extension before processing
                             if is_valid_file_extension(entry.path()) {
+                                // Add the parent directory
+                                if let Some(parent) = entry.path().parent() {
+                                    unique_directories.insert(PathBuf::from(parent));
+                                }
+
                                 let _ = get_file_metadata(entry.path(), &mut all_files);
                             }
+                        } else if entry.file_type().is_dir() {
+                            // Add all directories to our set
+                            unique_directories.insert(entry.path().to_path_buf());
                         }
                     }
                 } else {
@@ -237,11 +276,16 @@ impl FileProcessor {
 
                     // Check if the file has a valid extension before processing
                     if is_valid_file_extension(path) {
+                        // Add the parent directory
+                        if let Some(parent) = path.parent() {
+                            unique_directories.insert(PathBuf::from(parent));
+                        }
+
                         let _ = get_file_metadata(path, &mut all_files);
                     }
                 }
             }
-            Ok::<_, FileProcessorError>(all_files)
+            Ok::<_, FileProcessorError>((all_files, unique_directories))
         })
         .await
         .map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?
@@ -358,14 +402,53 @@ async fn save_file_to_db(
                 PRAGMA synchronous = NORMAL;
                 "#,
             )?;
+            
+            // Get the filename part
+            let path = Path::new(&file.base.path);
+            let filename = path.file_name()
+                .map(|f| f.to_string_lossy().to_string())
+                .unwrap_or_else(|| file.base.name.clone());
+            
+            // Get the parent directory
+            let parent_path = path.parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|| String::from(""));
+            
+            // Get directory_id (it should already exist from the batch insert)
+            let directory_id: i64 = match conn.query_row(
+                "SELECT id FROM directories WHERE path = ?1",
+                [&parent_path],
+                |row| row.get(0),
+            ) {
+                Ok(id) => id,
+                Err(rusqlite::Error::QueryReturnedNoRows) => {
+                    // Directory not found - insert it as a fallback
+                    conn.execute(
+                        r#"
+                        INSERT OR IGNORE INTO directories (path, created_at, updated_at)
+                        VALUES (?1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                        "#,
+                        params![parent_path],
+                    )?;
+                    
+                    conn.query_row(
+                        "SELECT id FROM directories WHERE path = ?1",
+                        [&parent_path],
+                        |row| row.get(0),
+                    )?
+                },
+                Err(e) => return Err(FileProcessorError::Db(e)),
+            };
 
-            // Insert file metadata
+            // Insert file metadata with directory_id
             conn.execute(
                 r#"
-                INSERT OR IGNORE INTO files (path, name, extension, size, category, created_at, updated_at)
-                VALUES (?1, ?2, ?3, ?4, ?5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                INSERT OR IGNORE INTO files (directory_id, filename, path, name, extension, size, category, created_at, updated_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
                 "#,
                 params![
+                    directory_id,
+                    filename,
                     file.base.path,
                     file.base.name,
                     file.extension,
@@ -772,4 +855,63 @@ pub fn is_valid_file_extension(path: &Path) -> bool {
         }
     }
     false
+}
+
+/// Saves directories to the database, handling duplicates via the UNIQUE constraint
+async fn save_directories_to_db(
+    db_path: PathBuf,
+    directories: &HashSet<PathBuf>,
+) -> Result<(), FileProcessorError> {
+    if directories.is_empty() {
+        return Ok(());
+    }
+
+    // Convert directories to strings for insertion
+    let directories_vec: Vec<String> = directories
+        .iter()
+        .map(|path| path.to_string_lossy().to_string())
+        .collect();
+
+    task::spawn_blocking({
+        let dirs = directories_vec.clone();
+
+        move || -> Result<(), FileProcessorError> {
+            let mut conn = Connection::open(db_path).map_err(|e| FileProcessorError::Db(e))?;
+
+            // Set pragmas for better performance
+            conn.execute_batch(
+                r#"
+                PRAGMA journal_mode = WAL;
+                PRAGMA synchronous = NORMAL;
+                "#,
+            )?;
+
+            // Start a transaction for faster batch insertion
+            let tx = conn.transaction()?;
+
+            {
+                // Create a new scope for stmt
+                // Prepare the statement once for reuse
+                let mut stmt = tx.prepare(
+                    r#"
+                    INSERT OR IGNORE INTO directories (path, created_at, updated_at)
+                    VALUES (?1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                    "#,
+                )?;
+            
+                // Insert each directory
+                for dir_path in dirs {
+                    stmt.execute(params![dir_path])?;
+                }
+                // stmt is dropped here at the end of the scope
+            }
+            
+            // Now tx can be committed since stmt is no longer borrowing it
+            tx.commit()?;
+
+            Ok(())
+        }
+    })
+    .await
+    .map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?
 }

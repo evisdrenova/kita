@@ -44,6 +44,8 @@ pub fn init_file_watcher(app: &tauri::App, db_path: &Path) -> AppResult<()> {
     let initial_state = Arc::new(Mutex::new(Option::<WatcherState>::None));
     app.manage(initial_state);
 
+    println!("watched_roots: {:?}", watched_roots);
+
     println!(
         "File watcher initialized with {} watched directories",
         watched_roots.len()
@@ -56,12 +58,12 @@ fn extract_watch_directories_from_db(db_path: &Path) -> Result<HashSet<PathBuf>,
     let conn = Connection::open(db_path)?;
 
     // extract unique parent directories
-    // TODO: we might want to just store these in another table when we do the indexing so it's easier and faster to get
-    let mut stmt = conn.prepare("
-        SELECT DISTINCT 
-            substr(path, 1, length(path) - length(substr(path, instr(path, '/', -1) + 1))) AS parent_dir 
-        FROM files
-    ")?;
+    let mut stmt = conn.prepare(
+        "
+        SELECT id, path
+        FROM directories
+    ",
+    )?;
 
     let dirs = stmt.query_map([], |row| row.get::<_, String>(0))?;
 

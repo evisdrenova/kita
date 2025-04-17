@@ -28,15 +28,25 @@ pub fn init_database(app_handle: AppHandle) -> AppResult<std::path::PathBuf> {
         }
     };
 
+    let directories_table = r#"
+    CREATE TABLE IF NOT EXISTS directories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT UNIQUE,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );"#;
+
     let files_table = r#"CREATE TABLE IF NOT EXISTS files (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            directory_id INTEGER NOT NULL,
             path TEXT UNIQUE,
             name TEXT,
             extension TEXT,
             size INTEGER,
             category TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+             FOREIGN KEY (directory_id) REFERENCES directories (id)
         );"#;
 
     let settings_table = r#"CREATE TABLE IF NOT EXISTS settings (
@@ -51,7 +61,7 @@ pub fn init_database(app_handle: AppHandle) -> AppResult<std::path::PathBuf> {
             content=''
         );"#;
 
-    let statements = vec![files_table, settings_table, fts_table];
+    let statements = vec![directories_table, files_table, settings_table, fts_table];
 
     for (i, stmt) in statements.iter().enumerate() {
         if let Err(e) = conn.execute(stmt, []) {

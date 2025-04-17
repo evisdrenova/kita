@@ -113,8 +113,6 @@ pub fn get_apps_data() -> Result<Vec<AppMetadata>, String> {
         return Err("Failed to get apps".to_string());
     }
 
-    println!("apps: {:?}", apps_json_ptr);
-
     let apps_json = unsafe {
         let c_str = CStr::from_ptr(apps_json_ptr);
         let result = c_str
