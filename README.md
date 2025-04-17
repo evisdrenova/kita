@@ -68,4 +68,4 @@ xls -> read row by row or cell ranges
 
 // i think in an initial page, we ask the user what they want to do, liek email people, message peoplem, etc. and then configure from there? or when the user does @imessage for the first time, we can prompt them then
 
-// for the file watcher - consider splitting out the dierctories from the filenames into two tables and index the directories since the watcher only needs the unqiue set of parent directorues
+// update the progress tracker for the indexer since it's not working correctly

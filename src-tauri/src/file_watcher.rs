@@ -60,8 +60,7 @@ fn extract_watch_directories_from_db(db_path: &Path) -> Result<HashSet<PathBuf>,
     // extract unique parent directories
     let mut stmt = conn.prepare(
         "
-        SELECT id, path
-        FROM directories
+        SELECT path FROM directories
     ",
     )?;
 
@@ -72,9 +71,7 @@ fn extract_watch_directories_from_db(db_path: &Path) -> Result<HashSet<PathBuf>,
     for dir_result in dirs {
         if let Ok(dir_str) = dir_result {
             let path = PathBuf::from(dir_str);
-            if path.is_dir() {
-                watch_dirs.insert(path);
-            }
+            watch_dirs.insert(path);
         }
     }
 
