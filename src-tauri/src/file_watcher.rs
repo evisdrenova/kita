@@ -13,7 +13,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Listener, Manager};
+use tauri::{AppHandle, Emitter, Listener, Manager};
 use tokio::select;
 use tokio::sync::mpsc::Receiver;
 use tokio::task;
@@ -269,10 +269,15 @@ async fn process_combined_events(
                             match processor.process_paths(
                                 paths_str.clone(),
                                 progress_handler,
-                                app_handle_clone,
+                                app_handle_clone.clone(),
                             ).await {
                                 Ok(_) => {
                                     println!("Successfully processed batch: {:?}", all_paths_to_process);
+                                    if let Err(e) = app_handle_clone.emit("files-updated", ()) {
+                                        error!("Failed to emit files-updaede event: {}", e);
+                                    } else{
+                                        println!("Emitted files-updated event");
+                                    }
                                 },
                                 Err(e) => error!("Error processing batch {:?}: {:?}", all_paths_to_process, e),
                             }
@@ -342,6 +347,11 @@ async fn process_combined_events(
                                                 path_string.clone(), db_path_clone,
                                             ).await {
                                                 error!("Failed removal process for {}: {:?}", path_string, e);
+                                            } else {
+                                                // Emit event after successful file removal
+                                                if let Err(e) = app_handle.emit("files-updated", ()) {
+                                                    error!("Failed to emit files-updated event after removal: {}", e);
+                                                }
                                             }
                                         });
                                     }
