@@ -256,10 +256,7 @@ async fn process_combined_events(
 
                         tokio::spawn(async move {
                             let processor = FileProcessor { db_path, concurrency_limit };
-                            let handle_for_progress = app_handle_clone.clone();
-                            let progress_handler = move |status: ProcessingStatus|
-                            // emit progress events
-                            { /* ... emit ... */ };
+                            let progress_handler = move |_status: ProcessingStatus| { /* do nothing */ };
                             let paths_str: Vec<String> = all_paths_to_process
                                 .iter()
                                 .map(|p| p.to_string_lossy().to_string())
@@ -342,6 +339,8 @@ async fn process_combined_events(
                                         let db_path_clone = db_path.clone();
                                         let path_string = path_clone.to_string_lossy().to_string();
 
+                                        let app_handle_clone = app_handle.clone();
+
                                         tokio::spawn(async move {
                                             if let Err(e) = remove_file_from_index(
                                                 path_string.clone(), db_path_clone,
@@ -349,7 +348,7 @@ async fn process_combined_events(
                                                 error!("Failed removal process for {}: {:?}", path_string, e);
                                             } else {
                                                 // Emit event after successful file removal
-                                                if let Err(e) = app_handle.emit("files-updated", ()) {
+                                                if let Err(e) = app_handle_clone.clone().emit("files-updated", ()) {
                                                     error!("Failed to emit files-updated event after removal: {}", e);
                                                 }
                                             }

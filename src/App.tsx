@@ -386,6 +386,42 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let unlistenFilesUpdate: UnlistenFn | undefined;
+
+    const setupFilesUpdateListener = async () => {
+      try {
+        unlistenFilesUpdate = await listen("files-updated", async () => {
+          console.log("Received files-updated event, refreshing files data");
+
+          // Refetch the files data
+          const fileData = await invoke<FileMetadata[]>("get_files_data", {
+            query: searchQuery,
+          });
+
+          setFilesData(fileData);
+
+          // Also update semantic data if needed
+          if (searchQuery.trim()) {
+            const semanticData = await invoke<SemanticMetadata[]>(
+              "get_semantic_files_data",
+              { query: searchQuery }
+            );
+            setSemanticData(semanticData);
+          }
+        });
+      } catch (err) {
+        console.error("Failed to set up files update listener:", err);
+      }
+    };
+
+    setupFilesUpdateListener();
+
+    return () => {
+      if (unlistenFilesUpdate) unlistenFilesUpdate();
+    };
+  }, [searchQuery]); // Re-setup the listener when searchQuery changes
+
   // fetches fitlered data from backend when searchQuery changes
   useEffect(() => {
     let isMounted = true;
