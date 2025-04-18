@@ -30,6 +30,8 @@ pub struct WatcherState {
 pub fn init_file_watcher(app: &tauri::App, db_path: &Path) -> AppResult<()> {
     println!("Initializing file watcher service...");
 
+    let app_clone = app.handle().clone();
+
     let watched_roots = match extract_watch_directories_from_db(db_path) {
         Ok(dirs) => {
             println!("Found {} directories to watch from database", dirs.len());
@@ -41,13 +43,24 @@ pub fn init_file_watcher(app: &tauri::App, db_path: &Path) -> AppResult<()> {
         }
     };
 
-    let initial_state = Arc::new(Mutex::new(Option::<WatcherState>::None));
+    let initial_state = Arc::new(Mutex::new(Some(WatcherState {
+        watched_roots: watched_roots.clone(),
+    })));
+
+    // store the initial state in the app state as well
     app.manage(initial_state);
 
     println!(
         "File watcher initialized with {} watched directories",
         watched_roots.len()
     );
+
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = start_watcher_service(app_clone) {
+            error!("Failed to start file watcher service: {}", e);
+        }
+    });
+
     Ok(())
 }
 
@@ -97,9 +110,6 @@ pub fn start_watcher_service(app_handle: AppHandle) -> AppResult<()> {
     let watcher_mutex = Arc::new(std::sync::Mutex::new(watcher));
     app_handle.manage(watcher_mutex.clone());
 
-    // // channel for app events like indexing complete so watcher can work
-    // let (app_event_tx, app_event_rx) = tokio::sync::mpsc::channel::<Vec<String>>(5); // Channel for Vec<String> payloads
-
     // Set up watches for all directories in the WatcherState
     let watcher_state = app_handle.state::<Arc<Mutex<Option<WatcherState>>>>();
     let watch_roots = {
@@ -131,6 +141,7 @@ pub fn start_watcher_service(app_handle: AppHandle) -> AppResult<()> {
             }
         }
     }
+
     println!(
         "Successfully started watching {}/{} directories",
         success_count,
@@ -246,12 +257,15 @@ async fn process_combined_events(
                         tokio::spawn(async move {
                             let processor = FileProcessor { db_path, concurrency_limit };
                             let handle_for_progress = app_handle_clone.clone();
-                            let progress_handler = move |status: ProcessingStatus| { /* ... emit ... */ };
+                            let progress_handler = move |status: ProcessingStatus|
+                            // emit progress events
+                            { /* ... emit ... */ };
                             let paths_str: Vec<String> = all_paths_to_process
                                 .iter()
                                 .map(|p| p.to_string_lossy().to_string())
                                 .collect();
 
+                            println!("the path str in the events: {:?}", paths_str);
                             match processor.process_paths(
                                 paths_str.clone(),
                                 progress_handler,

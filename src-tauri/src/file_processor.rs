@@ -116,14 +116,17 @@ impl FileProcessor {
         app_handle: AppHandle,
     ) -> Result<serde_json::Value, FileProcessorError> {
         println!("Processing paths: {:?}", paths);
-    
+
         // Get all file paths and directories that need to be processed
         let (files, unique_directories) = self.collect_all_files(&paths).await?;
         let total_files: usize = files.len();
         let total_directories: usize = unique_directories.len();
-    
-        println!("Found {} files and {} unique directories", total_files, total_directories);
-    
+
+        println!(
+            "Found {} files and {} unique directories",
+            total_files, total_directories
+        );
+
         // Early return if no files
         if total_files == 0 {
             return Ok(serde_json::json!({
@@ -132,23 +135,30 @@ impl FileProcessor {
                 "errors": []
             }));
         }
-    
+
         // First, save all directories to the database (as a batch for efficiency)
         if !unique_directories.is_empty() {
-            println!("Saving {} directories to database", unique_directories.len());
-            if let Err(e) = save_directories_to_db(self.db_path.clone(), &unique_directories).await {
-                return Err(FileProcessorError::Other(format!("Failed to save directories: {}", e)));
+            println!(
+                "Saving {} directories to database",
+                unique_directories.len()
+            );
+            if let Err(e) = save_directories_to_db(self.db_path.clone(), &unique_directories).await
+            {
+                return Err(FileProcessorError::Other(format!(
+                    "Failed to save directories: {}",
+                    e
+                )));
             }
         }
-    
+
         // Create new semaphore to handle concurrency limits
         let sem = Arc::new(Semaphore::new(self.concurrency_limit));
         let num_processed_files = Arc::new(AtomicUsize::new(0));
-    
+
         // Channel to collect errors
         let (err_tx, mut err_rx) = tokio::sync::mpsc::unbounded_channel();
         let mut task_handles = Vec::with_capacity(total_files);
-    
+
         // Now process files with concurrency
         for file in &files {
             // Semaphore is shared but each task needs its own reference for concurrency limit
@@ -161,7 +171,7 @@ impl FileProcessor {
             let this = self.clone();
             // Each task needs its own reference to the progress function to update it
             let progress_fn = on_progress.clone();
-    
+
             let task_handle: task::JoinHandle<()> = create_path_embedding(
                 this.db_path,
                 file,
@@ -172,14 +182,14 @@ impl FileProcessor {
                 progress_fn,
                 app_handle.clone(),
             );
-    
+
             task_handles.push(task_handle);
         }
-    
+
         // Wait for all tasks and process results
         drop(err_tx);
         futures::future::join_all(task_handles).await;
-    
+
         // Collect errors with file paths
         let mut detailed_errors = Vec::new();
         while let Ok((file_path, error_msg)) = err_rx.try_recv() {
@@ -188,30 +198,33 @@ impl FileProcessor {
                 "error": error_msg
             }));
         }
-    
+
         let success = detailed_errors.is_empty();
         let processed_count = num_processed_files.load(Ordering::SeqCst);
-    
+
         // When process is complete, emit an event with the paths to watch
         if success {
             println!("successfully processed all files during index");
             // Convert the directory paths to strings for the event payload
             let dir_paths: Vec<String> = unique_directories
-            .iter()
-            .map(|path| path.to_string_lossy().to_string())
-            .collect();
-        
-        // Emit the indexing_complete event with directory paths
-        // Don't serialize the vector again - Tauri will handle that
-        if let Err(e) = app_handle.emit("indexing_complete", &dir_paths) {
-            println!("Warning: Failed to emit indexing_complete event: {}", e);
-        } else {
-            println!("Successfully emitted indexing_complete event with {} paths", dir_paths.len());
-        }
+                .iter()
+                .map(|path| path.to_string_lossy().to_string())
+                .collect();
+
+            // Emit the indexing_complete event with directory paths
+            // Don't serialize the vector again - Tauri will handle that
+            if let Err(e) = app_handle.emit("indexing_complete", &dir_paths) {
+                println!("Warning: Failed to emit indexing_complete event: {}", e);
+            } else {
+                println!(
+                    "Successfully emitted indexing_complete event with {} paths",
+                    dir_paths.len()
+                );
+            }
 
             println!("successfully emitted indexing_complete event");
         }
-    
+
         let result = serde_json::json!({
             "success": success,
             "totalFiles": total_files,
@@ -219,11 +232,10 @@ impl FileProcessor {
             "totalDirectories": total_directories,
             "errors": detailed_errors
         });
-    
+
         Ok(result)
     }
 
-    /// Given a vector of paths, this walks the tree and collects all children paths
     /// Given a vector of paths, this walks the tree and collects all children paths and their parent directories
     async fn collect_all_files(
         &self,
@@ -311,6 +323,11 @@ fn create_path_embedding(
     let fm_clone = file_metadata.clone();
     let file_path = fm_clone.base.path.clone();
 
+    println!(
+        "saving the path to db and creating embedding: {}",
+        file_metadata.base.path
+    );
+
     tokio::spawn(async move {
         // Acquire concurrency permit
         let _permit = match permit.acquire().await {
@@ -394,12 +411,13 @@ async fn save_file_to_db(
 ) -> Result<String, FileProcessorError> {
     let file = file.clone();
 
+    println!("saving the file in the db:{:?}", file.base.path);
+
     task::spawn_blocking({
         let db_path = db_path;
         move || -> Result<String, FileProcessorError> {
             // Fixed error handling with map_err instead of map
-            let conn = Connection::open(db_path)
-            .map_err(|e| FileProcessorError::Db(e))?;
+            let conn = Connection::open(db_path).map_err(|e| FileProcessorError::Db(e))?;
 
             // Set pragmas for better performance
             conn.execute_batch(
@@ -408,18 +426,20 @@ async fn save_file_to_db(
                 PRAGMA synchronous = NORMAL;
                 "#,
             )?;
-            
+
             // Get the filename part
             let path = Path::new(&file.base.path);
-            let filename = path.file_name()
+            let filename = path
+                .file_name()
                 .map(|f| f.to_string_lossy().to_string())
                 .unwrap_or_else(|| file.base.name.clone());
-            
+
             // Get the parent directory
-            let parent_path = path.parent()
+            let parent_path = path
+                .parent()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|| String::from(""));
-            
+
             // Get directory_id (it should already exist from the batch insert)
             let directory_id: i64 = match conn.query_row(
                 "SELECT id FROM directories WHERE path = ?1",
@@ -431,30 +451,29 @@ async fn save_file_to_db(
                     // Directory not found - insert it as a fallback
                     conn.execute(
                         r#"
-                        INSERT OR IGNORE INTO directories (path, created_at, updated_at)
-                        VALUES (?1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                        INSERT OR IGNORE INTO directories (path)
+                        VALUES (?1);
                         "#,
                         params![parent_path],
                     )?;
-                    
+
                     conn.query_row(
                         "SELECT id FROM directories WHERE path = ?1",
                         [&parent_path],
                         |row| row.get(0),
                     )?
-                },
+                }
                 Err(e) => return Err(FileProcessorError::Db(e)),
             };
 
             // Insert file metadata with directory_id
             conn.execute(
                 r#"
-                INSERT OR IGNORE INTO files (directory_id, filename, path, name, extension, size, category, created_at, updated_at)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                INSERT OR IGNORE INTO files (directory_id, path, name, extension, size, category)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6);
                 "#,
                 params![
                     directory_id,
-                    filename,
                     file.base.path,
                     file.base.name,
                     file.extension,
@@ -484,7 +503,9 @@ async fn save_file_to_db(
 
             Ok(file_id.to_string())
         }
-    }).await.map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?
+    })
+    .await
+    .map_err(|e| FileProcessorError::Other(format!("spawn_blocking error: {e}")))?
 }
 
 /// Get metadata for a given file path
@@ -901,7 +922,7 @@ async fn save_directories_to_db(
                     VALUES (?1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
                     "#,
                 )?;
-    
+
                 for dir_path in dirs {
                     stmt.execute(params![dir_path])?;
                 }
